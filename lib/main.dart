@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:linkup/navigator/MainNavigator.dart';
 
 void main(List<String> args) {
   runApp(MyApp());
@@ -25,7 +26,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const Scaffold(),
+      home: const MainNavigator(),
     );
   }
 }
