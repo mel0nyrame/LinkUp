@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:linkup/components/InformationCart.dart';
+import 'package:linkup/components/OnlineDevices.dart';
 import 'package:linkup/components/StatusCard.dart';
 
 class Overviewpage extends StatefulWidget {
@@ -18,21 +20,62 @@ class _OverviewpageState extends State<Overviewpage> {
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
-            child: Padding(padding:  EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Statuscard(),
-                
-                SizedBox(height: 16),
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Statuscard(),
 
-                
-              ],
+                  SizedBox(height: 16),
+
+                  Informationcart(
+                    icon: Icons.account_circle,
+                    title: "账户信息",
+                    children: [],
+                  ),
+
+                  SizedBox(height: 16),
+
+                  Informationcart(
+                    icon: Icons.network_check,
+                    title: "网络信息",
+                    children: [],
+                  ),
+
+                  SizedBox(height: 16),
+
+                  Informationcart(
+                    icon: Icons.data_usage,
+                    title: "流量统计",
+                    children: [],
+                  ),
+
+                  SizedBox(height: 16),
+
+                  Informationcart(
+                    icon: Icons.timer,
+                    title: "在线时长",
+                    children: [],
+                  ),
+
+                  SizedBox(height: 16),
+
+                  Informationcart(
+                    icon: Icons.account_balance_wallet,
+                    title: "财务信息",
+                    children: [],
+                  ),
+
+                  SizedBox(height: 16),
+
+                  Onlinedevices(),
+                ],
+              ),
             ),
-            ),
-          )
+          ),
         ],
-      )
+      ),
     );
   }
 }
