@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:linkup/navigator/MainNavigator.dart';
+import 'package:linkup/navigation/MainNavigation.dart';
 
 void main(List<String> args) {
   runApp(MyApp());
