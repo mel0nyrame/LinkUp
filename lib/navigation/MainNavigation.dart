@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:linkup/page/OverViewPage.dart';
+import 'package:linkup/page/SettingsPage.dart';
 
 class MainNavigator extends StatefulWidget {
   const MainNavigator({super.key});
@@ -15,7 +16,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: [
-        Overviewpage()
+        Overviewpage(), Settingspage()
         ],
       ),
       bottomNavigationBar: NavigationBar(

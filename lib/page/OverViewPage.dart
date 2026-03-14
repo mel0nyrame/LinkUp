@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:linkup/components/InformationCart.dart';
-import 'package:linkup/components/OnlineDevices.dart';
+import 'package:linkup/components/OnlineDevicesCard.dart';
 import 'package:linkup/components/StatusCard.dart';
 
 class Overviewpage extends StatefulWidget {
@@ -37,17 +37,21 @@ class _OverviewpageState extends State<Overviewpage> {
 
                   SizedBox(height: 16),
 
-                  Informationcart(
-                    icon: Icons.network_check,
-                    title: "网络信息",
-                    children: [],
-                  ),
+                  Onlinedevices(),
 
                   SizedBox(height: 16),
 
                   Informationcart(
                     icon: Icons.data_usage,
                     title: "流量统计",
+                    children: [],
+                  ),
+
+                  SizedBox(height: 16),
+
+                  Informationcart(
+                    icon: Icons.network_check,
+                    title: "网络信息",
                     children: [],
                   ),
 
@@ -69,7 +73,11 @@ class _OverviewpageState extends State<Overviewpage> {
 
                   SizedBox(height: 16),
 
-                  Onlinedevices(),
+                  Informationcart(
+                    icon: Icons.system_update,
+                    title: "系统版本",
+                    children: [],
+                  )
                 ],
               ),
             ),
