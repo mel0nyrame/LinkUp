@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:LinkUp/components/UpdateDialog.dart';
+import 'package:LinkUp/utils/UpdateUtil.dart';
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/page/OverViewPage.dart';
@@ -35,8 +37,34 @@ class _MainNavigatorState extends State<MainNavigator> {
   @override
   void initState() {
     super.initState();
+
+    // 页面加载后检查更新
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForUpdate();
+    });
+
     // 启动监控
     _startMonitor();
+  }
+
+  Future<void> _checkForUpdate() async {
+    // 延迟 2 秒检查，避免启动时阻塞
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+
+    final updateInfo = await UpdateUtil.checkUpdate();
+
+    if (updateInfo != null && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: !updateInfo.isForceUpdate,
+        builder: (context) => UpdateDialog(
+          updateInfo: updateInfo,
+          onDismiss: () => Navigator.pop(context),
+        ),
+      );
+    }
   }
 
   @override

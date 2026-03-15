@@ -70,7 +70,7 @@ class SystemSettingsUtil {
     if (!Platform.isAndroid) return false;
     
     try {
-      const platform = MethodChannel('com.example.linkup/system');
+      const platform = MethodChannel('com.mel0ny.linkup/system');
       final bool result = await platform.invokeMethod('isAutoStartSupported');
       return result;
     } catch (e, stackTrace) {
@@ -84,7 +84,7 @@ class SystemSettingsUtil {
     if (!Platform.isAndroid) return false;
     
     try {
-      const platform = MethodChannel('com.example.linkup/system');
+      const platform = MethodChannel('com.mel0ny.linkup/system');
       final bool result = await platform.invokeMethod('checkAutoStartPermission');
       return result;
     } catch (e, stackTrace) {
@@ -98,7 +98,7 @@ class SystemSettingsUtil {
     if (!Platform.isAndroid) return;
     
     try {
-      const platform = MethodChannel('com.example.linkup/system');
+      const platform = MethodChannel('com.mel0ny.linkup/system');
       await platform.invokeMethod('requestAutoStartPermission');
     } catch (e, stackTrace) {
       LogUtil.error('请求开机自启权限失败', e, stackTrace);
@@ -110,7 +110,7 @@ class SystemSettingsUtil {
     if (!Platform.isAndroid) return;
     
     try {
-      const platform = MethodChannel('com.example.linkup/system');
+      const platform = MethodChannel('com.mel0ny.linkup/system');
       await platform.invokeMethod('openBatteryOptimizationSettings');
     } catch (e, stackTrace) {
       LogUtil.error('打开电池优化设置失败', e, stackTrace);
