@@ -2,6 +2,12 @@
 
 基于深澜(Srun)协议的校园网自动连接工具，支持自动检测网络状态、断网自动重连、后台持续监控等功能。
 
+## 思路/想法来源
+
+https://github.com/1328411791/GDOUYJ_Internet_Client
+
+https://github.com/CyLzzh/srun_client
+
 ## 功能特性
 
 - 🔐 **自动认证**：支持深澜协议自动登录校园网
