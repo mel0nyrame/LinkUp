@@ -1,10 +1,10 @@
 // Powered by Kimi
 import 'package:http/http.dart' as http;
-import 'package:linkup/utils/ChallengeResponse.dart';
+import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'dart:convert';
-import 'package:linkup/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/RadUserInfo.dart';
 
-class SrucClient {
+class SrunClient {
   String host = "10.129.1.1";
   String get baseURL => "http://" + host + "/cgi-bin";
   String get urlUserInfo => baseURL + "/rad_user_info";
@@ -20,7 +20,7 @@ class SrucClient {
 
   final http.Client _client;
 
-  SrucClient({http.Client? client}) : _client = client ?? http.Client();
+  SrunClient({http.Client? client}) : _client = client ?? http.Client();
 
   // 从 JSONP 提取 JSON
   String _extractJsonFromJsonp(String jsonp, String callbackName) {
