@@ -34,7 +34,7 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
   Future<void> _setKeepAlive(bool value) async {
     setState(() => _isLoading = true);
     
-    final success = await SystemSettingsUtil.setKeepAlive(value);
+    await SystemSettingsUtil.setKeepAlive(value);
     
     if (mounted) {
       setState(() {
@@ -62,7 +62,7 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
   Future<void> _setAutoStart(bool value) async {
     setState(() => _isLoading = true);
     
-    final success = await SystemSettingsUtil.setAutoStart(value);
+    await SystemSettingsUtil.setAutoStart(value);
     
     if (mounted) {
       setState(() {

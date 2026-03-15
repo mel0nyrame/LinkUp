@@ -41,8 +41,8 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   // 格式化字节
-  String _formatBytes(int bytes) {
-    if (bytes <= 0) return '0 B';
+  String _formatBytes(int? bytes) {
+    if (bytes == null || bytes <= 0) return '0 B';
     const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
     var i = (bytes.bitLength ~/ 10);
     if (i >= suffixes.length) i = suffixes.length - 1;
@@ -51,15 +51,15 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   // 格式化时间戳
-  String _formatTimestamp(int timestamp) {
-    if (timestamp <= 0) return '-';
+  String _formatTimestamp(int? timestamp) {
+    if (timestamp == null || timestamp <= 0) return '-';
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
   // 格式化时长
-  String _formatDuration(int seconds) {
-    if (seconds <= 0) return '-';
+  String _formatDuration(int? seconds) {
+    if (seconds == null || seconds <= 0) return '-';
     final days = seconds ~/ 86400;
     final hours = (seconds % 86400) ~/ 3600;
     final mins = (seconds % 3600) ~/ 60;
@@ -165,55 +165,13 @@ class _OverviewPageState extends State<OverviewPage> {
                       (widget.statusMessage != null && !widget.isOnline))
                     const SizedBox(height: 16),
 
-                  // 账户信息卡片
+                  // 在线设备详情卡片
                   if (userInfo != null && userInfo.isOnline)
-                    SectionCard(
-                      icon: Icons.account_circle,
-                      title: '账户信息',
-                      children: [
-                        InfoDataRow(
-                          label: '用户名',
-                          value: userInfo.userName,
-                          icon: Icons.person,
-                        ),
-                        InfoDataRow(
-                          label: '真实姓名',
-                          value: userInfo.realName.isEmpty
-                              ? '-'
-                              : userInfo.realName,
-                          icon: Icons.badge,
-                        ),
-                        InfoDataRow(
-                          label: '用户组ID',
-                          value: userInfo.groupId,
-                          icon: Icons.group,
-                        ),
-                        InfoDataRow(
-                          label: '套餐名称',
-                          value: userInfo.productsName,
-                          icon: Icons.card_membership,
-                        ),
-                        InfoDataRow(
-                          label: '计费套餐',
-                          value: userInfo.billingName,
-                          icon: Icons.payment,
-                        ),
-                        InfoDataRow(
-                          label: '产品ID',
-                          value: userInfo.productsId,
-                          icon: Icons.label,
-                        ),
-                        InfoDataRow(
-                          label: '套餐ID',
-                          value: userInfo.packageId,
-                          icon: Icons.inventory,
-                        ),
-                      ],
-                    )
+                    _buildDeviceCard(context, userInfo)
                   else
                     SectionCard(
-                      icon: Icons.account_circle,
-                      title: '账户信息',
+                      icon: Icons.devices,
+                      title: '在线设备详情',
                       children: const [],
                     ),
 
@@ -242,7 +200,7 @@ class _OverviewPageState extends State<OverviewPage> {
                         ),
                         InfoDataRow(
                           label: '域名',
-                          value: userInfo.domain.isEmpty
+                          value: userInfo.domain?.isEmpty ?? true
                               ? '-'
                               : userInfo.domain,
                           icon: Icons.language,
@@ -331,14 +289,18 @@ class _OverviewPageState extends State<OverviewPage> {
                         ),
                         InfoDataRow(
                           label: '剩余时长',
-                          value: userInfo.remainSeconds == 0
+                          value:
+                              userInfo.remainSeconds == null ||
+                                  userInfo.remainSeconds == 0
                               ? '无限制'
                               : _formatDuration(userInfo.remainSeconds),
                           icon: Icons.hourglass_empty,
                         ),
                         InfoDataRow(
                           label: '结账日期',
-                          value: userInfo.checkoutDate == 0
+                          value:
+                              userInfo.checkoutDate == null ||
+                                  userInfo.checkoutDate == 0
                               ? '-'
                               : _formatTimestamp(userInfo.checkoutDate),
                           icon: Icons.event,
@@ -349,6 +311,60 @@ class _OverviewPageState extends State<OverviewPage> {
                     SectionCard(
                       icon: Icons.timer,
                       title: '在线时长',
+                      children: const [],
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // 账户信息卡片
+                  if (userInfo != null && userInfo.isOnline)
+                    SectionCard(
+                      icon: Icons.account_circle,
+                      title: '账户信息',
+                      children: [
+                        InfoDataRow(
+                          label: '用户名',
+                          value: userInfo.userName,
+                          icon: Icons.person,
+                        ),
+                        InfoDataRow(
+                          label: '真实姓名',
+                          value: userInfo.realName?.isEmpty ?? true
+                              ? '-'
+                              : userInfo.realName,
+                          icon: Icons.badge,
+                        ),
+                        InfoDataRow(
+                          label: '用户组ID',
+                          value: userInfo.groupId,
+                          icon: Icons.group,
+                        ),
+                        InfoDataRow(
+                          label: '套餐名称',
+                          value: userInfo.productsName,
+                          icon: Icons.card_membership,
+                        ),
+                        InfoDataRow(
+                          label: '计费套餐',
+                          value: userInfo.billingName,
+                          icon: Icons.payment,
+                        ),
+                        InfoDataRow(
+                          label: '产品ID',
+                          value: userInfo.productsId,
+                          icon: Icons.label,
+                        ),
+                        InfoDataRow(
+                          label: '套餐ID',
+                          value: userInfo.packageId,
+                          icon: Icons.inventory,
+                        ),
+                      ],
+                    )
+                  else
+                    SectionCard(
+                      icon: Icons.account_circle,
+                      title: '账户信息',
                       children: const [],
                     ),
 
@@ -384,18 +400,6 @@ class _OverviewPageState extends State<OverviewPage> {
                     SectionCard(
                       icon: Icons.account_balance_wallet,
                       title: '财务信息',
-                      children: const [],
-                    ),
-
-                  const SizedBox(height: 16),
-
-                  // 在线设备详情卡片
-                  if (userInfo != null && userInfo.isOnline)
-                    _buildDeviceCard(context, userInfo)
-                  else
-                    SectionCard(
-                      icon: Icons.devices,
-                      title: '在线设备详情',
                       children: const [],
                     ),
 
@@ -506,8 +510,8 @@ class _OverviewPageState extends State<OverviewPage> {
                       Row(
                         children: [
                           Icon(
-                            device.osName.contains('iPhone') ||
-                                    device.osName.contains('Mac')
+                            (device.osName?.contains('iPhone') ?? false) ||
+                                    (device.osName?.contains('Mac') ?? false)
                                 ? Icons.apple
                                 : Icons.android,
                             color: colorScheme.primary,
@@ -528,7 +532,7 @@ class _OverviewPageState extends State<OverviewPage> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              device.className.split('/').first,
+                              device.className?.split('/').first ?? 'Unknown',
                               style: TextStyle(
                                 color: colorScheme.onPrimary,
                                 fontSize: 10,

@@ -194,7 +194,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     // 3. 获取 IP 和用户信息
     final info = await client.getUserInfo();
     _userInfo = info;
-    final String ip = info.onlineIp;
+    final String ip = info.onlineIp ?? '';
 
     // 再次检查是否已经在线（可能在这期间已连接）
     if (info.isOnline) {

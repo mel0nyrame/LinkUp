@@ -49,7 +49,6 @@ class NetworkUtil {
         case ConnectivityResult.other:
           return '其他网络';
         case ConnectivityResult.none:
-        default:
           return '无网络连接';
       }
     } catch (e) {

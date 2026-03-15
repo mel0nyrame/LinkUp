@@ -25,8 +25,8 @@ class UpdateInfo {
 
 class UpdateUtil {
   // GitHub 仓库信息
-  static const String owner = '你的GitHub用户名';  // 修改为你的
-  static const String repo = '你的仓库名';        // 修改为你的
+  static const String owner = 'mel0nyrame'; // 修改为你的
+  static const String repo = 'LinkUp'; // 修改为你的
   
   static final Dio _dio = Dio();
 
