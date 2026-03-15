@@ -2,6 +2,7 @@
 // 这真不会写
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
 
 class NetworkConfigCard extends StatefulWidget {
   const NetworkConfigCard({super.key});
@@ -13,11 +14,43 @@ class NetworkConfigCard extends StatefulWidget {
 class _NetworkConfigCardState extends State<NetworkConfigCard> {
   bool _autoAcid = true;
   final _acidCtrl = TextEditingController(text: '1');
+  String _displayAcid = '1';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConfig();
+  }
 
   @override
   void dispose() {
     _acidCtrl.dispose();
     super.dispose();
+  }
+
+  // 加载配置
+  Future<void> _loadConfig() async {
+    final config = await ConfigUtil.loadConfig();
+    if (config != null) {
+      setState(() {
+        _autoAcid = config['auto_acid'] ?? true;
+        _displayAcid = config['acid'] ?? '1';
+        _acidCtrl.text = _displayAcid;
+      });
+    }
+  }
+
+  // 保存配置
+  Future<void> _saveConfig() async {
+    final config = await ConfigUtil.loadConfig();
+    if (config != null) {
+      await ConfigUtil.saveConfig(
+        username: config['username'] ?? '',
+        password: config['password'] ?? '',
+        acid: _acidCtrl.text,
+        autoAcid: _autoAcid,
+      );
+    }
   }
 
   @override
@@ -49,7 +82,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
               title: const Text('自动获取 ACID'),
               subtitle: Text(
                 _autoAcid 
-                    ? '系统将根据网络环境自动选择接入点' 
+                    ? '系统将自动尝试 1-20 寻找可用接入点' 
                     : '手动指定接入点 ID',
                 style: TextStyle(
                   fontSize: 12,
@@ -61,6 +94,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                 setState(() {
                   _autoAcid = value;
                 });
+                _saveConfig();
               },
               secondary: Icon(
                 _autoAcid ? Icons.auto_fix_high : Icons.edit,
@@ -127,10 +161,31 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
+                        _displayAcid,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.only(
+                        top: 2,
+                        bottom: 2,
+                        left: 6,
+                        right: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
                         '自动',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.green.shade700,
+                          color: Colors.blue.shade700,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -150,6 +205,10 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
       padding: const EdgeInsets.only(top: 16),
       child: TextField(
         controller: _acidCtrl,
+        onChanged: (value) {
+          _displayAcid = value;
+          _saveConfig();
+        },
         decoration: InputDecoration(
           labelText: 'ACID (接入点 ID)',
           hintText: '如: 1, 2, 5, 11, 15',
@@ -165,7 +224,9 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
             onPressed: () {
               setState(() {
                 _acidCtrl.text = '1';
+                _displayAcid = '1';
               });
+              _saveConfig();
             },
           ),
         ),

@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:linkup/navigation/MainNavigation.dart';
+import 'package:LinkUp/navigation/MainNavigation.dart';
+import 'package:LinkUp/page/AuthWrapperPage.dart';
+import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 
-void main(List<String> args) {
-  runApp(MyApp());
+void main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化系统设置（后台保活等）
+  await SystemSettingsUtil.init();
+  
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -26,7 +33,9 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MainNavigator(),
+      home: const AuthWrapperPage(
+        child: MainNavigator(), // 配置完成后进入主页面
+      ),
     );
   }
 }
