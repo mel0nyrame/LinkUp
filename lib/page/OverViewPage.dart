@@ -169,7 +169,7 @@ class _OverviewPageState extends State<OverviewPage> {
                   if (userInfo != null && userInfo.isOnline)
                     _buildDeviceCard(context, userInfo)
                   else
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.devices,
                       title: '在线设备详情',
                       children: const [],
@@ -179,7 +179,7 @@ class _OverviewPageState extends State<OverviewPage> {
 
                   // 网络信息卡片
                   if (userInfo != null && userInfo.isOnline)
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.network_check,
                       title: '网络信息',
                       children: [
@@ -213,7 +213,7 @@ class _OverviewPageState extends State<OverviewPage> {
                       ],
                     )
                   else
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.network_check,
                       title: '网络信息',
                       children: const [],
@@ -223,7 +223,7 @@ class _OverviewPageState extends State<OverviewPage> {
 
                   // 流量统计卡片
                   if (userInfo != null && userInfo.isOnline)
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.data_usage,
                       title: '流量统计',
                       children: [
@@ -258,7 +258,7 @@ class _OverviewPageState extends State<OverviewPage> {
                       ],
                     )
                   else
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.data_usage,
                       title: '流量统计',
                       children: const [],
@@ -268,7 +268,7 @@ class _OverviewPageState extends State<OverviewPage> {
 
                   // 在线时长卡片
                   if (userInfo != null && userInfo.isOnline)
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.timer,
                       title: '在线时长',
                       children: [
@@ -308,7 +308,7 @@ class _OverviewPageState extends State<OverviewPage> {
                       ],
                     )
                   else
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.timer,
                       title: '在线时长',
                       children: const [],
@@ -318,7 +318,7 @@ class _OverviewPageState extends State<OverviewPage> {
 
                   // 账户信息卡片
                   if (userInfo != null && userInfo.isOnline)
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.account_circle,
                       title: '账户信息',
                       children: [
@@ -362,7 +362,7 @@ class _OverviewPageState extends State<OverviewPage> {
                       ],
                     )
                   else
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.account_circle,
                       title: '账户信息',
                       children: const [],
@@ -372,7 +372,7 @@ class _OverviewPageState extends State<OverviewPage> {
 
                   // 财务信息卡片
                   if (userInfo != null && userInfo.isOnline)
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.account_balance_wallet,
                       title: '财务信息',
                       children: [
@@ -397,7 +397,7 @@ class _OverviewPageState extends State<OverviewPage> {
                       ],
                     )
                   else
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.account_balance_wallet,
                       title: '财务信息',
                       children: const [],
@@ -407,7 +407,7 @@ class _OverviewPageState extends State<OverviewPage> {
 
                   // 系统版本卡片
                   if (userInfo != null && userInfo.isOnline)
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.system_update,
                       title: '系统版本',
                       children: [
@@ -424,7 +424,7 @@ class _OverviewPageState extends State<OverviewPage> {
                       ],
                     )
                   else
-                    SectionCard(
+                    InformationCart(
                       icon: Icons.system_update,
                       title: '系统版本',
                       children: const [],
