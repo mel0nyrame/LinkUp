@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunEncrypt.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 
 /// 登录错误类型枚举
 enum LoginErrorType {
@@ -260,14 +261,14 @@ class SrunLogin {
         queryParameters: params,
       );
 
-      print('登录请求 URL: $uri');
+      LogUtil.info('登录请求 URL: $uri');
 
       final response = await http.get(
         uri,
         headers: {'User-Agent': client.userAgent},
       );
 
-      print('登录响应状态码: ${response.statusCode}');
+      LogUtil.info('登录响应状态码: ${response.statusCode}');
 
       if (response.statusCode != 200) {
         return LoginResult(
@@ -280,7 +281,7 @@ class SrunLogin {
 
       // 解析 JSONP 响应
       final responseBody = response.body;
-      print('登录响应: $responseBody');
+      LogUtil.info('登录响应: $responseBody');
 
       // 从 JSONP 中提取 JSON
       final jsonResult = _extractJsonFromJsonp(responseBody, client.callback);
@@ -300,7 +301,9 @@ class SrunLogin {
       final sucMsg = jsonResult['suc_msg'] as String? ?? '';
       final res = jsonResult['res'] as String? ?? '';
 
-      print('解析结果: error=$error, errorMsg=$errorMsg, sucMsg=$sucMsg, res=$res');
+      LogUtil.info(
+        '解析结果: error=$error, errorMsg=$errorMsg, sucMsg=$sucMsg, res=$res',
+      );
 
       // 检查登录结果
       // error == 'ok' 表示成功，或者 suc_msg == 'login_ok' 表示成功
@@ -350,8 +353,7 @@ class SrunLogin {
         errorType: LoginErrorType.networkError,
       );
     } catch (e, stackTrace) {
-      print('登录异常: $e');
-      print('堆栈: $stackTrace');
+      LogUtil.error('登录异常', e, stackTrace);
       return LoginResult(
         success: false,
         message: '登录异常: $e',
@@ -369,17 +371,17 @@ class SrunLogin {
     try {
       final prefix = '$callbackName(';
       if (!jsonp.startsWith(prefix)) {
-        print('JSONP 格式错误: 不以 $prefix 开头');
+        LogUtil.warning('JSONP 格式错误: 不以 $prefix 开头');
         return null;
       }
       if (!jsonp.endsWith(')')) {
-        print('JSONP 格式错误: 不以 ) 结尾');
+        LogUtil.warning('JSONP 格式错误: 不以 ) 结尾');
         return null;
       }
       final jsonStr = jsonp.substring(prefix.length, jsonp.length - 1);
       return jsonDecode(jsonStr) as Map<String, dynamic>;
     } catch (e) {
-      print('解析 JSONP 失败: $e');
+      LogUtil.error('解析 JSONP 失败', e);
       return null;
     }
   }

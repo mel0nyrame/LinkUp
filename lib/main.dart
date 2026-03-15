@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:LinkUp/navigation/MainNavigation.dart';
 import 'package:LinkUp/page/AuthWrapperPage.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 初始化日志系统
+  await LogUtil.init();
+  
   // 初始化系统设置（后台保活等）
   await SystemSettingsUtil.init();
   

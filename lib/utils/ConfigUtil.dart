@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 
 class ConfigUtil {
   static const String _fileName = 'linkup_config.json';
@@ -16,7 +17,7 @@ class ConfigUtil {
       }
       return '${directory.path}/$_fileName';
     } catch (e) {
-      debugPrint('ConfigUtil: 获取目录失败 - $e');
+      LogUtil.error('ConfigUtil: 获取目录失败', e);
       rethrow;
     }
   }
@@ -28,7 +29,7 @@ class ConfigUtil {
       final file = File(path);
       return await file.exists();
     } catch (e) {
-      debugPrint('ConfigUtil: 检查文件存在失败 - $e');
+      LogUtil.error('ConfigUtil: 检查文件存在失败', e);
       return false;
     }
   }
@@ -37,7 +38,7 @@ class ConfigUtil {
   static Future<Map<String, dynamic>?> loadConfig() async {
     try {
       final path = await _localPath;
-      debugPrint('ConfigUtil: 尝试从 $path 读取配置');
+      LogUtil.info('ConfigUtil: 尝试从 $path 读取配置');
       
       final file = File(path);
       
@@ -47,25 +48,24 @@ class ConfigUtil {
       }
       
       final content = await file.readAsString();
-      debugPrint('ConfigUtil: 读取到内容: $content');
+      LogUtil.info('ConfigUtil: 读取到内容: $content');
       
       final result = jsonDecode(content);
       if (result is Map<String, dynamic>) {
-        debugPrint('ConfigUtil: 解析成功');
+        LogUtil.info('ConfigUtil: 解析成功');
         return result;
       } else {
-        debugPrint('ConfigUtil: 配置格式不正确');
+        LogUtil.warning('ConfigUtil: 配置格式不正确');
         return null;
       }
     } on FormatException catch (e) {
-      debugPrint('ConfigUtil: JSON 解析错误 - $e');
+      LogUtil.error('ConfigUtil: JSON 解析错误', e);
       return null;
     } on FileSystemException catch (e) {
-      debugPrint('ConfigUtil: 文件系统错误 - $e');
+      LogUtil.error('ConfigUtil: 文件系统错误', e);
       return null;
     } catch (e, stackTrace) {
-      debugPrint('ConfigUtil: 读取配置异常 - $e');
-      debugPrint('ConfigUtil: 堆栈 - $stackTrace');
+      LogUtil.error('ConfigUtil: 读取配置异常', e, stackTrace);
       return null;
     }
   }
@@ -79,14 +79,14 @@ class ConfigUtil {
   }) async {
     try {
       final path = await _localPath;
-      debugPrint('ConfigUtil: 准备保存配置到 $path');
+      LogUtil.info('ConfigUtil: 准备保存配置到 $path');
       
       final file = File(path);
       
       // 确保父目录存在
       final parentDir = file.parent;
       if (!await parentDir.exists()) {
-        debugPrint('ConfigUtil: 创建父目录 ${parentDir.path}');
+        LogUtil.info('ConfigUtil: 创建父目录 ${parentDir.path}');
         await parentDir.create(recursive: true);
       }
       
@@ -99,7 +99,7 @@ class ConfigUtil {
       };
       
       final jsonString = jsonEncode(config);
-      debugPrint('ConfigUtil: 写入内容: $jsonString');
+      LogUtil.info('ConfigUtil: 写入内容: $jsonString');
       
       await file.writeAsString(jsonString, flush: true);
       
@@ -107,22 +107,21 @@ class ConfigUtil {
       if (await file.exists()) {
         final verifyContent = await file.readAsString();
         if (verifyContent == jsonString) {
-          debugPrint('ConfigUtil: 配置保存成功并已验证');
+          LogUtil.info('ConfigUtil: 配置保存成功并已验证');
           return true;
         } else {
-          debugPrint('ConfigUtil: 验证失败，内容不匹配');
+          LogUtil.warning('ConfigUtil: 验证失败，内容不匹配');
           return false;
         }
       } else {
-        debugPrint('ConfigUtil: 文件写入后不存在');
+        LogUtil.warning('ConfigUtil: 文件写入后不存在');
         return false;
       }
     } on FileSystemException catch (e) {
-      debugPrint('ConfigUtil: 文件系统错误 - $e');
+      LogUtil.error('ConfigUtil: 文件系统错误', e);
       return false;
     } catch (e, stackTrace) {
-      debugPrint('ConfigUtil: 保存配置异常 - $e');
-      debugPrint('ConfigUtil: 堆栈 - $stackTrace');
+      LogUtil.error('ConfigUtil: 保存配置异常', e, stackTrace);
       return false;
     }
   }
@@ -134,12 +133,12 @@ class ConfigUtil {
       final file = File(path);
       if (await file.exists()) {
         await file.delete();
-        debugPrint('ConfigUtil: 配置已删除');
+        LogUtil.info('ConfigUtil: 配置已删除');
         return true;
       }
       return false;
     } catch (e) {
-      debugPrint('ConfigUtil: 删除配置失败 - $e');
+      LogUtil.error('ConfigUtil: 删除配置失败', e);
       return false;
     }
   }

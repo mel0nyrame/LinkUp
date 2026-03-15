@@ -1,4 +1,5 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 
 /// 网络工具类，用于检测 WiFi 等网络状态
 class NetworkUtil {
@@ -19,7 +20,7 @@ class NetworkUtil {
       }
       return false;
     } catch (e) {
-      print('检测 WiFi 状态失败: $e');
+      LogUtil.error('检测 WiFi 状态失败', e);
       return false;
     }
   }

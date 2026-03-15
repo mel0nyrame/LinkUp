@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/page/OverViewPage.dart';
 import 'package:LinkUp/page/SettingsPage.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
@@ -105,8 +106,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     try {
       await _doLogin();
     } catch (e, stackTrace) {
-      print('❌ 登录逻辑异常: $e');
-      print('堆栈: $stackTrace');
+      LogUtil.error('登录逻辑异常', e, stackTrace);
       setState(() {
         _statusMessage = '登录异常: $e';
       });
