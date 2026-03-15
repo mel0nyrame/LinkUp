@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 
 /// 系统设置工具类
 class SystemSettingsUtil {
@@ -72,8 +73,8 @@ class SystemSettingsUtil {
       const platform = MethodChannel('com.example.linkup/system');
       final bool result = await platform.invokeMethod('isAutoStartSupported');
       return result;
-    } catch (e) {
-      print('检查开机自启支持失败: $e');
+    } catch (e, stackTrace) {
+      LogUtil.error('检查开机自启支持失败', e, stackTrace);
       return false;
     }
   }
@@ -86,8 +87,8 @@ class SystemSettingsUtil {
       const platform = MethodChannel('com.example.linkup/system');
       final bool result = await platform.invokeMethod('checkAutoStartPermission');
       return result;
-    } catch (e) {
-      print('检查开机自启权限失败: $e');
+    } catch (e, stackTrace) {
+      LogUtil.error('检查开机自启权限失败', e, stackTrace);
       return false;
     }
   }
@@ -99,8 +100,8 @@ class SystemSettingsUtil {
     try {
       const platform = MethodChannel('com.example.linkup/system');
       await platform.invokeMethod('requestAutoStartPermission');
-    } catch (e) {
-      print('请求开机自启权限失败: $e');
+    } catch (e, stackTrace) {
+      LogUtil.error('请求开机自启权限失败', e, stackTrace);
     }
   }
 
@@ -111,8 +112,8 @@ class SystemSettingsUtil {
     try {
       const platform = MethodChannel('com.example.linkup/system');
       await platform.invokeMethod('openBatteryOptimizationSettings');
-    } catch (e) {
-      print('打开电池优化设置失败: $e');
+    } catch (e, stackTrace) {
+      LogUtil.error('打开电池优化设置失败', e, stackTrace);
     }
   }
 }
