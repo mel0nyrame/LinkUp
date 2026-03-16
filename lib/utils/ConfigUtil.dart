@@ -48,7 +48,16 @@ class ConfigUtil {
       }
       
       final content = await file.readAsString();
-      LogUtil.info('ConfigUtil: 读取到内容: $content');
+      try {
+        final tempConfig = jsonDecode(content) as Map<String, dynamic>;
+        final displayConfig = Map<String, dynamic>.from(tempConfig);
+        if (displayConfig.containsKey('password')) {
+          displayConfig['password'] = '****';
+        }
+        LogUtil.info('ConfigUtil: 读取到内容: ${jsonEncode(displayConfig)}');
+      } catch (_) {
+        LogUtil.info('ConfigUtil: 读取到内容(解析失败): $content');
+      }
       
       final result = jsonDecode(content);
       if (result is Map<String, dynamic>) {
@@ -99,7 +108,9 @@ class ConfigUtil {
       };
       
       final jsonString = jsonEncode(config);
-      LogUtil.info('ConfigUtil: 写入内容: $jsonString');
+      final displayConfig = Map<String, dynamic>.from(config);
+      displayConfig['password'] = '****';
+      LogUtil.info('ConfigUtil: 写入内容: ${jsonEncode(displayConfig)}');
       
       await file.writeAsString(jsonString, flush: true);
       

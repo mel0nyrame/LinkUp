@@ -1,6 +1,7 @@
 // Powered by Kimi
 import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/ChallengeResponse.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 import 'dart:convert';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 
@@ -45,11 +46,15 @@ class SrunClient {
       urlUserInfo,
     ).replace(queryParameters: params);
 
+    LogUtil.info('[SrunClient] 请求用户信息: $urlUserInfo');
+
     try {
       final response = await _client.get(
         uri,
         headers: {'User-Agent': userAgent},
       );
+
+      LogUtil.info('[SrunClient] 用户信息响应状态码: ${response.statusCode}');
 
       if (response.statusCode != 200) {
         throw Exception('HTTP error: ${response.statusCode}');
@@ -59,12 +64,17 @@ class SrunClient {
       final jsonStr = _extractJsonFromJsonp(response.body, callback);
       final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
 
-      return RadUserInfo.fromJson(jsonData);
+      final userInfo = RadUserInfo.fromJson(jsonData);
+      LogUtil.info('[SrunClient] 用户信息解析成功: online=${userInfo.isOnline}, ip=${userInfo.onlineIp ?? "unknown"}');
+      return userInfo;
     } on FormatException catch (e) {
+      LogUtil.error('[SrunClient] 解析用户信息失败', e);
       throw Exception('JSONP parse error: $e');
     } on http.ClientException catch (e) {
+      LogUtil.error('[SrunClient] 获取用户信息网络错误', e);
       throw Exception('Network error: $e');
     } catch (e) {
+      LogUtil.error('[SrunClient] 获取用户信息失败', e);
       throw Exception('Get user info failed: $e');
     }
   }
@@ -85,6 +95,8 @@ class SrunClient {
       queryParameters: params,
     );
 
+    LogUtil.info('[SrunClient] 请求 Challenge: username=$username, ip=$ip');
+
     try {
       final response = await _client.get(
         uri,
@@ -93,6 +105,8 @@ class SrunClient {
           'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
         },
       );
+
+      LogUtil.info('[SrunClient] Challenge 响应状态码: ${response.statusCode}');
 
       if (response.statusCode != 200) {
         throw Exception('HTTP error: ${response.statusCode}');
@@ -106,21 +120,27 @@ class SrunClient {
       
       // 检查返回状态
       if (!challengeResp.isSuccess) {
+        LogUtil.warning('[SrunClient] 获取 Challenge 失败: ${challengeResp.error} - ${challengeResp.errorMsg}');
         throw Exception('Get challenge failed: ${challengeResp.error} - ${challengeResp.errorMsg}');
       }
 
       // 检查 challenge 是否为空（登录前必须检查）
       if (challengeResp.challenge.isEmpty) {
+        LogUtil.warning('[SrunClient] Challenge token 为空');
         throw Exception('Challenge token is empty');
       }
 
+      LogUtil.info('[SrunClient] 获取 Challenge 成功');
       return challengeResp;
 
     } on FormatException catch (e) {
+      LogUtil.error('[SrunClient] 解析 Challenge 响应失败', e);
       throw Exception('JSONP parse error: $e');
     } on http.ClientException catch (e) {
+      LogUtil.error('[SrunClient] 获取 Challenge 网络错误', e);
       throw Exception('Network error: $e');
     } catch (e) {
+      LogUtil.error('[SrunClient] 获取 Challenge 失败', e);
       throw Exception('Get challenge failed: $e');
     }
   }
@@ -128,9 +148,13 @@ class SrunClient {
   // 检查是否在线
   Future<bool> checkOnline() async {
     try {
+      LogUtil.info('[SrunClient] 检查在线状态...');
       final info = await getUserInfo();
-      return info.isOnline;
+      final isOnline = info.isOnline;
+      LogUtil.info('[SrunClient] 在线状态: $isOnline');
+      return isOnline;
     } catch (e) {
+      LogUtil.warning('[SrunClient] 检查在线状态失败: $e');
       return false;
     }
   }

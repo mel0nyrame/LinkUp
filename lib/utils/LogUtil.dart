@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// 日志工具类 - 将日志写入文件
@@ -37,7 +39,11 @@ class LogUtil {
   static Future<void> _writeToFile(String content) async {
     try {
       if (_logFile != null) {
-        await _logFile!.writeAsString(content, mode: FileMode.append);
+        await _logFile!.writeAsString(
+          content,
+          mode: FileMode.append,
+          encoding: utf8,
+        );
       }
     } catch (e) {
       print('写入日志失败: $e');
@@ -102,22 +108,33 @@ class LogUtil {
   static Future<void> clear() async {
     try {
       if (_logFile != null && await _logFile!.exists()) {
-        await _logFile!.writeAsString('');
+        await _logFile!.writeAsString('', encoding: utf8);
       }
     } catch (e) {
       print('清空日志失败: $e');
     }
   }
 
-  /// 读取日志内容
+  /// 读取日志内容（使用 UTF-8 编码，允许无效字节）
   static Future<String> readLog() async {
     try {
       if (_logFile != null && await _logFile!.exists()) {
-        return await _logFile!.readAsString();
+        // 使用 allowMalformed: true 允许读取包含无效 UTF-8 字节的文件
+        final bytes = await _logFile!.readAsBytes();
+        return utf8.decode(bytes, allowMalformed: true);
       }
       return '';
     } catch (e) {
       return '读取日志失败: $e';
     }
+  }
+
+  /// 敏感信息脱敏 - 使用 SHA-256 哈希算法
+  /// 返回前8位哈希值，保证相同输入输出相同，且不可逆
+  static String mask(String? data) {
+    if (data == null || data.isEmpty) return 'empty';
+    final bytes = utf8.encode(data);
+    final hash = sha256.convert(bytes);
+    return hash.toString().substring(0, 8);
   }
 }

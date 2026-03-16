@@ -6,27 +6,27 @@ import 'package:LinkUp/utils/LogUtil.dart';
 
 /// 登录错误类型枚举
 enum LoginErrorType {
-  success,           // 登录成功
-  networkError,      // 网络错误
-  httpError,         // HTTP 错误
-  parseError,        // 解析错误
-  authFailed,        // 认证失败（账号密码错误）
-  alreadyOnline,     // 已经在线
-  ipNotAllowed,      // IP 不允许
-  acIdError,         // ACID 错误
-  challengeExpired,  // Challenge 过期
-  serverError,       // 服务器错误
-  unknown,           // 未知错误
+  success, // 登录成功
+  networkError, // 网络错误
+  httpError, // HTTP 错误
+  parseError, // 解析错误
+  authFailed, // 认证失败（账号密码错误）
+  alreadyOnline, // 已经在线
+  ipNotAllowed, // IP 不允许
+  acIdError, // ACID 错误
+  challengeExpired, // Challenge 过期
+  serverError, // 服务器错误
+  unknown, // 未知错误
 }
 
 /// 登录结果类
 class LoginResult {
   final bool success;
   final String message;
-  final String? detailedMessage;  // 详细错误说明
+  final String? detailedMessage; // 详细错误说明
   final LoginErrorType errorType;
-  final Map<String, dynamic>? rawData;  // 原始响应数据
-  final String? res;  // 服务器返回的 res 字段
+  final Map<String, dynamic>? rawData; // 原始响应数据
+  final String? res; // 服务器返回的 res 字段
 
   LoginResult({
     required this.success,
@@ -40,14 +40,14 @@ class LoginResult {
   /// 获取用户友好的错误提示
   String get userFriendlyMessage {
     if (success) return '登录成功';
-    
+
     StringBuffer sb = StringBuffer();
     sb.writeln(message);
-    
+
     if (detailedMessage != null && detailedMessage!.isNotEmpty) {
       sb.writeln('\n详细说明: $detailedMessage');
     }
-    
+
     // 根据错误类型给出建议
     switch (errorType) {
       case LoginErrorType.authFailed:
@@ -74,7 +74,7 @@ class LoginResult {
       default:
         break;
     }
-    
+
     return sb.toString();
   }
 
@@ -89,74 +89,87 @@ class SrunLogin {
 
   /// 根据服务器返回的错误信息分析错误类型
   /// 参考 Go 代码中的错误码映射
-  static LoginErrorType _analyzeErrorType(String error, String errorMsg, String res) {
+  static LoginErrorType _analyzeErrorType(
+    String error,
+    String errorMsg,
+    String res,
+  ) {
     final errorLower = error.toLowerCase();
     final msgLower = errorMsg.toLowerCase();
     final resLower = res.toLowerCase();
-    
+
     // 已经在线
-    if (errorLower.contains('ok') && (resLower.contains('login_ok') || resLower.contains('already'))) {
+    if (errorLower.contains('ok') &&
+        (resLower.contains('login_ok') || resLower.contains('already'))) {
       return LoginErrorType.alreadyOnline;
     }
-    
+
     // 账号密码错误 - 包含常见错误码
-    if (msgLower.contains('password') || 
-        msgLower.contains('账号') || 
+    if (msgLower.contains('password') ||
+        msgLower.contains('账号') ||
         msgLower.contains('密码') ||
         msgLower.contains('account') ||
         msgLower.contains('username') ||
         resLower.contains('password') ||
-        res.contains('E2901') ||  // 密码错误或账号不存在
-        res.contains('E2902') ||  // 账号不存在或已停用
-        res.contains('E2553') ||  // 密码错误（加密方式不对）
-        res.contains('E2606')) {  // 用户被禁用
+        res.contains('E2901') || // 密码错误或账号不存在
+        res.contains('E2902') || // 账号不存在或已停用
+        res.contains('E2553') || // 密码错误（加密方式不对）
+        res.contains('E2606')) {
+      // 用户被禁用
       return LoginErrorType.authFailed;
     }
-    
+
     // 账号欠费/流量用尽
-    if (res.contains('E2905') ||  // 账号已欠费停机
-        res.contains('E3001')) {  // 流量或时长已用尽
+    if (res.contains('E2905') || // 账号已欠费停机
+        res.contains('E3001')) {
+      // 流量或时长已用尽
       return LoginErrorType.authFailed;
     }
-    
+
     // ACID 错误
-    if (msgLower.contains('acid') || 
+    if (msgLower.contains('acid') ||
         msgLower.contains('ac_id') ||
         resLower.contains('acid')) {
       return LoginErrorType.acIdError;
     }
-    
+
     // IP 相关错误
-    if (msgLower.contains('ip') || 
+    if (msgLower.contains('ip') ||
         resLower.contains('ip') ||
-        res.contains('E2821') ||  // IP 不在线
-        res.contains('E2833')) {  // IP 已经被占用
+        res.contains('E2821') || // IP 不在线
+        res.contains('E2833')) {
+      // IP 已经被占用
       return LoginErrorType.ipNotAllowed;
     }
-    
+
     // Challenge 过期
-    if (msgLower.contains('challenge') || 
+    if (msgLower.contains('challenge') ||
         msgLower.contains('token') ||
         msgLower.contains('过期') ||
         msgLower.contains('expire')) {
       return LoginErrorType.challengeExpired;
     }
-    
+
     // 服务器错误
-    if (msgLower.contains('server') || 
+    if (msgLower.contains('server') ||
         msgLower.contains('服务器') ||
         msgLower.contains('busy') ||
         msgLower.contains('繁忙') ||
-        res.contains('E2602')) {  // 认证设备响应超时
+        res.contains('E2602')) {
+      // 认证设备响应超时
       return LoginErrorType.serverError;
     }
-    
+
     return LoginErrorType.unknown;
   }
 
   /// 获取详细错误说明
   /// 与 Go 代码中的 getFriendlyErrorMessage 对应
-  static String? _getDetailedExplanation(LoginErrorType type, String errorMsg, String res) {
+  static String? _getDetailedExplanation(
+    LoginErrorType type,
+    String errorMsg,
+    String res,
+  ) {
     switch (type) {
       case LoginErrorType.authFailed:
         if (res.contains('E2901')) {
@@ -173,13 +186,13 @@ class SrunLogin {
           return '错误代码 E3001: 流量或时长已用尽。请前往网络中心充值或购买流量包。';
         }
         return '账号或密码验证失败。请确认输入的账号密码正确无误。';
-        
+
       case LoginErrorType.alreadyOnline:
         return '该账号已经在其他设备上登录，或当前设备已在线。';
-        
+
       case LoginErrorType.acIdError:
         return 'ACID（接入点 ID）配置不正确。不同的网络环境需要不同的 ACID 值：\n• 校园无线网通常使用 1 或 2\n• 有线网络可能使用 5、11 或 15\n请尝试切换不同的 ACID 值。';
-        
+
       case LoginErrorType.ipNotAllowed:
         if (res.contains('E2821')) {
           return '错误代码 E2821: IP 不在线。请检查网络连接是否正常。';
@@ -187,16 +200,16 @@ class SrunLogin {
           return '错误代码 E2833: IP 已经被占用。该 IP 地址已被其他设备使用，请稍后再试。';
         }
         return '当前 IP 地址不允许认证。可能原因：\n1. 您不在校园网络范围内\n2. IP 地址获取异常\n3. 该 IP 段未开通认证服务';
-        
+
       case LoginErrorType.challengeExpired:
         return '认证令牌已过期。这通常是由于网络延迟导致的，请重新尝试登录。';
-        
+
       case LoginErrorType.serverError:
         if (res.contains('E2602')) {
           return '错误代码 E2602: 认证设备响应超时。可能是服务器负载过高，建议稍后再试。';
         }
         return '认证服务器暂时不可用。可能原因：\n1. 服务器维护中\n2. 服务器负载过高\n建议稍后再试，或联系网络中心咨询。';
-        
+
       default:
         // 尝试从 res 中解析错误码
         if (res.isNotEmpty && res.startsWith('E')) {
@@ -257,49 +270,32 @@ class SrunLogin {
         '_': currentTime,
       };
 
-      final uri = Uri.parse(client.urlPortal).replace(
-        queryParameters: params,
+      LogUtil.info('发送登录请求: username=$username, acid=$acid');
+
+      // 使用 doRequest 发送请求并解析响应
+      final result = await doRequest<Map<String, dynamic>>(
+        client.urlPortal,
+        params,
+        <String, dynamic>{},
       );
 
-      LogUtil.info('登录请求 URL: $uri');
+      LogUtil.info('登录响应: $result');
 
-      final response = await http.get(
-        uri,
-        headers: {'User-Agent': client.userAgent},
-      );
-
-      LogUtil.info('登录响应状态码: ${response.statusCode}');
-
-      if (response.statusCode != 200) {
-        return LoginResult(
-          success: false,
-          message: 'HTTP 请求失败: ${response.statusCode}',
-          detailedMessage: '服务器返回了非 200 状态码，可能是认证服务器暂时不可用。',
-          errorType: LoginErrorType.httpError,
-        );
-      }
-
-      // 解析 JSONP 响应
-      final responseBody = response.body;
-      LogUtil.info('登录响应: $responseBody');
-
-      // 从 JSONP 中提取 JSON
-      final jsonResult = _extractJsonFromJsonp(responseBody, client.callback);
-      if (jsonResult == null) {
+      // doRequest 返回的是解析后的 Map，如果为 null 表示解析失败
+      if (result == null) {
         return LoginResult(
           success: false,
           message: '解析响应失败',
           detailedMessage: '无法解析服务器返回的数据，可能是服务器返回了非标准格式的响应。',
           errorType: LoginErrorType.parseError,
-          rawData: {'response': responseBody},
         );
       }
 
       // 解析结果
-      final error = jsonResult['error'] as String? ?? '';
-      final errorMsg = jsonResult['error_msg'] as String? ?? '';
-      final sucMsg = jsonResult['suc_msg'] as String? ?? '';
-      final res = jsonResult['res'] as String? ?? '';
+      final error = result['error'] as String? ?? '';
+      final errorMsg = result['error_msg'] as String? ?? '';
+      final sucMsg = result['suc_msg'] as String? ?? '';
+      final res = result['res'] as String? ?? '';
 
       LogUtil.info(
         '解析结果: error=$error, errorMsg=$errorMsg, sucMsg=$sucMsg, res=$res',
@@ -312,14 +308,18 @@ class SrunLogin {
           success: true,
           message: '登录成功',
           errorType: LoginErrorType.success,
-          rawData: jsonResult,
+          rawData: result,
           res: res,
         );
       } else {
         // 登录失败，分析错误类型
         final errorType = _analyzeErrorType(error, errorMsg, res);
-        final detailedMessage = _getDetailedExplanation(errorType, errorMsg, res);
-        
+        final detailedMessage = _getDetailedExplanation(
+          errorType,
+          errorMsg,
+          res,
+        );
+
         // 构建错误信息
         String failMessage = errorMsg.isNotEmpty ? errorMsg : error;
         if (failMessage.isEmpty) {
@@ -328,17 +328,18 @@ class SrunLogin {
         if (res.isNotEmpty && !failMessage.contains(res)) {
           failMessage += ' ($res)';
         }
-        
+
         return LoginResult(
           success: false,
           message: failMessage,
           detailedMessage: detailedMessage,
           errorType: errorType,
-          rawData: jsonResult,
+          rawData: result,
           res: res,
         );
       }
     } on FormatException catch (e) {
+      LogUtil.error('登录响应格式错误', e);
       return LoginResult(
         success: false,
         message: '响应格式错误: $e',
@@ -346,10 +347,12 @@ class SrunLogin {
         errorType: LoginErrorType.parseError,
       );
     } on http.ClientException catch (e) {
+      LogUtil.error('登录网络错误', e);
       return LoginResult(
         success: false,
         message: '网络错误: $e',
-        detailedMessage: '无法连接到认证服务器，请检查：\n1. 是否已连接到校园网 WiFi\n2. 网络信号是否稳定\n3. 认证服务器地址是否正确',
+        detailedMessage:
+            '无法连接到认证服务器，请检查：\n1. 是否已连接到校园网 WiFi\n2. 网络信号是否稳定\n3. 认证服务器地址是否正确',
         errorType: LoginErrorType.networkError,
       );
     } catch (e, stackTrace) {
@@ -360,6 +363,69 @@ class SrunLogin {
         detailedMessage: '发生了未预期的错误，请尝试重新登录或重启应用。',
         errorType: LoginErrorType.unknown,
       );
+    }
+  }
+
+  static Future<T?> doRequest<T>(
+    String uri,
+    Map<String, Object>? params,
+    T? target, [
+    void Function(T target, dynamic json)? filler,
+  ]) async {
+    final fullUri = Uri.parse(uri).replace(queryParameters: params);
+
+    // 脱敏 URL 中的密码参数
+    final displayUri = fullUri.replace(
+      queryParameters: Map<String, String>.from(fullUri.queryParameters.map(
+        (key, value) => MapEntry(
+          key,
+          key == 'password' ? '****' : value,
+        ),
+      )),
+    );
+    LogUtil.info('HTTP GET: $displayUri');
+
+    final response = await http.get(
+      fullUri,
+      headers: {'User-Agent': client.userAgent},
+    );
+
+    if (response.statusCode != 200) {
+      LogUtil.warning('HTTP 错误: ${response.statusCode}');
+      throw Exception('HTTP error: ${response.statusCode}');
+    }
+
+    final body = response.body;
+
+    if (target == null) {
+      return null;
+    }
+
+    var processedBody = body;
+    final start = processedBody.indexOf('(');
+    final end = processedBody.lastIndexOf(')');
+
+    if (start != -1 && end != -1 && end > start) {
+      processedBody = processedBody.substring(start + 1, end);
+    }
+
+    try {
+      final json = jsonDecode(processedBody);
+
+      if (filler != null) {
+        filler(target, json);
+        return target;
+      }
+
+      if (target is Map && json is Map) {
+        target.addAll(json.cast<String, dynamic>());
+        return target;
+      }
+
+      return json as T?;
+    } catch (e) {
+      LogUtil.error('JSON 解析失败', e);
+      throw FormatException('JSON 解析失败: $e | Raw: $body');
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:LinkUp/components/AccountCart.dart';
 import 'package:LinkUp/components/NetWorkConfig.dart';
 import 'package:LinkUp/components/SystemSettingsCard.dart';
+import 'package:LinkUp/components/LogViewerCard.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -55,6 +56,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // 网络配置卡片
           const NetworkConfigCard(),
+
+          const SizedBox(height: 16),
+
+          // 日志查看卡片
+          const LogViewerCard(),
         ],
       ),
     );

@@ -97,7 +97,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     // 检查是否已在线
     final isConnected = await _checkOnlineStatus();
 
-    if (isConnected) {
+    if (isConnected == true) {
       // 已在线，更新状态
       if (!_isOnline) {
         setState(() {
@@ -108,31 +108,43 @@ class _MainNavigatorState extends State<MainNavigator> {
       return;
     }
 
-    // 未在线，需要重连
-    setState(() {
-      _isOnline = false;
-      _statusMessage = '网络断开，正在自动重连...';
-    });
+    if (isConnected == false) {
+      setState(() {
+        _isOnline = false;
+        _statusMessage = '网络断开，正在自动重连...';
+      });
+    } else {
+      setState(() {
+        _isOnline = false;
+        _statusMessage = '网络检测失败，尝试连接...';
+      });
+    }
 
     // 执行安全登录
     await _safeLogin();
   }
 
   // 检查在线状态
-  Future<bool> _checkOnlineStatus() async {
+  Future<bool?> _checkOnlineStatus() async {
     try {
+      LogUtil.info('检查在线状态...');
       final info = await client.getUserInfo();
       _userInfo = info;
-      return info.isOnline;
-    } catch (e) {
-      return false;
+      final isOnline = info.isOnline;
+      LogUtil.info('在线状态: $isOnline, IP: ${info.onlineIp ?? "unknown"}');
+      return isOnline;
+    } catch (e, stackTrace) {
+      LogUtil.error('检查在线状态失败', e, stackTrace);
+      return null; // 返回 null 表示检测失败（网络问题），不是不在线
     }
   }
 
   // 安全登录（带异常捕获）
   Future<void> _safeLogin() async {
     try {
+      LogUtil.info('开始安全登录流程');
       await _doLogin();
+      LogUtil.info('安全登录流程结束');
     } catch (e, stackTrace) {
       LogUtil.error('登录逻辑异常', e, stackTrace);
       setState(() {
@@ -143,20 +155,23 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   // 执行登录
   Future<void> _doLogin() async {
+    LogUtil.info('========== 开始执行登录 ==========');
     setState(() {
       _isLoading = true;
       _statusMessage = '正在检测网络状态...';
     });
 
     // 1. 检测 WiFi 是否开启
-    final bool isWifiConnected = await NetworkUtil.isWifiConnected();
+    bool isWifiConnected = false;
+    for (int i = 0; i < 3; i++) {
+      isWifiConnected = await NetworkUtil.isWifiConnected();
+      LogUtil.info('WiFi 连接状态检测第${i + 1}次: $isWifiConnected');
+      if (isWifiConnected) break;
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
     if (!isWifiConnected) {
-      setState(() {
-        _isOnline = false;
-        _statusMessage = 'WiFi未开启';
-        _isLoading = false;
-      });
-      return;
+      LogUtil.warning('WiFi 未连接，尝试直接请求认证服务器...');
     }
 
     setState(() {
@@ -164,8 +179,10 @@ class _MainNavigatorState extends State<MainNavigator> {
     });
 
     // 2. 读取本地保存的配置
+    LogUtil.info('正在读取本地配置...');
     final config = await ConfigUtil.loadConfig();
     if (config == null) {
+      LogUtil.warning('未找到配置信息');
       setState(() {
         _isOnline = false;
         _statusMessage = '未找到配置信息';
@@ -180,7 +197,10 @@ class _MainNavigatorState extends State<MainNavigator> {
     _currentAcid = acid;
     final bool autoAcid = config['auto_acid'] ?? true;
 
+    LogUtil.info('配置信息: username=$username, acid=$acid, autoAcid=$autoAcid');
+
     if (username.isEmpty || password.isEmpty) {
+      LogUtil.warning('账号或密码为空，终止登录');
       setState(() {
         _isOnline = false;
         _statusMessage = '账号或密码为空';
@@ -190,54 +210,103 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
 
     setState(() => _statusMessage = '正在获取网络信息...');
+    LogUtil.info('正在获取用户信息...');
 
     // 3. 获取 IP 和用户信息
-    final info = await client.getUserInfo();
-    _userInfo = info;
-    final String ip = info.onlineIp ?? '';
+    final String ip;
+    try {
+      final info = await client.getUserInfo();
+      _userInfo = info;
+      ip = info.onlineIp ?? '';
+      LogUtil.info('获取到用户信息: IP=$ip, 是否在线=${info.isOnline}');
 
-    // 再次检查是否已经在线（可能在这期间已连接）
-    if (info.isOnline) {
+      // 再次检查是否已经在线（可能在这期间已连接）
+      if (info.isOnline) {
+        LogUtil.info('用户已在线，跳过登录');
+        setState(() {
+          _isOnline = true;
+          _statusMessage = '已在线';
+          _isLoading = false;
+        });
+        return;
+      }
+    } catch (e) {
+      LogUtil.error('获取用户信息失败', e);
       setState(() {
-        _isOnline = true;
-        _statusMessage = '已在线';
+        _isOnline = false;
+        _statusMessage = '无法连接认证服务器: $e';
         _isLoading = false;
       });
       return;
     }
 
     setState(() => _statusMessage = '正在获取认证令牌...');
+    LogUtil.info('正在获取 Challenge/Token...');
 
     // 4. 获取 Challenge/Token
-    final challenge = await client.getChallenge(username: username, ip: ip);
-    final String token = challenge.challenge;
+    late final String token;
+    try {
+      final challenge = await client.getChallenge(username: username, ip: ip);
+      token = challenge.challenge;
+      LogUtil.info(
+        '获取到 Token: ${token.substring(0, token.length > 10 ? 10 : token.length)}...',
+      );
+    } catch (e) {
+      LogUtil.error('获取认证令牌失败', e);
+      setState(() {
+        _isOnline = false;
+        _statusMessage = '获取认证令牌失败: $e';
+        _isLoading = false;
+      });
+      return;
+    }
 
     setState(() => _statusMessage = '正在登录...');
 
     // 5. 执行登录（自动尝试 ACID）
     LoginResult loginResult;
 
-    if (autoAcid) {
-      // 自动模式：尝试 ACID 1-20
-      loginResult = await _tryLoginWithAutoAcid(username, password, token, ip);
-      acid = _currentAcid;
-    } else {
-      // 手动模式：使用配置的 ACID
-      _currentAcid = acid;
+    try {
+      if (autoAcid) {
+        // 自动模式：尝试 ACID 1-20
+        LogUtil.info('使用自动 ACID 模式，开始尝试 ACID 1-20...');
+        loginResult = await _tryLoginWithAutoAcid(
+          username,
+          password,
+          token,
+          ip,
+        );
+        acid = _currentAcid;
+      } else {
+        // 手动模式：使用配置的 ACID
+        _currentAcid = acid;
+        LogUtil.info('使用手动 ACID 模式: acid=$acid');
+        setState(() {
+          _statusMessage = '正在使用 ACID: $acid 登录...';
+        });
+        loginResult = await SrunLogin.srucPortalLogin(
+          username,
+          password,
+          acid,
+          token,
+          ip,
+        );
+      }
+    } catch (e) {
+      LogUtil.error('登录请求失败', e);
       setState(() {
-        _statusMessage = '正在使用 ACID: $acid 登录...';
+        _isOnline = false;
+        _statusMessage = '登录请求失败: $e';
+        _isLoading = false;
       });
-      loginResult = await SrunLogin.srucPortalLogin(
-        username,
-        password,
-        acid,
-        token,
-        ip,
-      );
+      return;
     }
 
     // 6. 检查登录结果
     if (!loginResult.success) {
+      LogUtil.warning(
+        '登录失败: ${loginResult.message}, 错误类型: ${loginResult.errorType}',
+      );
       setState(() {
         _isOnline = false;
         _statusMessage = '登录失败: ${loginResult.message}';
@@ -247,6 +316,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
 
     // 7. 登录成功，刷新用户信息
+    LogUtil.info('登录成功，正在刷新用户信息...');
     final newInfo = await client.getUserInfo();
     setState(() {
       _isOnline = true;
@@ -254,6 +324,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       _statusMessage = '登录成功';
       _isLoading = false;
     });
+    LogUtil.info('登录流程完成，用户已在线，IP: ${newInfo.onlineIp ?? "unknown"}');
 
     // 显示成功提示
     if (mounted) {
@@ -265,6 +336,7 @@ class _MainNavigatorState extends State<MainNavigator> {
         ),
       );
     }
+    LogUtil.info('========== 登录流程结束 ==========');
   }
 
   // 自动尝试 ACID 1-20
@@ -274,13 +346,17 @@ class _MainNavigatorState extends State<MainNavigator> {
     String token,
     String ip,
   ) async {
+    LogUtil.info('开始自动尝试 ACID (1-20)...');
     LoginResult lastResult = LoginResult(
       success: false,
       message: '所有 ACID 尝试失败',
     );
 
     for (int i = 1; i <= 20; i++) {
-      if (_shouldStopMonitor) break;
+      if (_shouldStopMonitor) {
+        LogUtil.info('监控已停止，中断 ACID 尝试');
+        break;
+      }
 
       final acid = i.toString();
       _currentAcid = acid;
@@ -288,6 +364,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       setState(() {
         _statusMessage = '正在尝试 ACID: $acid...';
       });
+      LogUtil.info('尝试 ACID: $acid...');
 
       final result = await SrunLogin.srucPortalLogin(
         username,
@@ -298,6 +375,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       );
 
       if (result.success) {
+        LogUtil.info('ACID: $acid 登录成功！');
         // 登录成功，保存成功的 ACID
         final config = await ConfigUtil.loadConfig();
         if (config != null) {
@@ -307,26 +385,42 @@ class _MainNavigatorState extends State<MainNavigator> {
             acid: acid,
             autoAcid: true,
           );
+          LogUtil.info('已保存成功 ACID: $acid');
         }
         return result;
       }
 
+      LogUtil.warning('ACID: $acid 登录失败: ${result.message}');
       lastResult = result;
 
       // 如果是账号密码错误，不需要继续尝试其他 ACID
       if (result.errorType == LoginErrorType.authFailed) {
+        LogUtil.warning('检测到账号密码错误，停止 ACID 尝试');
         return result;
       }
 
-      // 小延迟避免请求过快
-      await Future.delayed(const Duration(milliseconds: 200));
+      // 如果触发速率限制，增加更长的等待时间
+      final errorMsg = result.message.toLowerCase();
+      if (errorMsg.contains('speed_limit') || 
+          errorMsg.contains('too fast') || 
+          errorMsg.contains('rate limit') ||
+          errorMsg.contains('频繁') ||
+          errorMsg.contains('过快')) {
+        LogUtil.warning('检测到速率限制，等待 3 秒后继续...');
+        await Future.delayed(const Duration(seconds: 3));
+      } else {
+        // 普通错误，延迟 1 秒避免请求过快
+        await Future.delayed(const Duration(seconds: 1));
+      }
     }
 
+    LogUtil.warning('所有 ACID (1-20) 尝试均失败');
     return lastResult;
   }
 
   // 手动触发登录（下拉刷新）
   Future<void> _manualLogin() async {
+    LogUtil.info('用户手动触发登录（下拉刷新）');
     // 取消当前的监控定时器
     _monitorTimer?.cancel();
 
@@ -338,6 +432,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       const Duration(seconds: checkInterval),
       (_) => _checkAndReconnect(),
     );
+    LogUtil.info('手动登录完成，监控已恢复');
   }
 
   @override
