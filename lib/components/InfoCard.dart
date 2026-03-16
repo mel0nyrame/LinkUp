@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 // 原有的 Informationcart 组件
-class InformationCart extends StatefulWidget {
+class InfoCard extends StatefulWidget {
   IconData icon;
   String title;
   List<Widget> children;
   
-  InformationCart({
+  InfoCard({
     super.key,
     required this.icon,
     required this.title,
@@ -14,10 +14,10 @@ class InformationCart extends StatefulWidget {
   });
 
   @override
-  State<InformationCart> createState() => _InformationcartState();
+  State<InfoCard> createState() => _InformationcartState();
 }
 
-class _InformationcartState extends State<InformationCart> {
+class _InformationcartState extends State<InfoCard> {
   
   @override
   Widget build(BuildContext context) {

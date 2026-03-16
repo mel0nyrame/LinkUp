@@ -19,6 +19,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _acidCtrl = TextEditingController(text: '1');
+  final _authServerCtrl = TextEditingController(text: '10.129.1.1');
   bool _obscurePassword = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -28,6 +29,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _acidCtrl.dispose();
+    _authServerCtrl.dispose();
     super.dispose();
   }
 
@@ -44,6 +46,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
         username: _usernameCtrl.text.trim(),
         password: _passwordCtrl.text,
         acid: _acidCtrl.text.trim(),
+        authServer: _authServerCtrl.text.trim(),
       );
 
       if (!mounted) return;
@@ -168,6 +171,27 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     validator: (v) => v?.isEmpty == true ? '请输入ACID' : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _authServerCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '认证服务器地址',
+                      hintText: '如: 10.129.1.1',
+                      prefixIcon: Icon(Icons.dns_outlined),
+                      border: OutlineInputBorder(),
+                      helperText: '默认: 10.129.1.1,如有不同请修改',
+                    ),
+                    keyboardType: TextInputType.url,
+                    validator: (v) {
+                      if (v?.isEmpty == true) return '请输入认证服务器地址';
+                      final trimmed = v!.trim();
+                      if (!RegExp(r'^[0-9a-zA-Z\.-]+$').hasMatch(trimmed)) {
+                        return '格式不正确，请输入 IP 或域名';
+                      }
+                      return null;
+                    },
                   ),
                 ],
               ),

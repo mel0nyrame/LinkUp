@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:LinkUp/components/AccountCart.dart';
+import 'package:LinkUp/components/AccountCard.dart';
 import 'package:LinkUp/components/NetWorkConfig.dart';
 import 'package:LinkUp/components/SystemSettingsCard.dart';
 import 'package:LinkUp/components/LogViewerCard.dart';
@@ -45,7 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 24),
 
           // 账号信息卡片
-          Accountcart(key: _refreshKey, onConfigChanged: _onConfigChanged),
+          AccountCard(key: _refreshKey, onConfigChanged: _onConfigChanged),
 
           const SizedBox(height: 16),
 

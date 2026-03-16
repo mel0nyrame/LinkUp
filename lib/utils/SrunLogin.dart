@@ -57,7 +57,7 @@ class LoginResult {
         sb.writeln('\n💡 建议: 您已经登录，可以直接使用网络');
         break;
       case LoginErrorType.acIdError:
-        sb.writeln('\n💡 建议: 请尝试修改 ACID 值（常见值: 1, 2, 5, 11, 15）');
+        sb.writeln('\n💡 建议: 请尝试修改 ACID 值 (常见值: 1, 2, 5, 11, 15)');
         break;
       case LoginErrorType.ipNotAllowed:
         sb.writeln('\n💡 建议: 当前 IP 不允许登录，请检查网络连接');

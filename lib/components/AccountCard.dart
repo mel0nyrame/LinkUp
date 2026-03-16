@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 
-class Accountcart extends StatefulWidget {
+class AccountCard extends StatefulWidget {
   final VoidCallback? onConfigChanged;
 
-  const Accountcart({super.key, this.onConfigChanged});
+  const AccountCard({super.key, this.onConfigChanged});
 
   @override
-  State<Accountcart> createState() => _AccountcartState();
+  State<AccountCard> createState() => _AccountcartState();
 }
 
-class _AccountcartState extends State<Accountcart> {
+class _AccountcartState extends State<AccountCard> {
   final TextEditingController _usernameCtrl = TextEditingController();
   final TextEditingController _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;

@@ -10,6 +10,7 @@ import 'package:LinkUp/utils/NetworkUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
+import 'package:LinkUp/utils/AcidDetector.dart';
 
 class MainNavigator extends StatefulWidget {
   const MainNavigator({super.key});
@@ -124,14 +125,52 @@ class _MainNavigatorState extends State<MainNavigator> {
     await _safeLogin();
   }
 
-  // 检查在线状态
+  // 检查在线状态 - 使用 Reality 模式同时检测在线状态和 ACID
   Future<bool?> _checkOnlineStatus() async {
     try {
       LogUtil.info('检查在线状态...');
-      final info = await client.getUserInfo();
-      _userInfo = info;
-      final isOnline = info.isOnline;
-      LogUtil.info('在线状态: $isOnline, IP: ${info.onlineIp ?? "unknown"}');
+      
+      // 使用 Reality 模式检测（同时检测在线状态和 ACID）
+      final detector = AcidDetector(baseUrl: client.baseURL);
+      final (detectedAcid, isOnline, err) = await detector.reality(
+        getAcid: true,
+      );
+
+      if (err != null) {
+        LogUtil.error('Reality 检测失败', err);
+        // Reality 失败时，尝试直接请求认证服务器看是否能通
+        LogUtil.info('尝试直接请求认证服务器...');
+      }
+
+      LogUtil.info('Reality 检测结果: 在线=$isOnline, ACID=$detectedAcid, 错误=$err');
+
+      // 如果检测到 ACID，保存下来供后续使用
+      if (detectedAcid != null && detectedAcid.isNotEmpty) {
+        _currentAcid = detectedAcid;
+        // 保存到配置
+        final config = await ConfigUtil.loadConfig();
+        if (config != null) {
+          await ConfigUtil.saveConfig(
+            username: config['username'] ?? '',
+            password: config['password'] ?? '',
+            acid: detectedAcid,
+            autoAcid: true,
+          );
+          LogUtil.info('Reality 模式保存 ACID: $detectedAcid');
+        }
+      }
+
+      if (isOnline) {
+        // 已在线，获取用户信息
+        try {
+          final info = await client.getUserInfo();
+          _userInfo = info;
+          LogUtil.info('在线状态: true, IP: ${info.onlineIp ?? "unknown"}');
+        } catch (e) {
+          LogUtil.warning('已在线但获取用户信息失败: $e');
+        }
+      }
+      
       return isOnline;
     } catch (e, stackTrace) {
       LogUtil.error('检查在线状态失败', e, stackTrace);
@@ -196,8 +235,17 @@ class _MainNavigatorState extends State<MainNavigator> {
     String acid = config['acid'] ?? '1';
     _currentAcid = acid;
     final bool autoAcid = config['auto_acid'] ?? true;
+    final String authServer = config['auth_server'] ?? '10.129.1.1';
 
-    LogUtil.info('配置信息: username=$username, acid=$acid, autoAcid=$autoAcid');
+    // 设置认证服务器地址
+    if (client.host != authServer) {
+      client.setHost(authServer);
+      LogUtil.info('认证服务器地址已设置为: $authServer');
+    }
+
+    LogUtil.info(
+      '配置信息: username=$username, acid=$acid, autoAcid=$autoAcid, server=$authServer',
+    );
 
     if (username.isEmpty || password.isEmpty) {
       LogUtil.warning('账号或密码为空，终止登录');
@@ -268,15 +316,28 @@ class _MainNavigatorState extends State<MainNavigator> {
 
     try {
       if (autoAcid) {
-        // 自动模式：尝试 ACID 1-20
-        LogUtil.info('使用自动 ACID 模式，开始尝试 ACID 1-20...');
-        loginResult = await _tryLoginWithAutoAcid(
+        // 自动模式：先检测 ACID，如果检测失败则使用配置的 ACID
+        LogUtil.info('使用自动 ACID 模式，开始检测 ACID...');
+        final detector = AcidDetector(baseUrl: client.baseURL);
+        final detectedAcid = await _detectAcid(detector);
+        if (detectedAcid != null) {
+          _currentAcid = detectedAcid;
+          acid = detectedAcid;
+          LogUtil.info('使用检测到的 ACID: $acid');
+        } else {
+          LogUtil.warning('ACID 检测失败，使用配置的 ACID: $acid');
+        }
+
+        setState(() {
+          _statusMessage = '正在使用 ACID: $acid 登录...';
+        });
+        loginResult = await SrunLogin.srucPortalLogin(
           username,
           password,
+          acid,
           token,
           ip,
         );
-        acid = _currentAcid;
       } else {
         // 手动模式：使用配置的 ACID
         _currentAcid = acid;
@@ -339,44 +400,21 @@ class _MainNavigatorState extends State<MainNavigator> {
     LogUtil.info('========== 登录流程结束 ==========');
   }
 
-  // 自动尝试 ACID 1-20
-  Future<LoginResult> _tryLoginWithAutoAcid(
-    String username,
-    String password,
-    String token,
-    String ip,
-  ) async {
-    LogUtil.info('开始自动尝试 ACID (1-20)...');
-    LoginResult lastResult = LoginResult(
-      success: false,
-      message: '所有 ACID 尝试失败',
-    );
+  // 使用 AcidDetector 自动检测 ACID（使用缓存的 detector）
+  Future<String?> _detectAcid(AcidDetector detector) async {
+    LogUtil.info('[MainNavigation] 开始自动检测 ACID...');
 
-    for (int i = 1; i <= 20; i++) {
-      if (_shouldStopMonitor) {
-        LogUtil.info('监控已停止，中断 ACID 尝试');
-        break;
-      }
+    setState(() {
+      _statusMessage = '正在自动检测网络接入点...';
+    });
 
-      final acid = i.toString();
-      _currentAcid = acid;
-
-      setState(() {
-        _statusMessage = '正在尝试 ACID: $acid...';
-      });
-      LogUtil.info('尝试 ACID: $acid...');
-
-      final result = await SrunLogin.srucPortalLogin(
-        username,
-        password,
-        acid,
-        token,
-        ip,
-      );
-
-      if (result.success) {
-        LogUtil.info('ACID: $acid 登录成功！');
-        // 登录成功，保存成功的 ACID
+    try {
+      final acid = await detector.detectAcid();
+      
+      if (acid != null && acid.isNotEmpty) {
+        LogUtil.info('[MainNavigation] 自动检测 ACID 成功: $acid');
+        
+        // 保存检测到的 ACID 到配置
         final config = await ConfigUtil.loadConfig();
         if (config != null) {
           await ConfigUtil.saveConfig(
@@ -385,37 +423,18 @@ class _MainNavigatorState extends State<MainNavigator> {
             acid: acid,
             autoAcid: true,
           );
-          LogUtil.info('已保存成功 ACID: $acid');
+          LogUtil.info('[MainNavigation] 已保存检测到的 ACID: $acid');
         }
-        return result;
-      }
-
-      LogUtil.warning('ACID: $acid 登录失败: ${result.message}');
-      lastResult = result;
-
-      // 如果是账号密码错误，不需要继续尝试其他 ACID
-      if (result.errorType == LoginErrorType.authFailed) {
-        LogUtil.warning('检测到账号密码错误，停止 ACID 尝试');
-        return result;
-      }
-
-      // 如果触发速率限制，增加更长的等待时间
-      final errorMsg = result.message.toLowerCase();
-      if (errorMsg.contains('speed_limit') || 
-          errorMsg.contains('too fast') || 
-          errorMsg.contains('rate limit') ||
-          errorMsg.contains('频繁') ||
-          errorMsg.contains('过快')) {
-        LogUtil.warning('检测到速率限制，等待 3 秒后继续...');
-        await Future.delayed(const Duration(seconds: 3));
+        
+        return acid;
       } else {
-        // 普通错误，延迟 1 秒避免请求过快
-        await Future.delayed(const Duration(seconds: 1));
+        LogUtil.warning('[MainNavigation] 自动检测 ACID 失败，将使用配置的 ACID');
+        return null;
       }
+    } catch (e, stackTrace) {
+      LogUtil.error('[MainNavigation] 检测 ACID 过程出错', e, stackTrace);
+      return null;
     }
-
-    LogUtil.warning('所有 ACID (1-20) 尝试均失败');
-    return lastResult;
   }
 
   // 手动触发登录（下拉刷新）

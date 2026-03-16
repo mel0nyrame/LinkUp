@@ -92,7 +92,7 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
         title: const Text('建议设置'),
         content: const Text(
           '为了确保应用能在后台持续运行，建议将此应用添加到电池优化白名单。\n\n'
-          '部分国产 ROM（如小米、华为、OPPO、vivo）可能需要在系统设置中手动允许后台运行和自启动。',
+          '部分国产 ROM (如小米、华为、OPPO、vivo)可能需要在系统设置中手动允许后台运行和自启动。',
         ),
         actions: [
           TextButton(
@@ -248,7 +248,7 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '部分国产 ROM（小米、华为、OPPO、vivo等）可能有额外的后台限制，'
+                      '部分国产 ROM (小米、华为、OPPO、vivo等)可能有额外的后台限制,'
                       '建议前往系统设置 > 应用管理 > 自启动管理中手动开启。',
                       style: TextStyle(
                         fontSize: 11,

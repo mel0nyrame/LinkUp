@@ -6,7 +6,7 @@ import 'dart:convert';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 
 class SrunClient {
-  String host = "10.129.1.1";
+  String host;
   String get baseURL => "http://" + host + "/cgi-bin";
   String get urlUserInfo => baseURL + "/rad_user_info";
   String get urlChallenge => baseURL + "/get_challenge";
@@ -21,7 +21,13 @@ class SrunClient {
 
   final http.Client _client;
 
-  SrunClient({http.Client? client}) : _client = client ?? http.Client();
+  SrunClient({http.Client? client, this.host = "10.129.1.1"}) : _client = client ?? http.Client();
+  
+  /// 更新认证服务器地址
+  void setHost(String newHost) {
+    host = newHost;
+    LogUtil.info('[SrunClient] 认证服务器地址已更新: $host');
+  }
 
   // 从 JSONP 提取 JSON
   String _extractJsonFromJsonp(String jsonp, String callbackName) {

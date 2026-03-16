@@ -14,6 +14,7 @@ class NetworkConfigCard extends StatefulWidget {
 class _NetworkConfigCardState extends State<NetworkConfigCard> {
   bool _autoAcid = true;
   final _acidCtrl = TextEditingController(text: '1');
+  final _authServerCtrl = TextEditingController(text: '10.129.1.1');
   String _displayAcid = '1';
 
   @override
@@ -25,6 +26,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   @override
   void dispose() {
     _acidCtrl.dispose();
+    _authServerCtrl.dispose();
     super.dispose();
   }
 
@@ -36,6 +38,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
         _autoAcid = config['auto_acid'] ?? true;
         _displayAcid = config['acid'] ?? '1';
         _acidCtrl.text = _displayAcid;
+        _authServerCtrl.text = config['auth_server'] ?? '10.129.1.1';
       });
     }
   }
@@ -49,7 +52,27 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
         password: config['password'] ?? '',
         acid: _acidCtrl.text,
         autoAcid: _autoAcid,
+        authServer: _authServerCtrl.text,
       );
+    }
+  }
+
+  // 保存认证服务器
+  Future<void> _saveAuthServer() async {
+    final config = await ConfigUtil.loadConfig();
+    if (config != null) {
+      await ConfigUtil.saveConfig(
+        username: config['username'] ?? '',
+        password: config['password'] ?? '',
+        acid: config['acid'] ?? '1',
+        autoAcid: config['auto_acid'] ?? true,
+        authServer: _authServerCtrl.text,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('认证服务器已更新，下次登录生效')));
+      }
     }
   }
 
@@ -82,7 +105,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
               title: const Text('自动获取 ACID'),
               subtitle: Text(
                 _autoAcid 
-                    ? '系统将自动尝试 1-20 寻找可用接入点' 
+                    ? '系统将自动尝试可用接入点' 
                     : '手动指定接入点 ID',
                 style: TextStyle(
                   fontSize: 12,
@@ -112,6 +135,11 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
               firstChild: _buildAutoModeView(context),
               secondChild: _buildManualInputView(context),
             ),
+            
+            const Divider(height: 24),
+
+            // 认证服务器设置
+            _buildAuthServerInput(context),
           ],
         ),
       ),
@@ -235,6 +263,67 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           FilteringTextInputFormatter.digitsOnly,
         ],
       ),
+    );
+  }
+
+  Widget _buildAuthServerInput(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.dns_outlined, color: colorScheme.primary, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              '认证服务器',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '配置校园网认证服务器地址，切换不同 WiFi 时可能需要修改',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _authServerCtrl,
+          onSubmitted: (_) => _saveAuthServer(),
+          decoration: InputDecoration(
+            labelText: '服务器地址',
+            hintText: '如: 10.129.1.1',
+            prefixIcon: const Icon(Icons.dns_outlined),
+            border: const OutlineInputBorder(),
+            helperText: '默认: 10.129.1.1,按回车保存',
+            helperStyle: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.save_outlined),
+                  tooltip: '保存',
+                  onPressed: _saveAuthServer,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: '恢复默认',
+                  onPressed: () {
+                    setState(() {
+                      _authServerCtrl.text = '10.129.1.1';
+                    });
+                    _saveAuthServer();
+                  },
+                ),
+              ],
+            ),
+          ),
+          keyboardType: TextInputType.url,
+        ),
+      ],
     );
   }
 }
