@@ -7,6 +7,7 @@
 - Flutter 团队提供的优秀框架
 - [1328411791/GDOUYJ_Internet_Client](https://github.com/1328411791/GDOUYJ_Internet_Client)
 - [CyLzzh/srun_client](https://github.com/CyLzzh/srun_client)
+- [Mmx233/BitSrunLoginGo](https://github.com/Mmx233/BitSrunLoginGo)
 
 ## 功能特性
 
