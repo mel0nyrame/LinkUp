@@ -224,8 +224,9 @@ class SrunLogin {
     String password,
     String acid,
     String token,
-    String ip,
-  ) async {
+    String ip, {
+    String encVer = 'srun_bx1',
+  }) async {
     try {
       String hmd5Password = SrunEnrypt.Hmd5(password, token);
 
@@ -234,6 +235,7 @@ class SrunLogin {
         password: password,
         ip: ip,
         acid: acid,
+        encVer: encVer,
       );
 
       Object info = SrunEnrypt.getInfo(infoObj.toJson(), token);
@@ -366,6 +368,22 @@ class SrunLogin {
     }
   }
 
+  /// DM 注销 — 使用 /cgi-bin/rad_user_dm 端点。
+  /// 签名格式 sha1(time + username + ip + 1 + time)，与登录加密链完全不同。
+  static Future<bool> dmLogout({
+    required String username,
+    required String ip,
+  }) async {
+    try {
+      final result = await client.dmLogout(username: username, ip: ip);
+      LogUtil.info('DM 注销结果: $result');
+      return result;
+    } catch (e, stackTrace) {
+      LogUtil.error('DM 注销异常', e, stackTrace);
+      return false;
+    }
+  }
+
   static Future<T?> doRequest<T>(
     String uri,
     Map<String, Object>? params,
@@ -401,12 +419,23 @@ class SrunLogin {
       return null;
     }
 
+    // 优先用 callback 名称精确提取 JSONP，回退到括号匹配
     var processedBody = body;
-    final start = processedBody.indexOf('(');
-    final end = processedBody.lastIndexOf(')');
-
-    if (start != -1 && end != -1 && end > start) {
-      processedBody = processedBody.substring(start + 1, end);
+    final callbackName = params?['callback'] as String?;
+    if (callbackName != null &&
+        processedBody.startsWith('$callbackName(') &&
+        processedBody.endsWith(')')) {
+      processedBody = processedBody.substring(
+        callbackName.length + 1,
+        processedBody.length - 1,
+      );
+    } else {
+      // 回退方案：用首尾括号位置提取
+      final start = processedBody.indexOf('(');
+      final end = processedBody.lastIndexOf(')');
+      if (start != -1 && end != -1 && end > start) {
+        processedBody = processedBody.substring(start + 1, end);
+      }
     }
 
     try {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:LinkUp/main.dart';
 
 class InfoDataRow extends StatelessWidget {
   final String label;
@@ -17,32 +18,25 @@ class InfoDataRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Colors.grey.shade600),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade700,
-              ),
+          Icon(icon, size: 17, color: MyApp.iosSecondaryText),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 15,
+              color: Color(0xFF8E8E93),
             ),
           ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value?.toString() ?? '-',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: valueColor,
-              ),
-              textAlign: TextAlign.right,
+          const Spacer(),
+          Text(
+            value?.toString() ?? '-',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: valueColor ?? Colors.black.withOpacity(0.85),
             ),
           ),
         ],

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:LinkUp/components/GlassCard.dart';
+import 'package:LinkUp/main.dart';
 
 class LogViewerCard extends StatefulWidget {
   const LogViewerCard({super.key});
@@ -15,25 +17,34 @@ class _LogViewerCardState extends State<LogViewerCard> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.article_outlined, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '日志查看',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: MyApp.iosBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ],
-            ),
-            const Divider(height: 24),
+                child: const Icon(Icons.article_outlined,
+                    color: MyApp.iosBlue, size: 18),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                '日志查看',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(
@@ -58,7 +69,6 @@ class _LogViewerCardState extends State<LogViewerCard> {
               onTap: _isLoading ? null : _showLogViewer,
             ),
           ],
-        ),
       ),
     );
   }

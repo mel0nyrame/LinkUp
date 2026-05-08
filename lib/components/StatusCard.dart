@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:LinkUp/main.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 
-class Statuscard extends StatelessWidget {
+class Statuscard extends StatefulWidget {
   final bool isOnline;
   final String? statusText;
   final String? detailText;
@@ -15,76 +17,119 @@ class Statuscard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final Color statusColor = isOnline ? Colors.green : Colors.red;
-    final Color bgColor = isOnline ? Colors.green.shade50 : Colors.red.shade50;
-    final String displayText = isOnline ? (statusText ?? '在线') : (statusText ?? '离线');
+  State<Statuscard> createState() => _StatuscardState();
+}
 
-    return Card(
-      color: bgColor,
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: statusColor.withOpacity(0.5),
-                        spreadRadius: 2,
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+class _StatuscardState extends State<Statuscard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+    _pulse = Tween(begin: 1.0, end: 1.06).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool online = widget.isOnline;
+    final Color statusColor = online ? MyApp.iosGreen : MyApp.iosRed;
+    final String title = widget.statusText ?? (online ? '已连接' : '未连接');
+    final String? subtitle = widget.detailText ?? widget.errorMsg;
+
+    return RepaintBoundary(
+      child: LiquidGlass.withOwnLayer(
+        settings: LiquidGlassSettings(
+          blur: 14,
+          thickness: 10,
+          glassColor: const Color(0x1AFFFFFF),
+          saturation: 1.05,
+        ),
+        shape: LiquidRoundedSuperellipse(borderRadius: 20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Pulsing status circle
+              AnimatedBuilder(
+                animation: _pulse,
+                builder: (context, child) {
+                  return Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: statusColor.withOpacity(0.12),
+                    ),
+                    child: Center(
+                      child: Transform.scale(
+                        scale: _pulse.value,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: statusColor,
+                            boxShadow: [
+                              BoxShadow(
+                                color: statusColor.withOpacity(0.35),
+                                blurRadius: 16,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                  letterSpacing: -0.5,
                 ),
-                const SizedBox(width: 8.0),
-                Text(
-                  displayText,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
+              ),
+              if (subtitle != null && subtitle.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: statusColor,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            if (detailText != null && detailText!.isNotEmpty)
-              Text(
-                detailText!,
-                style: TextStyle(
-                  color: isOnline ? Colors.green.shade700 : Colors.red.shade700,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              )
-            else if (errorMsg != null && errorMsg!.isNotEmpty)
-              Text(
-                errorMsg!,
-                style: TextStyle(
-                  color: isOnline ? Colors.green.shade600 : Colors.red.shade600,
-                  fontSize: 14,
-                  fontFamily: 'monospace',
-                ),
-              )
-            else
-              Text(
-                'error: ',
-                style: TextStyle(
-                  color: isOnline ? Colors.green.shade600 : Colors.red.shade600,
-                  fontSize: 14,
-                  fontFamily: 'monospace',
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

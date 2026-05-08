@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
+import 'package:LinkUp/components/GlassCard.dart';
+import 'package:LinkUp/main.dart';
 
 class NetworkConfigCard extends StatefulWidget {
   const NetworkConfigCard({super.key});
@@ -80,25 +82,34 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.settings_ethernet, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '网络配置',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: MyApp.iosBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ],
-            ),
-            const Divider(height: 24),
+                child: const Icon(Icons.settings_ethernet,
+                    color: MyApp.iosBlue, size: 18),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                '网络配置',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -141,7 +152,6 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
             // 认证服务器设置
             _buildAuthServerInput(context),
           ],
-        ),
       ),
     );
   }

@@ -20,6 +20,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
   final _passwordCtrl = TextEditingController();
   final _acidCtrl = TextEditingController(text: '1');
   final _authServerCtrl = TextEditingController(text: '10.129.1.1');
+  final _userTypeCtrl = TextEditingController();
   bool _obscurePassword = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -30,6 +31,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
     _passwordCtrl.dispose();
     _acidCtrl.dispose();
     _authServerCtrl.dispose();
+    _userTypeCtrl.dispose();
     super.dispose();
   }
 
@@ -47,6 +49,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
         password: _passwordCtrl.text,
         acid: _acidCtrl.text.trim(),
         authServer: _authServerCtrl.text.trim(),
+        userType: _userTypeCtrl.text.trim(),
       );
 
       if (!mounted) return;
@@ -192,6 +195,18 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
                       }
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _userTypeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '运营商类型（选填）',
+                      hintText: '如: cmcc, unicom, telecom',
+                      prefixIcon: Icon(Icons.business_outlined),
+                      border: OutlineInputBorder(),
+                      helperText: '部分学校需要 @运营商后缀，留空则不添加',
+                    ),
                   ),
                 ],
               ),
