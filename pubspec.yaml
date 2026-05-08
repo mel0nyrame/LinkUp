@@ -46,6 +46,8 @@ dependencies:
   url_launcher: ^6.2.4
   package_info_plus: ^9.0.0
   open_filex: ^4.3.4 
+  liquid_glass_renderer: ^0.2.0-dev.4
+  flutter_floating_bottom_bar: ^2.0.0
 
 dev_dependencies:
   flutter_test:

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:LinkUp/components/UpdateDialog.dart';
 import 'package:LinkUp/utils/UpdateUtil.dart';
+import 'package:LinkUp/main.dart';
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import 'package:LinkUp/page/OverViewPage.dart';
 import 'package:LinkUp/page/SettingsPage.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
@@ -27,6 +29,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   bool _shouldStopMonitor = false;
   RadUserInfo? _userInfo;
   String _currentAcid = '1';
+  String _currentEnc = 'srun_bx1';
 
   final SrunClient client = SrunClient();
   Timer? _monitorTimer;
@@ -34,6 +37,10 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   // 检查间隔（秒）
   static const int checkInterval = 3;
+
+  // 退避策略
+  int _consecutiveFailures = 0;
+  static const int maxBackoffSeconds = 60;
 
   @override
   void initState() {
@@ -99,7 +106,11 @@ class _MainNavigatorState extends State<MainNavigator> {
     final isConnected = await _checkOnlineStatus();
 
     if (isConnected == true) {
-      // 已在线，更新状态
+      // 已在线，重置退避计数
+      if (_consecutiveFailures > 0) {
+        LogUtil.info('检测到在线状态，重置退避计数');
+        _consecutiveFailures = 0;
+      }
       if (!_isOnline) {
         setState(() {
           _isOnline = true;
@@ -178,8 +189,17 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
   }
 
-  // 安全登录（带异常捕获）
+  // 安全登录（带异常捕获和退避策略）
   Future<void> _safeLogin() async {
+    // 退避策略：连续失败越多，等待越久
+    if (_consecutiveFailures > 0) {
+      final backoffSeconds = (checkInterval * (1 << (_consecutiveFailures - 1)))
+          .clamp(checkInterval, maxBackoffSeconds);
+      LogUtil.info('退避等待 ${backoffSeconds}s（连续失败 $_consecutiveFailures 次）');
+      await Future.delayed(Duration(seconds: backoffSeconds));
+      if (_shouldStopMonitor || !mounted) return;
+    }
+
     try {
       LogUtil.info('开始安全登录流程');
       await _doLogin();
@@ -189,6 +209,17 @@ class _MainNavigatorState extends State<MainNavigator> {
       setState(() {
         _statusMessage = '登录异常: $e';
       });
+    }
+
+    // 根据结果更新退避计数
+    if (_isOnline) {
+      if (_consecutiveFailures > 0) {
+        LogUtil.info('登录成功，重置退避计数（之前连续失败 $_consecutiveFailures 次）');
+      }
+      _consecutiveFailures = 0;
+    } else {
+      _consecutiveFailures++;
+      LogUtil.info('登录未成功，连续失败 $_consecutiveFailures 次');
     }
   }
 
@@ -230,12 +261,16 @@ class _MainNavigatorState extends State<MainNavigator> {
       return;
     }
 
-    final String username = config['username'] ?? '';
+    final String rawUsername = config['username'] ?? '';
     final String password = config['password'] ?? '';
+    final String userType = config['user_type'] ?? '';
     String acid = config['acid'] ?? '1';
     _currentAcid = acid;
     final bool autoAcid = config['auto_acid'] ?? true;
     final String authServer = config['auth_server'] ?? '10.129.1.1';
+
+    // 拼接用户名和运营商后缀
+    final String username = userType.isNotEmpty ? '$rawUsername@$userType' : rawUsername;
 
     // 设置认证服务器地址
     if (client.host != authServer) {
@@ -265,8 +300,9 @@ class _MainNavigatorState extends State<MainNavigator> {
     try {
       final info = await client.getUserInfo();
       _userInfo = info;
-      ip = info.onlineIp ?? '';
-      LogUtil.info('获取到用户信息: IP=$ip, 是否在线=${info.isOnline}');
+      // 优先使用 client_ip（始终存在），回退到 online_ip
+      ip = (info.clientIp?.isNotEmpty == true ? info.clientIp : info.onlineIp) ?? '';
+      LogUtil.info('获取到用户信息: clientIp=${info.clientIp}, onlineIp=${info.onlineIp}, 使用IP=$ip, 是否在线=${info.isOnline}');
 
       // 再次检查是否已经在线（可能在这期间已连接）
       if (info.isOnline) {
@@ -328,6 +364,16 @@ class _MainNavigatorState extends State<MainNavigator> {
           LogUtil.warning('ACID 检测失败，使用配置的 ACID: $acid');
         }
 
+        // 同时自动检测 enc 版本
+        setState(() => _statusMessage = '正在检测加密版本...');
+        final detectedEnc = await detector.detectEnc();
+        if (detectedEnc != null && detectedEnc.isNotEmpty) {
+          _currentEnc = detectedEnc;
+          LogUtil.info('使用检测到的 enc: $_currentEnc');
+        } else {
+          LogUtil.warning('enc 检测失败，使用默认值: $_currentEnc');
+        }
+
         setState(() {
           _statusMessage = '正在使用 ACID: $acid 登录...';
         });
@@ -337,6 +383,7 @@ class _MainNavigatorState extends State<MainNavigator> {
           acid,
           token,
           ip,
+          encVer: _currentEnc,
         );
       } else {
         // 手动模式：使用配置的 ACID
@@ -351,6 +398,7 @@ class _MainNavigatorState extends State<MainNavigator> {
           acid,
           token,
           ip,
+          encVer: _currentEnc,
         );
       }
     } catch (e) {
@@ -437,16 +485,134 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
   }
 
+  Widget _buildNavItem({
+    required int index,
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+  }) {
+    final isSelected = _currentIndex == index;
+
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _currentIndex = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? MyApp.iosBlue.withOpacity(0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? selectedIcon : icon,
+                color: isSelected ? MyApp.iosBlue : const Color(0xFF8E8E93),
+                size: 22,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  color: isSelected ? MyApp.iosBlue : const Color(0xFF8E8E93),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 注销 — 使用 DM API (/cgi-bin/rad_user_dm)，与登录加密链无关
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认注销'),
+        content: const Text('确定要注销校园网连接吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: MyApp.iosRed),
+            child: const Text('注销'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    _monitorTimer?.cancel();
+    setState(() {
+      _isLoading = true;
+      _statusMessage = '正在注销...';
+    });
+
+    try {
+      final config = await ConfigUtil.loadConfig();
+      if (config == null) return;
+
+      final rawUsername = config['username'] ?? '';
+      final userType = config['user_type'] ?? '';
+      final username = userType.isNotEmpty ? '$rawUsername@$userType' : rawUsername;
+
+      // 获取当前 IP
+      final info = await client.getUserInfo();
+      final ip = (info.clientIp?.isNotEmpty == true ? info.clientIp : info.onlineIp) ?? '';
+
+      // DM 注销：只需要 username + ip + 时间戳签名，不需要 token/加密
+      final success = await SrunLogin.dmLogout(username: username, ip: ip);
+
+      setState(() {
+        _isOnline = false;
+        _userInfo = null;
+        _isLoading = false;
+        _statusMessage = success ? '已注销' : '注销失败';
+        _consecutiveFailures = 0;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? '已成功注销' : '注销失败，请重试'),
+            backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      LogUtil.error('注销异常', e, stackTrace);
+      setState(() {
+        _isLoading = false;
+        _statusMessage = '注销异常';
+      });
+    }
+
+    // 重新启动监控
+    _monitorTimer = Timer.periodic(
+      const Duration(seconds: checkInterval),
+      (_) => _checkAndReconnect(),
+    );
+  }
+
   // 手动触发登录（下拉刷新）
   Future<void> _manualLogin() async {
     LogUtil.info('用户手动触发登录（下拉刷新）');
-    // 取消当前的监控定时器
+    _consecutiveFailures = 0;
     _monitorTimer?.cancel();
-
-    // 执行登录
     await _safeLogin();
-
-    // 重新启动监控
     _monitorTimer = Timer.periodic(
       const Duration(seconds: checkInterval),
       (_) => _checkAndReconnect(),
@@ -457,52 +623,88 @@ class _MainNavigatorState extends State<MainNavigator> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       appBar: AppBar(
-        title: const Text('LinkUp'),
+        automaticallyImplyLeading: false,
+        title: const SizedBox.shrink(),
+        backgroundColor: Colors.transparent,
         actions: [
-          // 显示监控状态指示器
-          if (_isLoading)
-            const Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
+          if (_isOnline)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton.icon(
+                onPressed: _handleLogout,
+                icon: const Icon(Icons.logout, size: 18),
+                label: const Text('注销'),
+                style: TextButton.styleFrom(
+                  foregroundColor: MyApp.iosRed,
+                  textStyle: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),
-          const SizedBox(width: 16),
         ],
       ),
-      body: IndexedStack(
-        index: _currentIndex,
+      body: Stack(
         children: [
-          // 概况页
-          OverviewPage(
-            isLoading: _isLoading,
-            statusMessage: _statusMessage,
-            isOnline: _isOnline,
-            currentAcid: _currentAcid,
-            userInfo: _userInfo,
-            onRefresh: () => _manualLogin(),
+          IndexedStack(
+            index: _currentIndex,
+            children: [
+              OverviewPage(
+                isLoading: _isLoading,
+                statusMessage: _statusMessage,
+                isOnline: _isOnline,
+                currentAcid: _currentAcid,
+                userInfo: _userInfo,
+                onRefresh: () => _manualLogin(),
+              ),
+              const SettingsPage(),
+            ],
           ),
-          const SettingsPage(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) => setState(() => _currentIndex = index),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: '概况',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: '设置',
+          // Floating liquid glass pill — transparent background, no Scaffold chrome
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+                child: LiquidGlass.withOwnLayer(
+                  settings: const LiquidGlassSettings(
+                    blur: 18,
+                    thickness: 10,
+                    glassColor: Color(0x1AFFFFFF),
+                    saturation: 1.05,
+                  ),
+                  shape: LiquidRoundedSuperellipse(borderRadius: 28),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildNavItem(
+                          index: 0,
+                          icon: Icons.speed_outlined,
+                          selectedIcon: Icons.speed,
+                          label: '概况',
+                        ),
+                        _buildNavItem(
+                          index: 1,
+                          icon: Icons.settings_outlined,
+                          selectedIcon: Icons.settings,
+                          label: '设置',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),

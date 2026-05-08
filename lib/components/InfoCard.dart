@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:LinkUp/components/GlassCard.dart';
+import 'package:LinkUp/main.dart';
 
-// 原有的 Informationcart 组件
-class InfoCard extends StatefulWidget {
-  IconData icon;
-  String title;
-  List<Widget> children;
-  
-  InfoCard({
+class InfoCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
+
+  const InfoCard({
     super.key,
     required this.icon,
     required this.title,
@@ -14,36 +15,41 @@ class InfoCard extends StatefulWidget {
   });
 
   @override
-  State<InfoCard> createState() => _InformationcartState();
-}
-
-class _InformationcartState extends State<InfoCard> {
-  
-  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(widget.icon, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  widget.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: MyApp.iosBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ],
-            ),
-            const Divider(height: 24),
-            ...widget.children,
+                child: Icon(icon, color: MyApp.iosBlue, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          if (children.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Divider(color: Colors.black.withOpacity(0.06), height: 1),
+            const SizedBox(height: 8),
+            ...children,
           ],
-        ),
+        ],
       ),
     );
   }

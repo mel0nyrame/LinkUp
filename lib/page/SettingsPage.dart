@@ -12,57 +12,61 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  // 用于触发刷新
   Key _refreshKey = UniqueKey();
 
   void _onConfigChanged() {
-    // 配置改变时刷新页面
-    setState(() {
-      _refreshKey = UniqueKey();
-    });
+    setState(() => _refreshKey = UniqueKey());
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '认证设置',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // Large title header
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: Text(
+              '设置',
+              style: TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+                letterSpacing: -0.5,
+                height: 1.1,
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '配置深澜认证参数',
-            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 14),
+        ),
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Text(
+              '配置认证参数和系统选项',
+              style: TextStyle(fontSize: 15, color: Color(0xFF8E8E93)),
+            ),
           ),
-          const SizedBox(height: 24),
+        ),
 
-          // 账号信息卡片
-          AccountCard(key: _refreshKey, onConfigChanged: _onConfigChanged),
-
-          const SizedBox(height: 16),
-
-          // 系统设置卡片（新增）
-          const SystemSettingsCard(),
-
-          const SizedBox(height: 16),
-
-          // 网络配置卡片
-          const NetworkConfigCard(),
-
-          const SizedBox(height: 16),
-
-          // 日志查看卡片
-          const LogViewerCard(),
-        ],
-      ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              AccountCard(key: _refreshKey, onConfigChanged: _onConfigChanged),
+              const SizedBox(height: 16),
+              const SystemSettingsCard(),
+              const SizedBox(height: 16),
+              const NetworkConfigCard(),
+              const SizedBox(height: 16),
+              const LogViewerCard(),
+              const SizedBox(height: 32),
+              // Space for floating pill nav
+              const SizedBox(height: 80),
+            ]),
+          ),
+        ),
+      ],
     );
   }
 }

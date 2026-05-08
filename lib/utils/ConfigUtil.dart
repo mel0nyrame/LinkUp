@@ -86,6 +86,7 @@ class ConfigUtil {
     String acid = '1',
     bool autoAcid = true,
     String? authServer,
+    String userType = '',
   }) async {
     try {
       final path = await _localPath;
@@ -100,16 +101,20 @@ class ConfigUtil {
         await parentDir.create(recursive: true);
       }
       
-      // 读取现有配置以保留 auth_server
+      // 读取现有配置以保留 auth_server 和 user_type
       String savedAuthServer = authServer ?? '10.129.1.1';
-      if (authServer == null) {
-        try {
-          final existingConfig = await loadConfig();
-          if (existingConfig != null && existingConfig['auth_server'] != null) {
+      String savedUserType = userType;
+      try {
+        final existingConfig = await loadConfig();
+        if (existingConfig != null) {
+          if (authServer == null && existingConfig['auth_server'] != null) {
             savedAuthServer = existingConfig['auth_server'];
           }
-        } catch (_) {}
-      }
+          if (userType.isEmpty && existingConfig['user_type'] != null) {
+            savedUserType = existingConfig['user_type'] ?? '';
+          }
+        }
+      } catch (_) {}
       
       final config = {
         'username': username,
@@ -117,6 +122,7 @@ class ConfigUtil {
         'acid': acid,
         'auto_acid': autoAcid,
         'auth_server': savedAuthServer,
+        'user_type': savedUserType,
         'created_at': DateTime.now().toIso8601String(),
       };
       

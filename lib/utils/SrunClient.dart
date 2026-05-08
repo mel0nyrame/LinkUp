@@ -2,6 +2,7 @@
 import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:LinkUp/utils/SrunEncrypt.dart';
 import 'dart:convert';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 
@@ -57,7 +58,10 @@ class SrunClient {
     try {
       final response = await _client.get(
         uri,
-        headers: {'User-Agent': userAgent},
+        headers: {
+          'User-Agent': userAgent,
+          'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
+        },
       );
 
       LogUtil.info('[SrunClient] 用户信息响应状态码: ${response.statusCode}');
@@ -148,6 +152,47 @@ class SrunClient {
     } catch (e) {
       LogUtil.error('[SrunClient] 获取 Challenge 失败', e);
       throw Exception('Get challenge failed: $e');
+    }
+  }
+
+  // DM 注销 — 调用 /cgi-bin/rad_user_dm，签名格式与登录不同
+  Future<bool> dmLogout({
+    required String username,
+    required String ip,
+  }) async {
+    final time = (DateTime.now().millisecondsSinceEpoch / 1000).floor();
+    const unbind = 1;
+    final signStr = '$time$username$ip$unbind$time';
+    final sign = SrunEnrypt.Sha1(signStr);
+
+    final params = {
+      'callback': callback,
+      'ip': ip,
+      'username': username,
+      'time': time.toString(),
+      'unbind': unbind.toString(),
+      'sign': sign,
+      '_': DateTime.now().millisecondsSinceEpoch.toString(),
+    };
+
+    final uri = Uri.parse('$baseURL/rad_user_dm').replace(queryParameters: params);
+    LogUtil.info('[SrunClient] DM 注销: username=$username, ip=$ip');
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {'User-Agent': userAgent},
+      );
+      if (response.statusCode != 200) {
+        throw Exception('HTTP error: ${response.statusCode}');
+      }
+      final jsonStr = _extractJsonFromJsonp(response.body, callback);
+      final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
+      LogUtil.info('[SrunClient] DM 注销响应: $jsonData');
+      return jsonData['error'] == 'ok';
+    } catch (e) {
+      LogUtil.error('[SrunClient] DM 注销失败', e);
+      return false;
     }
   }
 

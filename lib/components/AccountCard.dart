@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
+import 'package:LinkUp/components/GlassCard.dart';
+import 'package:LinkUp/main.dart';
 
 class AccountCard extends StatefulWidget {
   final VoidCallback? onConfigChanged;
@@ -13,6 +15,7 @@ class AccountCard extends StatefulWidget {
 class _AccountcartState extends State<AccountCard> {
   final TextEditingController _usernameCtrl = TextEditingController();
   final TextEditingController _passwordCtrl = TextEditingController();
+  final TextEditingController _userTypeCtrl = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = true;
   String? _acid;
@@ -28,6 +31,7 @@ class _AccountcartState extends State<AccountCard> {
   void dispose() {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
+    _userTypeCtrl.dispose();
     super.dispose();
   }
 
@@ -38,6 +42,7 @@ class _AccountcartState extends State<AccountCard> {
       setState(() {
         _usernameCtrl.text = config['username'] ?? '';
         _passwordCtrl.text = config['password'] ?? '';
+        _userTypeCtrl.text = config['user_type'] ?? '';
         _acid = config['acid'] ?? '1';
         _autoAcid = config['auto_acid'] ?? true;
         _isLoading = false;
@@ -68,6 +73,7 @@ class _AccountcartState extends State<AccountCard> {
       password: password,
       acid: _acid ?? '1',
       autoAcid: _autoAcid ?? true,
+      userType: _userTypeCtrl.text.trim(),
     );
 
     setState(() => _isLoading = false);
@@ -120,6 +126,7 @@ class _AccountcartState extends State<AccountCard> {
       setState(() {
         _usernameCtrl.clear();
         _passwordCtrl.clear();
+        _userTypeCtrl.clear();
         _acid = '1';
         _autoAcid = true;
       });
@@ -136,102 +143,113 @@ class _AccountcartState extends State<AccountCard> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     if (_isLoading) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Center(child: CircularProgressIndicator()),
-        ),
+      return const GlassCard(
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.account_circle, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '账号信息',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: MyApp.iosBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ],
-            ),
-            const Divider(height: 24),
-            TextField(
-              controller: _usernameCtrl,
-              decoration: const InputDecoration(
-                labelText: '学号',
-                hintText: '请输入学号',
-                prefixIcon: Icon(Icons.person_outline),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(16.0)),
+                child: const Icon(Icons.person, color: MyApp.iosBlue, size: 18),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                '账号信息',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
                 ),
               ),
-              keyboardType: TextInputType.text,
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _usernameCtrl,
+            decoration: const InputDecoration(
+              labelText: '学号',
+              hintText: '请输入学号',
+              prefixIcon: Icon(Icons.person_outline),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordCtrl,
-              decoration: InputDecoration(
-                labelText: '密码',
-                hintText: '请输入密码',
-                prefixIcon: const Icon(Icons.lock_outline),
-                border: const OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(16.0)),
-                ),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscurePassword = !_obscurePassword;
-                    });
-                  },
+            keyboardType: TextInputType.text,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _passwordCtrl,
+            decoration: InputDecoration(
+              labelText: '密码',
+              hintText: '请输入密码',
+              prefixIcon: const Icon(Icons.lock_outline),
+              border: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
+              suffixIcon: IconButton(
+                icon: Icon(_obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            obscureText: _obscurePassword,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _userTypeCtrl,
+            decoration: const InputDecoration(
+              labelText: '运营商类型（选填）',
+              hintText: '如: cmcc',
+              prefixIcon: Icon(Icons.business_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _saveConfig,
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('保存'),
                 ),
               ),
-              obscureText: _obscurePassword,
-            ),
-            const SizedBox(height: 24),
-            // 操作按钮
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _saveConfig,
-                    icon: const Icon(Icons.save),
-                    label: const Text('保存配置'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _deleteConfig,
+                  icon: const Icon(Icons.delete_outline,
+                      color: MyApp.iosRed, size: 18),
+                  label: const Text('删除',
+                      style: TextStyle(color: MyApp.iosRed)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: MyApp.iosRed),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    minimumSize: const Size(double.infinity, 50),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _deleteConfig,
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    label: const Text(
-                      '删除配置',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

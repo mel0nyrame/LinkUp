@@ -13,22 +13,24 @@ class DeviceInfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4.0),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
           Text(
-            '$label: ',
+            label,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey.shade600,
+              color: Colors.grey.shade500,
             ),
           ),
+          const SizedBox(width: 4),
           Expanded(
             child: Text(
               value ?? '-',
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade700,
               ),
               overflow: TextOverflow.ellipsis,
             ),

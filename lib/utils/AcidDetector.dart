@@ -361,6 +361,76 @@ class AcidDetector {
     _cachedPageUrl = null;
   }
 
+  /// 自动检测加密版本号（参考 BitSrunLoginGo DetectEnc）
+  /// 从登录页 HTML 中找到 portal JS 文件，提取 var enc = ...
+  Future<String?> detectEnc() async {
+    LogUtil.info('[AcidDetector] 开始检测 enc 版本...');
+
+    try {
+      // 确保有登录页内容缓存
+      if (_cachedPage == null) {
+        final pageUrl = _cachedPageUrl ?? '$baseUrl/srun_portal_pc.php';
+        LogUtil.info('[AcidDetector] 请求登录页: $pageUrl');
+        final response = await http.get(
+          Uri.parse(pageUrl),
+          headers: {'User-Agent': _userAgent},
+        ).timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          _cachedPage = response.body;
+        } else {
+          LogUtil.warning('[AcidDetector] 获取登录页失败: ${response.statusCode}');
+          return null;
+        }
+      }
+
+      // 从 HTML 中查找 portal JS 文件路径
+      final jsReg = RegExp(
+        r'<script src="\.?(.+[./]portal[0-9]*\.js)(\?.*)?">',
+        caseSensitive: false,
+      );
+      final jsMatch = jsReg.firstMatch(_cachedPage!);
+      if (jsMatch == null) {
+        LogUtil.warning('[AcidDetector] 未找到 portal JS 文件');
+        return null;
+      }
+
+      final jsPath = jsMatch.group(1)!;
+      final jsUrl = Uri.parse(baseUrl).replace(path: jsPath);
+      LogUtil.info('[AcidDetector] 请求 JS 文件: $jsUrl');
+
+      final jsResponse = await http.get(
+        jsUrl,
+        headers: {'User-Agent': _userAgent},
+      ).timeout(const Duration(seconds: 5));
+
+      if (jsResponse.statusCode != 200) {
+        LogUtil.warning('[AcidDetector] 获取 JS 文件失败: ${jsResponse.statusCode}');
+        return null;
+      }
+
+      // 从 JS 内容中提取 var enc = ...
+      final encReg = RegExp(r'var enc = (.*?)[,;]');
+      final encMatch = encReg.firstMatch(jsResponse.body);
+      if (encMatch == null) {
+        LogUtil.warning('[AcidDetector] JS 中未找到 enc 定义');
+        return null;
+      }
+
+      final encStr = encMatch.group(1)!;
+      // 处理字符串拼接: "srun" + "_" + "bx1" → "srun_bx1"
+      final parts = encStr.split('+');
+      final enc = parts
+          .map((p) => p.trim().replaceAll(RegExp(r"""^['"]|['"]$"""), ''))
+          .join();
+      LogUtil.info('[AcidDetector] 检测到 enc: $enc');
+      return enc;
+    } catch (e, stackTrace) {
+      LogUtil.error('[AcidDetector] 检测 enc 失败', e, stackTrace);
+      return null;
+    }
+  }
+
   static const String _userAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 }

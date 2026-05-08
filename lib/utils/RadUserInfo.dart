@@ -44,6 +44,9 @@ class RadUserInfo {
   @JsonKey(name: 'online_device_total', defaultValue: '0')
   final String? onlineDeviceTotal;
 
+  @JsonKey(name: 'client_ip', defaultValue: '')
+  final String? clientIp;
+
   @JsonKey(name: 'online_ip', defaultValue: '')
   final String? onlineIp;
 
@@ -103,6 +106,7 @@ class RadUserInfo {
     this.bytesIn,
     this.bytesOut,
     this.checkoutDate,
+    this.clientIp,
     this.domain,
     this.error,
     this.groupId,
@@ -136,6 +140,7 @@ class RadUserInfo {
   int get getBytesIn => bytesIn ?? 0;
   int get getBytesOut => bytesOut ?? 0;
   int get getCheckoutDate => checkoutDate ?? 0;
+  String get getClientIp => clientIp ?? '';
   String get getDomain => domain ?? '';
   String get getError => error ?? '';
   String get getGroupId => groupId ?? '';
