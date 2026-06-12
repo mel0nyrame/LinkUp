@@ -459,4 +459,5 @@ class SrunLogin {
       throw FormatException('JSON 解析失败: $e | Raw: $body');
     }
   }
+}
 
