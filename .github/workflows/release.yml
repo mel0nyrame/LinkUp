@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'release-v*' # 与历史 tag 命名规则一致：release-v1.0.0、release-v1.0.3
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（如 release-v1.0.4）'
+        required: true
+        type: string
+
+permissions:
+  contents: write # 创建 Release 需要写权限
+
+jobs:
+  test:
+    name: Run tests (gate)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: master
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate JSON serializable code
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+
+      - name: Run tests
+        run: flutter test
+        # 不再 continue-on-error：test 失败必须阻塞 release
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+        # analyze 失败同样阻塞 release，与 ci.yml gate 对齐
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: test # 等待 test job 通过，避免 broken test 直接 ship
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 拿全 history 以便生成 changelog
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # tag 形如 refs/tags/release-v1.0.3 → version=1.0.3
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ -z "$TAG" ] || [ "$TAG" = "$GITHUB_REF" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          VERSION=$(echo "$TAG" | sed -E 's/^release-v?//; s/^v//')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "解析得到 tag=$TAG version=$VERSION"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: master
+          cache: true
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate JSON serializable code
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      # 跳过 flutter test — ci.yml 已经在 push/PR 上跑过同一命令作为 gate；
+      # release 流程不应该重复运行，避免浪费 wall-clock
+
+      - name: Build APK (release)
+        run: |
+          flutter build apk --release \
+            --build-name=${{ steps.version.outputs.version }} \
+            --build-number=${{ github.run_number }}
+
+      - name: Rename APK
+        id: artifact
+        run: |
+          SRC=build/app/outputs/flutter-apk/app-release.apk
+          DST=app-release.apk
+          cp "$SRC" "$DST"
+          SIZE=$(du -h "$DST" | cut -f1)
+          echo "apk_path=$DST" >> "$GITHUB_OUTPUT"
+          echo "apk_size=$SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # 拿到上一个 release-v* tag 与当前 tag 之间的 commits
+          CURRENT="${{ steps.version.outputs.tag }}"
+          PREV=$(git tag --sort=-creatordate | grep -E '^release-v' | grep -v "^$CURRENT$" | head -1 || echo "")
+          {
+            echo "## 📦 LinkUp ${{ steps.version.outputs.version }}"
+            echo ""
+            echo "### 更新内容"
+            echo ""
+            if [ -n "$PREV" ]; then
+              git log "$PREV..$CURRENT" --pretty=format:'- %s (%h)' --no-merges
+            else
+              git log "$CURRENT" --pretty=format:'- %s (%h)' --no-merges -20
+            fi
+            echo ""
+            echo ""
+            echo "### 安装"
+            echo ""
+            echo "- Android: 下载下方 \`app-release.apk\` 直接安装（APK 大小约 ${{ steps.artifact.outputs.apk_size }}）"
+            echo "- 安装后请在系统设置中授予「自启动」和「忽略电池优化」权限以保证后台保活"
+            echo ""
+            echo "### SHA-256"
+            echo ""
+            echo '```'
+            sha256sum "${{ steps.artifact.outputs.apk_path }}"
+            echo '```'
+          } > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: LinkUp ${{ steps.version.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          files: |
+            ${{ steps.artifact.outputs.apk_path }}
