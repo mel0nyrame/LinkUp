@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/LogUtil.dart';
@@ -16,8 +17,12 @@ class AcidDetector {
     caseSensitive: false,
   );
 
+  // 锁定在 <input> 标签内，避免被 HTML 中的 JS 字面量或注释干扰；
+  // name 与 value 顺序任意，仅捕获 value 的值
   static final RegExp _acidInHtmlReg = RegExp(
-    r'[\x27\x22]ac_id[\x27\x22].*?value=[\x27\x22](.+?)[\x27\x22]',
+    r'<input[^>]*\bname=[\x27\x22]ac_id[\x27\x22][^>]*\bvalue=[\x27\x22]([^\x27\x22]+)[\x27\x22]'
+    r'|'
+    r'<input[^>]*\bvalue=[\x27\x22]([^\x27\x22]+)[\x27\x22][^>]*\bname=[\x27\x22]ac_id[\x27\x22]',
     caseSensitive: false,
   );
 
@@ -79,34 +84,58 @@ class AcidDetector {
   }
 
   /// Reality 模式 - 同时检测在线状态和 ACID
+  /// 多个检测 URL 并发竞速：首个无错的结果胜出，整体延迟 ≤ 单个超时（5s）
+  /// 若所有都失败，返回汇总错误
   Future<(String?, bool, String?)> reality({bool getAcid = true}) async {
-    LogUtil.info('[AcidDetector] Reality 模式检测...');
+    LogUtil.info('[AcidDetector] Reality 模式检测（并发 ${_detectUrls.length} 个地址）...');
 
-    // 尝试多个检测地址
+    // 共享 client：first-success 时关闭它会取消所有 in-flight loser 的 socket，
+    // 避免 5s timeout 内 4× orphan http.Client 浪费（mobile battery / radio）
+    final sharedClient = http.Client();
+
+    // 每个 URL 包装为 Future；并发竞速，最快的成功结果胜出
+    final completer = Completer<(String?, bool, String?)>();
+    int remaining = _detectUrls.length;
+    final errors = <String>[];
+
     for (final detectUrl in _detectUrls) {
-      LogUtil.info('[AcidDetector] 尝试检测地址: $detectUrl');
-      
-      try {
-        final result = await _realityWithUrl(detectUrl, getAcid: getAcid);
-        final (acid, isOnline, err) = result;
-        
-        if (err == null) {
-          LogUtil.info('[AcidDetector] Reality 成功: 在线=$isOnline, ACID=$acid');
-          return result;
-        } else {
-          LogUtil.warning('[AcidDetector] 检测地址 $detectUrl 失败: $err');
+      // _realityWithUrl 内部已 try/catch 把所有异常包装为返回值，永不抛出，
+      // 因此这里无需 .catchError
+      _realityWithUrl(detectUrl, getAcid: getAcid, sharedClient: sharedClient).then((result) {
+        final (_, _, err) = result;
+        if (!completer.isCompleted) {
+          if (err == null) {
+            LogUtil.info('[AcidDetector] Reality 成功（来自 $detectUrl）: $result');
+            completer.complete(result);
+            return;
+          }
+          errors.add('$detectUrl: $err');
         }
-      } catch (e) {
-        LogUtil.warning('[AcidDetector] 检测地址 $detectUrl 异常: $e');
-      }
+        remaining--;
+        if (remaining == 0 && !completer.isCompleted) {
+          LogUtil.error('[AcidDetector] 所有检测地址都失败');
+          completer.complete((null, false, errors.join('; ')));
+        }
+      });
     }
 
-    LogUtil.error('[AcidDetector] 所有检测地址都失败');
-    return (null, false, '所有检测地址都失败');
+    final result = await completer.future;
+    // 关闭共享 client：close 后任何在飞 send() 都会立即抛 ClientException，
+    // 已被 _followRedirect 内部 try/catch 捕获；_followRedirect 不会重复 close
+    // （ownsClient=false），不会抛 StateError
+    sharedClient.close();
+    return result;
   }
 
   /// 使用指定 URL 进行 Reality 检测
-  Future<(String?, bool, String?)> _realityWithUrl(String url, {bool getAcid = true}) async {
+  /// host 匹配仅作为「未被 Portal 拦截」的必要条件，还需要验证响应体是预期格式，
+  /// 避免同域 captive portal 返回 HTML 被误判为在线
+  /// sharedClient 用于让 reality() 在 first-success 时一次性关掉所有 in-flight request
+  Future<(String?, bool, String?)> _realityWithUrl(
+    String url, {
+    bool getAcid = true,
+    http.Client? sharedClient,
+  }) async {
     try {
       final startUrl = Uri.parse(url);
       String? detectedAcid;
@@ -114,14 +143,8 @@ class AcidDetector {
 
       final (res, body, err) = await _followRedirect(
         startUrl,
+        sharedClient: sharedClient,
         onNextAddr: (addr) {
-          // 如果回到原地址，说明已在线
-          if (addr.host == startUrl.host) {
-            LogUtil.info('[AcidDetector] Reality: 已在线 (host 匹配)');
-            isOnline = true;
-            return true;
-          }
-          
           // 在重定向过程中捕获 acid
           if (getAcid) {
             detectedAcid = _extractAcidFromQuery(addr);
@@ -130,6 +153,7 @@ class AcidDetector {
               _cachedPageUrl = addr.toString();
             }
           }
+          // 不再用 host 匹配提前判定「在线」，由响应内容统一判定
           return false;
         },
       );
@@ -143,16 +167,38 @@ class AcidDetector {
         _cachedPage = body;
       }
 
-      // 判断是否在线
+      // 判断是否在线：host 必须匹配，且响应体不含 portal 特征
       if (res != null && res.request != null) {
         final finalHost = res.request!.url.host;
-        isOnline = finalHost == startUrl.host;
+        final hostMatches = finalHost == startUrl.host;
+        final looksLikePortal = body != null && _looksLikePortal(body);
+        isOnline = hostMatches && !looksLikePortal;
+        if (hostMatches && looksLikePortal) {
+          LogUtil.warning('[AcidDetector] Reality: host 匹配但响应像 portal 拦截，判定为离线');
+        }
       }
 
       return (detectedAcid, isOnline, null);
     } catch (e) {
       return (null, false, e.toString());
     }
+  }
+
+  /// 检查响应体是否疑似深澜 portal 页面
+  /// captive portal 同域 200 返回 HTML 时，body 中必含这些标记
+  /// 多 marker 组合判定：_acidInHtmlReg 覆盖 input 隐藏表单，'srun_portal'/'login.html'
+  /// 覆盖 portal URL 特征，'"ac_id"'（带引号字面量）和 'ac_id ='（无引号赋值）覆盖
+  /// SPA 注入形式（如 <script>var ac_id = "5";</script> 或 var ac_id = 5;）
+  static bool _looksLikePortal(String body) {
+    if (body.isEmpty) return false;
+    final lower = body.toLowerCase();
+    return _acidInHtmlReg.hasMatch(body) ||
+        lower.contains('srun_portal') ||
+        lower.contains('login.html') ||
+        lower.contains('"ac_id"') ||
+        lower.contains("'ac_id'") ||
+        lower.contains('ac_id =') ||
+        lower.contains('ac_id:');
   }
 
   /// 从重定向链检测 ACID（从 baseUrl 开始）
@@ -222,11 +268,15 @@ class AcidDetector {
   }
 
   /// 跟随重定向链
+  /// sharedClient 用于让调用方（如 reality()）在 first-success 时统一释放 socket；
+  /// 不传则本函数自建自管 client
   Future<(http.Response?, String?, String?)> _followRedirect(
     Uri startAddr, {
     required bool Function(Uri addr) onNextAddr,
+    http.Client? sharedClient,
   }) async {
-    final client = http.Client();
+    final ownsClient = sharedClient == null;
+    final client = sharedClient ?? http.Client();
     final visitedUris = <String>{};
     Uri currentAddr = startAddr;
     int redirectCount = 0;
@@ -308,10 +358,15 @@ class AcidDetector {
       }
 
       return (null, null, '重定向过多');
+    } on http.ClientException catch (e) {
+      // reality() 在 first-success 时 sharedClient.close() 触发 in-flight 抛
+      // ClientException；归一为 "Connection closed (client shutdown)" 便于诊断
+      // 区分是网络问题还是被 reality() 主流程关掉
+      return (null, null, 'Connection closed (client shutdown)');
     } catch (e) {
       return (null, null, e.toString());
     } finally {
-      client.close();
+      if (ownsClient) client.close();
     }
   }
 
@@ -351,9 +406,26 @@ class AcidDetector {
     return uri.queryParameters['acid'] ?? uri.queryParameters['Acid'];
   }
 
+  // JS 字符串字面量形式的 ac_id（覆盖 SPA 注入 portal：ac_id 不在 <input> 而是
+  // 在 <script>var ac_id = "5";</script> 这种 JS 字符串里）
+  static final RegExp _acidInJsReg = RegExp(
+    r'ac_id\s*[:=]\s*["\x27](\d+)["\x27]',
+    caseSensitive: false,
+  );
+
   String? _extractAcidFromHtml(String html) {
+    // 1. 优先从 <input> 隐藏表单提取（_acidInHtmlReg 覆盖 name=ac_id / value=...）
     final match = _acidInHtmlReg.firstMatch(html);
-    return match?.group(1);
+    if (match != null) {
+      // 正则有两个分支，匹配的 group 只有一个非空
+      return match.group(1) ?? match.group(2);
+    }
+    // 2. Fallback：从 JS 字符串字面量提取 ac_id（如 <script>var ac_id="5"</script>）
+    final jsMatch = _acidInJsReg.firstMatch(html);
+    if (jsMatch != null) {
+      return jsMatch.group(1);
+    }
+    return null;
   }
 
   void reset() {

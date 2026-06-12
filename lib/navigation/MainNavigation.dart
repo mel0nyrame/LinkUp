@@ -35,6 +35,33 @@ class _MainNavigatorState extends State<MainNavigator> {
   Timer? _monitorTimer;
   Timer? _retryTimer;
 
+  // 共享 AcidDetector — 跨 monitor / login cycle 复用，保留 _cachedPage
+  // 和 _cachedPageUrl 缓存，避免每次 new 一个都丢失 portal HTML 缓存
+  AcidDetector? _detector;
+
+  AcidDetector _getDetector() {
+    // 如果已创建但 baseUrl 过期（settings 改了 auth_server 但 monitor 还没
+    // 通过 _restartMonitor 重新同步 client.host），重建 detector 让它跟随
+    // 当前的 client.baseURL；否则用现有实例（保留 _cachedPage 缓存）
+    if (_detector != null && _detector!.baseUrl != client.baseURL) {
+      _detector!.reset();
+      _detector = null;
+    }
+    return _detector ??= AcidDetector(baseUrl: client.baseURL);
+  }
+
+  // _userInfo 写入时间（用于 _doLogin 复用时校验 staleness，
+  // 避免 monitor 几秒前缓存的 IP 与当前网络已切换的 IP 不一致）
+  DateTime? _userInfoAt;
+
+  // 5s 内的 _userInfo 视为 fresh 可复用；超过 5s 一律重新拉取 /rad_user_info
+  // 防止用户切换网络 / DHCP 续约后 IP 已变而我们仍用旧 IP 登录
+  static const Duration _userInfoMaxAge = Duration(seconds: 5);
+
+  // _handleLogout 与 _manualLogin 互斥标志（专用，不与 _isLoading 混用；
+  // _isLoading 是 UI spinner 状态，_userOperationInProgress 是 user-action 锁）
+  bool _userOperationInProgress = false;
+
   // 检查间隔（秒）
   static const int checkInterval = 3;
 
@@ -80,12 +107,21 @@ class _MainNavigatorState extends State<MainNavigator> {
     _shouldStopMonitor = true;
     _monitorTimer?.cancel();
     _retryTimer?.cancel();
+    // 清掉 AcidDetector 内部 portal HTML 缓存，避免下次启动时拿到脏数据
+    _detector?.reset();
+    _detector = null;
     super.dispose();
   }
 
   // 启动网络监控
   void _startMonitor() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // 先同步认证服务器地址，避免首次 _checkOnlineStatus 使用默认 host
+      // 探测错误目标导致整轮监控用错地址
+      await _syncHostFromConfig();
+
+      if (_shouldStopMonitor || !mounted) return;
+
       // 立即执行一次检查
       _checkAndReconnect();
 
@@ -95,6 +131,34 @@ class _MainNavigatorState extends State<MainNavigator> {
         (_) => _checkAndReconnect(),
       );
     });
+  }
+
+  // 从本地配置同步认证服务器到 SrunClient
+  Future<void> _syncHostFromConfig() async {
+    try {
+      final config = await ConfigUtil.loadConfig();
+      if (config == null) return;
+      final authServer = config['auth_server'] as String? ?? '10.129.1.1';
+      if (client.host != authServer) {
+        client.setHost(authServer);
+        LogUtil.info('监控启动前同步认证服务器: $authServer');
+      }
+    } catch (e) {
+      LogUtil.warning('同步认证服务器失败: $e');
+    }
+  }
+
+  // 重建监控定时器（注销/手动刷新路径）。
+  // 先同步 host，避免用户在设置页改了 auth_server 后新 timer 还跑在旧 host 上；
+  // 之后 cancel 旧 timer 再启新的，防止重叠触发。
+  Future<void> _restartMonitor() async {
+    await _syncHostFromConfig();
+    if (_shouldStopMonitor || !mounted) return;
+    _monitorTimer?.cancel();
+    _monitorTimer = Timer.periodic(
+      const Duration(seconds: checkInterval),
+      (_) => _checkAndReconnect(),
+    );
   }
 
   // 检查连接状态并自动重连
@@ -112,6 +176,8 @@ class _MainNavigatorState extends State<MainNavigator> {
         _consecutiveFailures = 0;
       }
       if (!_isOnline) {
+        // await 之后检查 mounted，避免 dispose race 触发 setState-after-dispose
+        if (!mounted) return;
         setState(() {
           _isOnline = true;
           _statusMessage = '已在线';
@@ -121,11 +187,14 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
 
     if (isConnected == false) {
+      // await 之后检查 mounted，避免 dispose race 触发 setState-after-dispose
+      if (!mounted) return;
       setState(() {
         _isOnline = false;
         _statusMessage = '网络断开，正在自动重连...';
       });
     } else {
+      if (!mounted) return;
       setState(() {
         _isOnline = false;
         _statusMessage = '网络检测失败，尝试连接...';
@@ -142,8 +211,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       LogUtil.info('检查在线状态...');
       
       // 使用 Reality 模式检测（同时检测在线状态和 ACID）
-      final detector = AcidDetector(baseUrl: client.baseURL);
-      final (detectedAcid, isOnline, err) = await detector.reality(
+      final (detectedAcid, isOnline, err) = await _getDetector().reality(
         getAcid: true,
       );
 
@@ -176,6 +244,7 @@ class _MainNavigatorState extends State<MainNavigator> {
         try {
           final info = await client.getUserInfo();
           _userInfo = info;
+          _userInfoAt = DateTime.now();
           LogUtil.info('在线状态: true, IP: ${info.onlineIp ?? "unknown"}');
         } catch (e) {
           LogUtil.warning('已在线但获取用户信息失败: $e');
@@ -191,13 +260,25 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   // 安全登录（带异常捕获和退避策略）
   Future<void> _safeLogin() async {
+    // 同时占用 _isLoading（UI spinner + monitor tick 跳过）和 _userOperationInProgress
+    // （user-action 锁），确保 monitor-driven login 期间 _handleLogout / _manualLogin
+    // 不会并发触发；finally 中清两个标志
+    setState(() {
+      _isLoading = true;
+    });
+    _userOperationInProgress = true;
+
     // 退避策略：连续失败越多，等待越久
     if (_consecutiveFailures > 0) {
       final backoffSeconds = (checkInterval * (1 << (_consecutiveFailures - 1)))
           .clamp(checkInterval, maxBackoffSeconds);
       LogUtil.info('退避等待 ${backoffSeconds}s（连续失败 $_consecutiveFailures 次）');
       await Future.delayed(Duration(seconds: backoffSeconds));
-      if (_shouldStopMonitor || !mounted) return;
+      if (_shouldStopMonitor || !mounted) {
+        // 退出前清掉 _isLoading，避免后续 monitor tick 一直跳过
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
     }
 
     try {
@@ -206,9 +287,15 @@ class _MainNavigatorState extends State<MainNavigator> {
       LogUtil.info('安全登录流程结束');
     } catch (e, stackTrace) {
       LogUtil.error('登录逻辑异常', e, stackTrace);
-      setState(() {
-        _statusMessage = '登录异常: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _statusMessage = '登录异常: $e';
+          _isLoading = false;
+        });
+      }
+    } finally {
+      // 释放 user-action 锁：让 _handleLogout / _manualLogin 后续可执行
+      _userOperationInProgress = false;
     }
 
     // 根据结果更新退避计数
@@ -298,8 +385,25 @@ class _MainNavigatorState extends State<MainNavigator> {
     // 3. 获取 IP 和用户信息
     final String ip;
     try {
-      final info = await client.getUserInfo();
-      _userInfo = info;
+      // 复用 monitor tick 在线路径已经写入的 _userInfo（_checkOnlineStatus 内
+      // 调用过 client.getUserInfo()），避免每个登录流程都重复请求一次 /rad_user_info
+      // 但要校验 staleness：超过 _userInfoMaxAge 视为过期，强制重新拉取
+      // （IP 可能在 DHCP 续约 / WiFi 切换后已变）。登录成功后的"必须再调
+      // rad_user_info 确认"（CLAUDE.md §在线状态验证）在 line 464 的
+      // newInfo = await client.getUserInfo() 仍会执行
+      final RadUserInfo info;
+      final userInfoFresh = _userInfo != null &&
+          _userInfo!.isOnline &&
+          _userInfoAt != null &&
+          DateTime.now().difference(_userInfoAt!) < _userInfoMaxAge;
+      if (userInfoFresh) {
+        info = _userInfo!;
+        LogUtil.info('复用 monitor tick 的 userInfo（IP=${info.clientIp ?? info.onlineIp}）');
+      } else {
+        info = await client.getUserInfo();
+        _userInfo = info;
+        _userInfoAt = DateTime.now();
+      }
       // 优先使用 client_ip（始终存在），回退到 online_ip
       ip = (info.clientIp?.isNotEmpty == true ? info.clientIp : info.onlineIp) ?? '';
       LogUtil.info('获取到用户信息: clientIp=${info.clientIp}, onlineIp=${info.onlineIp}, 使用IP=$ip, 是否在线=${info.isOnline}');
@@ -354,8 +458,15 @@ class _MainNavigatorState extends State<MainNavigator> {
       if (autoAcid) {
         // 自动模式：先检测 ACID，如果检测失败则使用配置的 ACID
         LogUtil.info('使用自动 ACID 模式，开始检测 ACID...');
-        final detector = AcidDetector(baseUrl: client.baseURL);
-        final detectedAcid = await _detectAcid(detector);
+        final detector = _getDetector();
+        // ACID 与 enc 检测是独立网络操作，并行跑能省一个 RTT 的 wall-clock；
+        // 文档 §"ACID 自动探测策略" 没规定顺序
+        final results = await Future.wait([
+          _detectAcid(detector),
+          detector.detectEnc(),
+        ]);
+        final detectedAcid = results[0];
+        final detectedEnc = results[1];
         if (detectedAcid != null) {
           _currentAcid = detectedAcid;
           acid = detectedAcid;
@@ -363,10 +474,6 @@ class _MainNavigatorState extends State<MainNavigator> {
         } else {
           LogUtil.warning('ACID 检测失败，使用配置的 ACID: $acid');
         }
-
-        // 同时自动检测 enc 版本
-        setState(() => _statusMessage = '正在检测加密版本...');
-        final detectedEnc = await detector.detectEnc();
         if (detectedEnc != null && detectedEnc.isNotEmpty) {
           _currentEnc = detectedEnc;
           LogUtil.info('使用检测到的 enc: $_currentEnc');
@@ -430,6 +537,8 @@ class _MainNavigatorState extends State<MainNavigator> {
     setState(() {
       _isOnline = true;
       _userInfo = newInfo;
+      // 同步刷新 _userInfoAt 时间戳，确保 F2 5s staleness 校验对最新 userInfo 有效
+      _userInfoAt = DateTime.now();
       _statusMessage = '登录成功';
       _isLoading = false;
     });
@@ -555,15 +664,39 @@ class _MainNavigatorState extends State<MainNavigator> {
 
     if (confirmed != true) return;
 
+    // 与 _manualLogin 互斥：用专用 _userOperationInProgress 锁（不用 _isLoading
+    // 因为 _isLoading 是 UI 标志，且 monitor tick 中也会被反复翻转）
+    if (_userOperationInProgress) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('正在处理中，请稍候再试')),
+        );
+      }
+      return;
+    }
+    _userOperationInProgress = true;
+
     _monitorTimer?.cancel();
     setState(() {
       _isLoading = true;
       _statusMessage = '正在注销...';
     });
 
+    // 显式重建控制：成功 / 失败 / 异常路径都重建 monitor；config==null 早退不重建
+    // （避免每 3s 死循环调 _doLogin → '未找到配置信息'）。把 restart 调用从 finally
+    // 移出来，避免与 try 块共享一个 shouldRestartMonitor flag
     try {
       final config = await ConfigUtil.loadConfig();
-      if (config == null) return;
+      if (config == null) {
+        // 配置丢失：清掉 loading 状态，UI 不能卡在 spinner；不 restart monitor
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _statusMessage = '未找到配置，无法注销';
+          });
+        }
+        return;
+      }
 
       final rawUsername = config['username'] ?? '';
       final userType = config['user_type'] ?? '';
@@ -576,15 +709,22 @@ class _MainNavigatorState extends State<MainNavigator> {
       // DM 注销：只需要 username + ip + 时间戳签名，不需要 token/加密
       final success = await SrunLogin.dmLogout(username: username, ip: ip);
 
-      setState(() {
-        _isOnline = false;
-        _userInfo = null;
-        _isLoading = false;
-        _statusMessage = success ? '已注销' : '注销失败';
-        _consecutiveFailures = 0;
-      });
-
       if (mounted) {
+        setState(() {
+          _isOnline = false;
+          _userInfo = null;
+          _userInfoAt = null;
+          _isLoading = false;
+          _statusMessage = success ? '已注销' : '注销失败';
+          _consecutiveFailures = 0;
+        });
+        // 清掉 AcidDetector 缓存的 portal HTML 和 URL，避免下次登录复用
+        // 跨 portal session / 跨校区的旧 _cachedPage / _cachedPageUrl
+        // 设为 null 而非仅 reset：让下次 _getDetector() 重建新实例，
+        // 避免旧 in-flight reality() 完成时通过旧 ref 写脏新 cache
+        _detector?.reset();
+        _detector = null;
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(success ? '已成功注销' : '注销失败，请重试'),
@@ -592,31 +732,44 @@ class _MainNavigatorState extends State<MainNavigator> {
           ),
         );
       }
+      // 成功路径：重建 monitor
+      if (mounted) {
+        await _restartMonitor();
+      }
     } catch (e, stackTrace) {
       LogUtil.error('注销异常', e, stackTrace);
-      setState(() {
-        _isLoading = false;
-        _statusMessage = '注销异常';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _statusMessage = '注销异常';
+        });
+        // 异常路径不 restart monitor：
+        // 配置文件损坏（loadConfig 抛 FileSystemException）时，restart monitor
+        // 会让 monitor tick 立即重试 _doLogin → loadConfig 再抛 → 死循环 + 日志刷屏
+        // 让用户主动冷启动 app 或修好配置后重启 monitor 即可
+      }
+    } finally {
+      // 释放 user-action 锁（无论成功 / 失败 / 早退），让 _manualLogin 后续可执行
+      _userOperationInProgress = false;
     }
-
-    // 重新启动监控
-    _monitorTimer = Timer.periodic(
-      const Duration(seconds: checkInterval),
-      (_) => _checkAndReconnect(),
-    );
   }
 
   // 手动触发登录（下拉刷新）
   Future<void> _manualLogin() async {
     LogUtil.info('用户手动触发登录（下拉刷新）');
+    // 与 _handleLogout 互斥：用专用 _userOperationInProgress 锁
+    if (_userOperationInProgress) {
+      LogUtil.info('已有登录/注销流程在进行，跳过本次手动登录');
+      return;
+    }
+    _userOperationInProgress = true;
     _consecutiveFailures = 0;
     _monitorTimer?.cancel();
     await _safeLogin();
-    _monitorTimer = Timer.periodic(
-      const Duration(seconds: checkInterval),
-      (_) => _checkAndReconnect(),
-    );
+    // 走 _restartMonitor 同步 host，避免用户改了 auth_server 后新 timer 用旧 host
+    await _restartMonitor();
+    // 释放 user-action 锁
+    _userOperationInProgress = false;
     LogUtil.info('手动登录完成，监控已恢复');
   }
 

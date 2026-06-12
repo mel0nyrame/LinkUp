@@ -94,12 +94,12 @@ class SrunLogin {
     String errorMsg,
     String res,
   ) {
-    final errorLower = error.toLowerCase();
     final msgLower = errorMsg.toLowerCase();
     final resLower = res.toLowerCase();
 
-    // 已经在线
-    if (errorLower.contains('ok') &&
+    // 已经在线 — 严格使用 error == 'ok' 精确匹配，
+    // 防止 "Service ok timeout" 等含 'ok' 子串的错误消息被误归类
+    if (error == 'ok' &&
         (resLower.contains('login_ok') || resLower.contains('already'))) {
       return LoginErrorType.alreadyOnline;
     }
@@ -259,6 +259,8 @@ class SrunLogin {
         'action': 'login',
         'callback': client.callback,
         'username': username,
+        // 仅支持 MD5 密码方案；OTP 短信验证码登录（Portal.js line 1171 的 '{OTP}' + password 分支）
+        // 暂未实现，因为配置层（ConfigUtil / SrunInfo）未暴露 otp 字段
         'password': '{MD5}$hmd5Password',
         'os': 'Windows 10',
         'name': 'Windows',
