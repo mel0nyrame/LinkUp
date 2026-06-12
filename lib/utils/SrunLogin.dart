@@ -460,26 +460,3 @@ class SrunLogin {
     }
   }
 
-  /// 从 JSONP 响应中提取 JSON 数据
-  static Map<String, dynamic>? _extractJsonFromJsonp(
-    String jsonp,
-    String callbackName,
-  ) {
-    try {
-      final prefix = '$callbackName(';
-      if (!jsonp.startsWith(prefix)) {
-        LogUtil.warning('JSONP 格式错误: 不以 $prefix 开头');
-        return null;
-      }
-      if (!jsonp.endsWith(')')) {
-        LogUtil.warning('JSONP 格式错误: 不以 ) 结尾');
-        return null;
-      }
-      final jsonStr = jsonp.substring(prefix.length, jsonp.length - 1);
-      return jsonDecode(jsonStr) as Map<String, dynamic>;
-    } catch (e) {
-      LogUtil.error('解析 JSONP 失败', e);
-      return null;
-    }
-  }
-}

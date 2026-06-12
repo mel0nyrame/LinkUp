@@ -26,6 +26,8 @@ class AcidDetector {
     caseSensitive: false,
   );
 
+  // TODO: 从登录页 HTML 提取 IP（参考 BitSrunLoginGo DetectIp），暂未实现
+  // ignore: unused_field
   static final RegExp _ipInHtmlReg = RegExp(
     r'ip\s*:\s*[\x27\x22](.+?)[\x27\x22]',
     caseSensitive: false,
@@ -358,7 +360,7 @@ class AcidDetector {
       }
 
       return (null, null, '重定向过多');
-    } on http.ClientException catch (e) {
+    } on http.ClientException catch (_) {
       // reality() 在 first-success 时 sharedClient.close() 触发 in-flight 抛
       // ClientException；归一为 "Connection closed (client shutdown)" 便于诊断
       // 区分是网络问题还是被 reality() 主流程关掉

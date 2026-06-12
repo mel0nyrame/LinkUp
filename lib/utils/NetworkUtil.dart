@@ -50,6 +50,8 @@ class NetworkUtil {
           return '其他网络';
         case ConnectivityResult.none:
           return '无网络连接';
+        case ConnectivityResult.satellite:
+          return '卫星网络';
       }
     } catch (e) {
       return '未知';
