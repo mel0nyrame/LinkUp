@@ -30,7 +30,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate JSON serializable code
-        run: flutter pub run build_runner build --delete-conflicting-outputs
+        run: flutter pub run build_runner build
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib/ test/
