@@ -35,6 +35,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   // 加载配置
   Future<void> _loadConfig() async {
     final config = await ConfigUtil.loadConfig();
+    if (!mounted) return;
     if (config != null) {
       setState(() {
         _autoAcid = config['auto_acid'] ?? true;
@@ -45,7 +46,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
     }
   }
 
-  // 保存配置
+  // 保存配置（仅写文件，不调用 setState/Context，无需 mounted 守卫）
   Future<void> _saveConfig() async {
     final config = await ConfigUtil.loadConfig();
     if (config != null) {
@@ -62,6 +63,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   // 保存认证服务器
   Future<void> _saveAuthServer() async {
     final config = await ConfigUtil.loadConfig();
+    if (!mounted) return;
     if (config != null) {
       await ConfigUtil.saveConfig(
         username: config['username'] ?? '',

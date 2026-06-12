@@ -38,6 +38,7 @@ class _AccountcartState extends State<AccountCard> {
   // 加载当前配置
   Future<void> _loadCurrentConfig() async {
     final config = await ConfigUtil.loadConfig();
+    if (!mounted) return;
     if (config != null) {
       setState(() {
         _usernameCtrl.text = config['username'] ?? '';
@@ -76,6 +77,7 @@ class _AccountcartState extends State<AccountCard> {
       userType: _userTypeCtrl.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (success) {
@@ -115,11 +117,13 @@ class _AccountcartState extends State<AccountCard> {
     );
 
     if (confirm != true) return;
+    if (!mounted) return;
 
     setState(() => _isLoading = true);
 
     final success = await ConfigUtil.deleteConfig();
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (success) {

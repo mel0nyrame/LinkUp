@@ -122,21 +122,20 @@ class UpdateUtil {
   }
 
   /// 语义化版本比较，current < latest 返回 true
+  /// 容忍非数字组件（pre-release 后缀、4 段版本号）：用 int.tryParse 缺位补 0
+  /// 不需要 try/catch（int.tryParse 返回 null 而非抛异常）
   static bool _shouldUpdate(String current, String latest) {
-    try {
-      final cp = current.split('.').map(int.parse).toList();
-      final lp = latest.split('.').map(int.parse).toList();
-      for (int i = 0; i < 3; i++) {
-        final c = i < cp.length ? cp[i] : 0;
-        final l = i < lp.length ? lp[i] : 0;
-        if (l > c) return true;
-        if (l < c) return false;
-      }
-      return false;
-    } catch (_) {
-      // 版本号解析失败，保守处理：不提示更新
-      return false;
+    final cp = current.split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    final lp = latest.split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    // 取最大段数，缺位以 0 补齐，避免 1.0 vs 1.0.1 误判
+    final maxLen = cp.length > lp.length ? cp.length : lp.length;
+    for (int i = 0; i < maxLen; i++) {
+      final c = i < cp.length ? cp[i] : 0;
+      final l = i < lp.length ? lp[i] : 0;
+      if (l > c) return true;
+      if (l < c) return false;
     }
+    return false;
   }
 
   /// 下载并安装 APK（仅 Android）
