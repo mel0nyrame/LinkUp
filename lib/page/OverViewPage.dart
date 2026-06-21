@@ -381,9 +381,7 @@ class _OverviewPageState extends State<OverviewPage> {
             Divider(color: Colors.black.withOpacity(0.06), height: 1),
             ...devices.asMap().entries.map((e) {
               final d = e.value;
-              final isApple = (d.osName?.contains('iPhone') ?? false) ||
-                  (d.osName?.contains('Mac') ?? false) ||
-                  (d.osName?.contains('iPad') ?? false);
+              final (icon, bgColor, iconColor) = _deviceIconAndColor(d.osName);
               return Padding(
                 padding: EdgeInsets.only(top: e.key == 0 ? 8 : 6, bottom: 4),
                 child: Row(
@@ -392,16 +390,10 @@ class _OverviewPageState extends State<OverviewPage> {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: isApple
-                            ? Colors.black.withOpacity(0.8)
-                            : MyApp.iosGreen.withOpacity(0.15),
+                        color: bgColor,
                         borderRadius: BorderRadius.circular(7),
                       ),
-                      child: Icon(
-                        isApple ? Icons.phone_iphone : Icons.smartphone,
-                        color: isApple ? Colors.white : MyApp.iosGreen,
-                        size: 16,
-                      ),
+                      child: Icon(icon, color: iconColor, size: 16),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -447,5 +439,30 @@ class _OverviewPageState extends State<OverviewPage> {
         ],
       ),
     );
+  }
+
+  /// 返回 (图标, 背景色, 图标色) 三元组
+  (IconData, Color, Color) _deviceIconAndColor(String? osName) {
+    if (osName == null) return (Icons.devices_other, Colors.grey.shade200, Colors.grey);
+    final os = osName.toLowerCase();
+    if (os.contains('iphone') || os.contains('ios ')) {
+      return (Icons.phone_iphone, Colors.black.withOpacity(0.8), Colors.white);
+    }
+    if (os.contains('ipad')) {
+      return (Icons.tablet_mac, Colors.black.withOpacity(0.8), Colors.white);
+    }
+    if (os.contains('mac')) {
+      return (Icons.laptop_mac, Colors.black.withOpacity(0.8), Colors.white);
+    }
+    if (os.contains('android')) {
+      return (Icons.phone_android, MyApp.iosGreen.withOpacity(0.15), MyApp.iosGreen);
+    }
+    if (os.contains('windows')) {
+      return (Icons.laptop_windows, const Color(0xFF0078D4).withOpacity(0.15), const Color(0xFF0078D4));
+    }
+    if (os.contains('linux')) {
+      return (Icons.terminal, Colors.orange.withOpacity(0.15), Colors.orange);
+    }
+    return (Icons.devices_other, Colors.grey.shade200, Colors.grey);
   }
 }
