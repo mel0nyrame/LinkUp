@@ -26,13 +26,6 @@ class AcidDetector {
     caseSensitive: false,
   );
 
-  // TODO: 从登录页 HTML 提取 IP（参考 BitSrunLoginGo DetectIp），暂未实现
-  // ignore: unused_field
-  static final RegExp _ipInHtmlReg = RegExp(
-    r'ip\s*:\s*[\x27\x22](.+?)[\x27\x22]',
-    caseSensitive: false,
-  );
-
   /// 多个检测入口地址（优先级排序）
   static const List<String> _detectUrls = [
     'http://www.msftconnecttest.com/connecttest.txt',  // Windows
@@ -141,6 +134,7 @@ class AcidDetector {
     try {
       final startUrl = Uri.parse(url);
       String? detectedAcid;
+      String? localAcidUrl; // 本地变量暂存，与 _cachedPage 原子写入避免并发污染
       bool isOnline = false;
 
       final (res, body, err) = await _followRedirect(
@@ -152,7 +146,7 @@ class AcidDetector {
             detectedAcid = _extractAcidFromQuery(addr);
             if (detectedAcid != null) {
               LogUtil.info('[AcidDetector] Reality: URL 中捕获 ACID=$detectedAcid');
-              _cachedPageUrl = addr.toString();
+              localAcidUrl = addr.toString();
             }
           }
           // 不再用 host 匹配提前判定「在线」，由响应内容统一判定
@@ -164,9 +158,13 @@ class AcidDetector {
         return (null, false, err);
       }
 
-      // 缓存页面内容
+      // 缓存页面内容和对应 URL — 原子写入，防止并发 reality() 调用中
+      // _cachedPage 来自请求 A 而 _cachedPageUrl 来自请求 B
       if (body != null) {
         _cachedPage = body;
+        if (localAcidUrl != null) {
+          _cachedPageUrl = localAcidUrl;
+        }
       }
 
       // 判断是否在线：host 必须匹配，且响应体不含 portal 特征
