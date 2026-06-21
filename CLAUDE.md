@@ -22,7 +22,7 @@ flutter build apk --release
 flutter test
 
 # 生成 JSON 序列化代码（修改 RadUserInfo 后需要）
-flutter pub run build_runner build
+flutter pub run build_runner build --delete-conflicting-outputs
 
 # 更新应用图标
 flutter pub run flutter_launcher_icons
@@ -52,7 +52,8 @@ flutter pub run flutter_launcher_icons
    - `SrunEncrypt.getInfo()` - XXTEA 加密 + 自定义 Base64 编码用户信息
    - `SrunEncrypt.Chkstr()` + `Sha1()` - 生成校验和
    - HTTP GET 发送登录请求，解析 JSONP 响应
-6. 如果开启自动 ACID，`AcidDetector` 先通过 HTTP 重定向链探测正确的 ACID 值
+   - 如果开启自动 ACID，步骤内先通过 `AcidDetector` HTTP 重定向链探测 ACID + enc 版本
+6. `SrunClient.getUserInfo()` - 登录后再次调用确认在线状态（仅凭 srun_portal 返回不可靠）
 
 ### 网络监控
 
@@ -138,9 +139,9 @@ flutter pub run flutter_launcher_icons
 
 - **标准字母表**: `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/`
 - **深澜字母表**: `LVoJPiCN2R8G90yg+hmFHuacZ1OWMnrsSTXkYpUq/3dlbfKwv6xztjI7DeBE45QA`
-- **实现方式**: 先用标准 Base64 编码，再逐字符映射替换（本项目）；BitSrunLoginGo 中直接使用自定义字母表实现 Base64 编码
+- **实现方式**: 先用标准 Base64 编码，移除 `=` 填充符，再逐字符映射替换（本项目）；BitSrunLoginGo 中直接使用自定义字母表实现 Base64 编码
 
-**本项目实现路径**: `SrunEncrypt._customBase64Encode()` → 先 `base64.encode()` 再映射表替换
+**本项目实现路径**: `SrunEncrypt._customBase64Encode()` → `base64.encode()` → `replaceAll('=', '')` → 映射表替换
 **BitSrunLoginGo 实现路径**: `XBase64.go` → 直接用自定义字母表实现 3 字节→4 字符的 Base64 编码
 
 #### ACID 自动探测策略
@@ -169,9 +170,9 @@ flutter pub run flutter_launcher_icons
 4. `http://detectportal.firefox.com/canonical.html` (Firefox)
 5. `http://www.baidu.com` (通用 fallback)
 
-**BitSrunLoginGo 额外特性**（本项目暂未实现）：
-- `DetectEnc()`: 自动检测加密版本号（从 Portal JS 文件提取 `var enc = ...`）
-- `DetectIp()`: 从登录页 HTML 提取 IP（正则 `ip\s*:\s*"(.+)"`）
+**BitSrunLoginGo 额外特性**（本项目实现状态）：
+- `DetectEnc()`: ✅ 已实现，从 Portal JS 文件提取 `var enc = ...`
+- `DetectIp()`: ❌ 暂未实现，从登录页 HTML 提取 IP
 - 使用自定义 `CheckRedirect` 返回 `http.ErrUseLastResponse` 禁用自动重定向
 
 #### 加密算法速查
@@ -226,12 +227,12 @@ flutter pub run flutter_launcher_icons
 - 认证服务器返回 JSONP 格式（`jQueryCallback({...})`），不是纯 JSON，需要先提取括号内容再解析
 - SDK 环境使用开发版 `^3.12.0-239.0.dev`（pubspec.yaml），与其他环境的兼容性需注意
 - `RadUserInfo` 的 JSON 字段名使用大驼峰和下划线混用（如 `ServerFlag` 和 `add_time`），`@JsonKey` 注解做了映射
-- 测试文件 `widget_test.dart` 是 Flutter 默认模板，尚未更新为实际项目测试
+- 测试文件 `widget_test.dart` 包含 Widget 冒烟测试和 HMAC-MD5 / SHA1 已知答案验证
 
 ### 协议实现注意事项
 
 - **编码**: 深澜协议中所有字符串操作基于 **Latin-1 (ISO-8859-1)** 编码，不是 UTF-8。本项目 `SrunEncrypt` 中使用 `latin1.encode()` 处理所有加密输入；处理中文用户名时需特别小心（但通常校园网账号是数字/字母）
-- **JSONP callback**: 返回格式为 `jQuery随机数字_时间戳({...})`，`SrunClient` 通过 `_extractJsonFromJsonp` 去掉外层包裹后解析，`SrunLogin.doRequest` 通过查找首尾括号位置来提取 JSON
+- **JSONP callback**: 返回格式为 `jQuery随机数字_时间戳({...})`，`SrunClient` 通过 `_extractJsonFromJsonp` 严格提取，`SrunLogin.doRequest` 使用 callback 前缀 + 括号回退两阶段提取
 - **密码格式**: 登录请求中 password 参数需加 `{MD5}` 前缀：`{MD5}hmd5value`
 - **Info 前缀**: 加密后的 info 参数需加 `{SRBX1}` 协议头前缀，表示使用 XXTEA + 自定义 Base64 加密
 - **登录结果不可靠**: `srun_portal` 返回 `error: "ok"` 不代表真正在线，必须再次调用 `rad_user_info` 确认
