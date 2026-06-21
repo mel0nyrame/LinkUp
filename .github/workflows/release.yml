@@ -39,7 +39,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate JSON serializable code
-        run: flutter pub run build_runner build
+        run: flutter pub run build_runner build --delete-conflicting-outputs
 
       - name: Run tests
         run: flutter test
@@ -91,7 +91,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate JSON serializable code
-        run: flutter pub run build_runner build
+        run: flutter pub run build_runner build --delete-conflicting-outputs
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
@@ -120,7 +120,7 @@ jobs:
         run: |
           # 拿到上一个 release-v* tag 与当前 tag 之间的 commits
           CURRENT="${{ steps.version.outputs.tag }}"
-          PREV=$(git tag --sort=-creatordate | grep -E '^release-v' | grep -v "^$CURRENT$" | head -1 || echo "")
+          PREV=$(git tag --sort=-creatordate | grep -E '^release-v' | grep -v -x -F "$CURRENT" | head -1 || echo "")
           {
             echo "## 📦 LinkUp ${{ steps.version.outputs.version }}"
             echo ""
