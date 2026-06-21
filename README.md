@@ -13,7 +13,7 @@
 
 - 🔐 **自动认证**：支持深澜协议自动登录校园网
 - 🔄 **智能重连**：网络断开时自动检测并重连，无需手动操作
-- 🔍 **ACID自动探测**：自动尝试 1-20 范围内的 ACID 值，适配不同网络环境
+- 🔍 **ACID自动探测**：通过 HTTP 重定向链自动探测接入点 ID，无需手动尝试
 - 📊 **状态监控**：实时显示在线状态、IP地址、流量统计、在线时长等信息
 - 📱 **后台保活**：支持后台持续运行，切换应用不影响监控
 - ⚡ **开机自启**：支持开机自动启动（Android）
@@ -50,8 +50,7 @@ flutter pub get
 # 构建 Android APK
 flutter build apk --release
 
-# 或构建 iOS 应用（需要 macOS 和 Xcode）
-flutter build ios --release
+# iOS 暂不支持
 ```
 
 ## 使用说明
@@ -61,7 +60,7 @@ flutter build ios --release
 1. 首次启动应用会弹出配置对话框
 2. 输入学号/工号和密码
 3. 选择 ACID 模式：
-   - **自动获取**：自动尝试 1-20 寻找可用接入点
+   - **自动获取**：通过 HTTP 重定向链自动探测当前网络接入点
    - **手动指定**：手动输入 ACID 值（常见值：1, 2, 5, 11, 15）
 4. 点击保存并进入
 
@@ -98,23 +97,30 @@ lib/
 │   ├── OverViewPage.dart        # 概况页（主页面）
 │   └── SettingsPage.dart        # 设置页
 ├── components/
-│   ├── AccountCart.dart         # 账号信息卡片
-│   ├── NetWorkConfig.dart       # 网络配置卡片
-│   ├── SystemSettingsCard.dart  # 系统设置卡片
-│   ├── StatusCard.dart          # 状态卡片
-│   ├── InfoDataRow.dart         # 数据行组件
+│   ├── AccountCard.dart         # 账号信息卡片
 │   ├── DeviceInfoRow.dart       # 设备信息行组件
-│   └── InformationCart.dart     # 信息卡片组件
+│   ├── FirstSetupDialog.dart    # 首次配置对话框
+│   ├── GlassCard.dart           # 玻璃效果卡片
+│   ├── InfoCard.dart            # 信息卡片
+│   ├── InfoDataRow.dart         # 数据行组件
+│   ├── LogViewerCard.dart       # 日志查看卡片
+│   ├── NetWorkConfig.dart       # 网络配置卡片
+│   ├── OnlineDevicesCard.dart   # 在线设备卡片
+│   ├── StatusCard.dart          # 状态卡片
+│   ├── SystemSettingsCard.dart  # 系统设置卡片
+│   └── UpdateDialog.dart        # 更新对话框
 └── utils/
+    ├── AcidDetector.dart        # ACID 自动探测
+    ├── ChallengeResponse.dart   # Challenge 响应模型
     ├── ConfigUtil.dart          # 配置存储工具
-    ├── NetworkUtil.dart         # 网络状态检测
-    ├── SrunClient.dart          # 深澜 API 客户端
-    ├── SrunLogin.dart           # 登录逻辑
-    ├── SrunEncrypt.dart         # 加密/校验工具
-    ├── SystemSettingsUtil.dart  # 系统设置工具
     ├── LogUtil.dart             # 日志工具
+    ├── NetworkUtil.dart         # 网络状态检测
     ├── RadUserInfo.dart         # 用户信息数据模型
-    └── ChallengeResponse.dart   # Challenge 响应数据模型
+    ├── SrunClient.dart          # 深澜 API 客户端
+    ├── SrunEncrypt.dart         # 加密/校验工具
+    ├── SrunLogin.dart           # 登录逻辑编排
+    ├── SystemSettingsUtil.dart  # 系统设置工具
+    └── UpdateUtil.dart          # 应用更新检查
 ```
 
 ## 常见问题
