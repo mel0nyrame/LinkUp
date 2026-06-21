@@ -97,12 +97,8 @@ class SrunLogin {
     final msgLower = errorMsg.toLowerCase();
     final resLower = res.toLowerCase();
 
-    // 已经在线 — 严格使用 error == 'ok' 精确匹配，
-    // 防止 "Service ok timeout" 等含 'ok' 子串的错误消息被误归类
-    if (error == 'ok' &&
-        (resLower.contains('login_ok') || resLower.contains('already'))) {
-      return LoginErrorType.alreadyOnline;
-    }
+    // 注意：alreadyOnline 检测已移至 srucPortalLogin 成功路径 (error == 'ok' 时先判断)，
+    // _analyzeErrorType 仅在失败分支被调用，已不可能进入 error == 'ok' 的分支
 
     // 账号密码错误 - 包含常见错误码
     if (msgLower.contains('password') ||
@@ -210,6 +206,12 @@ class SrunLogin {
         }
         return '认证服务器暂时不可用。可能原因：\n1. 服务器维护中\n2. 服务器负载过高\n建议稍后再试，或联系网络中心咨询。';
 
+      case LoginErrorType.networkError:
+        return '无法连接到认证服务器。请检查：\n1. 是否已连接到校园网 WiFi\n2. 网络信号是否稳定\n3. 认证服务器地址是否正确';
+
+      case LoginErrorType.parseError:
+        return '服务器返回了非预期格式的数据。可能原因：\n1. 网络不稳定导致响应截断\n2. 认证服务器异常\n建议稍后重试或检查认证服务器地址是否正确';
+
       default:
         // 尝试从 res 中解析错误码
         if (res.isNotEmpty && res.startsWith('E')) {
@@ -238,7 +240,7 @@ class SrunLogin {
         encVer: encVer,
       );
 
-      Object info = SrunEnrypt.getInfo(infoObj.toJson(), token);
+      String info = SrunEnrypt.getInfo(infoObj.toJson(), token);
 
       String chkStr = SrunEnrypt.Chkstr(
         token,
@@ -248,7 +250,7 @@ class SrunLogin {
         ip,
         client.n,
         client.enc,
-        info.toString(),
+        info,
       );
 
       String chkSum = SrunEnrypt.Sha1(chkStr);
@@ -304,6 +306,21 @@ class SrunLogin {
       LogUtil.info(
         '解析结果: error=$error, errorMsg=$errorMsg, sucMsg=$sucMsg, res=$res',
       );
+
+      final resLower = res.toLowerCase();
+
+      // 已经在线 — error == 'ok' 但 res 指示本次登录是冗余操作。
+      // 必须先于通用成功检查，否则会被误归类为普通 success
+      if (error == 'ok' &&
+          (resLower.contains('login_ok') || resLower.contains('already_online'))) {
+        return LoginResult(
+          success: true,
+          message: '已经在线，无需重复登录',
+          errorType: LoginErrorType.alreadyOnline,
+          rawData: result,
+          res: res,
+        );
+      }
 
       // 检查登录结果
       // error == 'ok' 表示成功，或者 suc_msg == 'login_ok' 表示成功
