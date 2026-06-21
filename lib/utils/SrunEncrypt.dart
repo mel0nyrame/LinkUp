@@ -152,13 +152,7 @@ class SrunEnrypt {
       map[_standardAlpha[i]] = _customAlpha[i];
     }
 
-    // 去除标准 Base64 的 '=' 填充符：深澜自定义字母表仅 64 字符不含 '='，
-    // BitSrunLoginGo 的自定义 Base64 实现也直接无填充编码
-    return standard
-        .replaceAll('=', '')
-        .split('')
-        .map((c) => map[c] ?? c)
-        .join();
+    return standard.split('').map((c) => map[c] ?? c).join();
   }
 }
 

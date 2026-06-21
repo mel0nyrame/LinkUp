@@ -139,9 +139,9 @@ flutter pub run flutter_launcher_icons
 
 - **标准字母表**: `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/`
 - **深澜字母表**: `LVoJPiCN2R8G90yg+hmFHuacZ1OWMnrsSTXkYpUq/3dlbfKwv6xztjI7DeBE45QA`
-- **实现方式**: 先用标准 Base64 编码，移除 `=` 填充符，再逐字符映射替换（本项目）；BitSrunLoginGo 中直接使用自定义字母表实现 Base64 编码
+- **实现方式**: 先用标准 Base64 编码，再逐字符映射替换（本项目）；BitSrunLoginGo 中直接使用自定义字母表实现 Base64 编码
 
-**本项目实现路径**: `SrunEncrypt._customBase64Encode()` → `base64.encode()` → `replaceAll('=', '')` → 映射表替换
+**本项目实现路径**: `SrunEncrypt._customBase64Encode()` → `base64.encode()` → 映射表替换
 **BitSrunLoginGo 实现路径**: `XBase64.go` → 直接用自定义字母表实现 3 字节→4 字符的 Base64 编码
 
 #### ACID 自动探测策略
