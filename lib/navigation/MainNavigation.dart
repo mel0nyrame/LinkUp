@@ -141,6 +141,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       final authServer = config['auth_server'] as String? ?? '10.129.1.1';
       if (client.host != authServer) {
         client.setHost(authServer);
+        SrunLogin.client.setHost(authServer);
         LogUtil.info('监控启动前同步认证服务器: $authServer');
       }
     } catch (e) {
@@ -223,8 +224,9 @@ class _MainNavigatorState extends State<MainNavigator> {
 
       LogUtil.info('Reality 检测结果: 在线=$isOnline, ACID=$detectedAcid, 错误=$err');
 
-      // 如果检测到 ACID，保存下来供后续使用
-      if (detectedAcid != null && detectedAcid.isNotEmpty) {
+      // 仅在线时保存检测到的 ACID 到配置，避免离线时从错误 captive portal
+      // 检测到错误 ACID 覆盖用户手动配置
+      if (isOnline && detectedAcid != null && detectedAcid.isNotEmpty) {
         _currentAcid = detectedAcid;
         // 保存到配置
         final config = await ConfigUtil.loadConfig();
@@ -233,10 +235,14 @@ class _MainNavigatorState extends State<MainNavigator> {
             username: config['username'] ?? '',
             password: config['password'] ?? '',
             acid: detectedAcid,
-            autoAcid: true,
+            autoAcid: config['auto_acid'] ?? true,
           );
           LogUtil.info('Reality 模式保存 ACID: $detectedAcid');
         }
+      } else if (detectedAcid != null && detectedAcid.isNotEmpty) {
+        // 离线时仅暂存到内存供本轮登录使用，不写入配置文件
+        _currentAcid = detectedAcid;
+        LogUtil.info('Reality 检测到 ACID（离线，仅内存暂存）: $detectedAcid');
       }
 
       if (isOnline) {
@@ -359,9 +365,11 @@ class _MainNavigatorState extends State<MainNavigator> {
     // 拼接用户名和运营商后缀
     final String username = userType.isNotEmpty ? '$rawUsername@$userType' : rawUsername;
 
-    // 设置认证服务器地址
+    // 设置认证服务器地址（MainNavigator 实例 + SrunLogin 静态实例同步更新，
+    // 避免 srucPortalLogin 内部使用 SrunLogin.client 时仍指向默认 host）
     if (client.host != authServer) {
       client.setHost(authServer);
+      SrunLogin.client.setHost(authServer);
       LogUtil.info('认证服务器地址已设置为: $authServer');
     }
 
@@ -531,13 +539,27 @@ class _MainNavigatorState extends State<MainNavigator> {
       return;
     }
 
-    // 7. 登录成功，刷新用户信息
-    LogUtil.info('登录成功，正在刷新用户信息...');
+    // 7. 登录成功，刷新用户信息并验证在线状态
+    // CLAUDE.md §在线状态验证：srun_portal 返回 error: "ok" 不代表真正在线，
+    // 必须再次调用 rad_user_info 确认
+    LogUtil.info('登录成功，正在验证在线状态...');
     final newInfo = await client.getUserInfo();
+
+    if (!newInfo.isOnline) {
+      // srun_portal 返回成功但 rad_user_info 显示不在线 — 服务器端可能未真正授权
+      LogUtil.warning('登录后验证失败：rad_user_info 返回不在线，srun_portal 结果不可靠');
+      setState(() {
+        _isOnline = false;
+        _statusMessage = '登录验证失败，将自动重试';
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       _isOnline = true;
       _userInfo = newInfo;
-      // 同步刷新 _userInfoAt 时间戳，确保 F2 5s staleness 校验对最新 userInfo 有效
+      // 同步刷新 _userInfoAt 时间戳，确保 5s staleness 校验对最新 userInfo 有效
       _userInfoAt = DateTime.now();
       _statusMessage = '登录成功';
       _isLoading = false;
@@ -578,7 +600,7 @@ class _MainNavigatorState extends State<MainNavigator> {
             username: config['username'] ?? '',
             password: config['password'] ?? '',
             acid: acid,
-            autoAcid: true,
+            autoAcid: config['auto_acid'] ?? true,
           );
           LogUtil.info('[MainNavigation] 已保存检测到的 ACID: $acid');
         }
