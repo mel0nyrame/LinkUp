@@ -24,8 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libc6:amd64 libstdc++6:amd64 zlib1g:amd64 \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Flutter SDK (master channel, needed for Dart ^3.12.0-239.0.dev) ──
-RUN git clone --depth 1 --branch master \
+# ── Flutter SDK (stable 3.32.x) ──
+# master channel 当前 commit 状态不稳定（MaterialDynamicColors 未定义），
+# 改用 stable tag 3.32.0 配套 Dart 3.6.x。
+RUN git clone --depth 1 --branch 3.32.0 \
     https://github.com/flutter/flutter.git $FLUTTER_HOME \
     && flutter --version
 

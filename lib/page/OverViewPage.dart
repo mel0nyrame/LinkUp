@@ -13,6 +13,7 @@ class OverviewPage extends StatefulWidget {
   final String? currentAcid;
   final RadUserInfo? userInfo;
   final VoidCallback? onRefresh;
+  final Future<bool> Function(String targetIp)? onKickDevice;
 
   const OverviewPage({
     super.key,
@@ -22,6 +23,7 @@ class OverviewPage extends StatefulWidget {
     this.currentAcid,
     this.userInfo,
     this.onRefresh,
+    this.onKickDevice,
   });
 
   @override
@@ -63,6 +65,56 @@ class _OverviewPageState extends State<OverviewPage> {
     if (days > 0) return '${days}天${hrs}小时${mins}分';
     if (hrs > 0) return '${hrs}小时${mins}分';
     return '${mins}分钟';
+  }
+
+  /// 判断指定设备是否应该显示「踢」按钮
+  /// 三个条件全部满足：账号在线、设备总数 >= 2、设备不是当前自己
+  bool _shouldShowKickButton(OnlineDevice device) {
+    final info = widget.userInfo;
+    if (info == null) return false;
+    if (!widget.isOnline) return false;
+    final total = int.tryParse(info.onlineDeviceTotal ?? '0') ?? 0;
+    if (total < 2) return false;
+    if (device.ip != null && device.ip == info.clientIp) return false;
+    return true;
+  }
+
+  Future<void> _showKickConfirmDialog(OnlineDevice device) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认踢设备'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(device.osName ?? '未知设备'),
+            const SizedBox(height: 4),
+            Text(
+              device.ip ?? '-',
+              style: const TextStyle(
+                color: MyApp.iosSecondaryText,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: MyApp.iosRed),
+            child: const Text('确认踢'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && widget.onKickDevice != null) {
+      await widget.onKickDevice!(device.ip ?? '');
+    }
   }
 
   @override
@@ -431,6 +483,28 @@ class _OverviewPageState extends State<OverviewPage> {
                         ),
                       ),
                     ),
+                    if (_shouldShowKickButton(d))
+                      TextButton.icon(
+                        onPressed: () => _showKickConfirmDialog(d),
+                        icon: const Icon(
+                          Icons.logout,
+                          size: 14,
+                          color: MyApp.iosRed,
+                        ),
+                        label: const Text(
+                          '踢',
+                          style: TextStyle(
+                            color: MyApp.iosRed,
+                            fontSize: 13,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
                   ],
                 ),
               );
