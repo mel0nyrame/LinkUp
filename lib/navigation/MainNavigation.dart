@@ -776,6 +776,66 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
   }
 
+  // 踢设备下线 — 通过 DM 接口强制解绑账号下的指定 IP
+  Future<bool> _kickDevice(String targetIp) async {
+    try {
+      final config = await ConfigUtil.loadConfig();
+      if (config == null) {
+        LogUtil.error('踢设备失败: 配置不存在 (targetIp=$targetIp)');
+        return false;
+      }
+      final rawUsername = config['username'] ?? '';
+      final userType = config['user_type'] ?? '';
+      final username =
+          userType.isNotEmpty ? '$rawUsername@$userType' : rawUsername;
+
+      final success = await SrunLogin.client.dmLogout(
+        username: username,
+        ip: targetIp,
+      );
+
+      if (!mounted) return success;
+
+      if (success) {
+        LogUtil.info('踢设备成功: $targetIp');
+        final newInfo = await client.getUserInfo();
+        if (mounted && newInfo.isOnline) {
+          setState(() {
+            _userInfo = newInfo;
+            _userInfoAt = DateTime.now();
+          });
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已踢 $targetIp'),
+            backgroundColor: MyApp.iosGreen,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        LogUtil.error('踢设备失败: $targetIp (服务端返回非 ok)');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('踢人失败：服务器返回错误'),
+            backgroundColor: MyApp.iosRed,
+          ),
+        );
+      }
+      return success;
+    } catch (e, stackTrace) {
+      LogUtil.error('踢设备异常: $targetIp', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('踢人失败：$e'),
+            backgroundColor: MyApp.iosRed,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   // 手动触发登录（下拉刷新）
   Future<void> _manualLogin() async {
     LogUtil.info('用户手动触发登录（下拉刷新）');
@@ -834,6 +894,7 @@ class _MainNavigatorState extends State<MainNavigator> {
                 currentAcid: _currentAcid,
                 userInfo: _userInfo,
                 onRefresh: () => _manualLogin(),
+                onKickDevice: _kickDevice,
               ),
               const SettingsPage(),
             ],

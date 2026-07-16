@@ -416,7 +416,7 @@ class SrunLogin {
       queryParameters: Map<String, String>.from(fullUri.queryParameters.map(
         (key, value) => MapEntry(
           key,
-          key == 'password' ? '****' : value,
+          (key == 'password' || key == 'sign') ? '****' : value,
         ),
       )),
     );
