@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">LinkUp — 深澜校园网自动认证客户端</title>
+  <desc id="desc">连接校园 Wi-Fi 后，LinkUp 自动探测接入点、完成深澜认证，并持续监控网络状态。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071526"/>
+      <stop offset="1" stop-color="#0B2442"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#13D7EA"/>
+      <stop offset="1" stop-color="#4A63FF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="420" rx="30" fill="url(#bg)"/>
+  <path d="M0 326C210 273 340 345 520 294S822 170 1200 246V420H0Z" fill="#0D2D50" opacity=".72"/>
+
+  <g transform="translate(64 58)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
+    <text x="0" y="20" fill="#73DCE8" font-size="18" font-weight="700" letter-spacing="2.4">SRUN · ANDROID</text>
+    <text x="0" y="112" fill="#F5FAFF" font-size="82" font-weight="760" letter-spacing="-3">LinkUp</text>
+    <text x="0" y="164" fill="#D8E6F2" font-size="28" font-weight="600">让校园网认证，在后台自己完成。</text>
+    <text x="0" y="208" fill="#91A9BE" font-size="21">自动探测 ACID · 断网自动重连 · 在线状态监控</text>
+
+    <g transform="translate(0 252)" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18">
+      <rect width="122" height="40" rx="20" fill="#123957"/>
+      <circle cx="22" cy="20" r="6" fill="#37D67A"/>
+      <text x="38" y="26" fill="#DDF8E8">已连接</text>
+      <rect x="138" width="124" height="40" rx="20" fill="#123957"/>
+      <text x="158" y="26" fill="#B9CAD8">v1.0.7</text>
+    </g>
+  </g>
+
+  <g transform="translate(730 43)">
+    <rect x="0" y="0" width="406" height="334" rx="36" fill="#F8FBFF"/>
+    <rect x="18" y="18" width="370" height="298" rx="25" fill="#ECF5FD"/>
+    <text x="42" y="56" fill="#14283D" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="22" font-weight="750">网络监控中</text>
+    <circle cx="340" cy="49" r="7" fill="#37C86B"/>
+
+    <g transform="translate(203 144)" fill="none" stroke="url(#signal)" stroke-linecap="round">
+      <path d="M-116 -25Q0 -130 116 -25" stroke-width="30"/>
+      <path d="M-67 32Q0 -29 67 32" stroke-width="30"/>
+    </g>
+    <circle cx="203" cy="203" r="19" fill="#4A63FF"/>
+
+    <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="17">
+      <text x="42" y="268" fill="#557087">PORTAL</text>
+      <path d="M120 263H196" stroke="#97ADBF" stroke-width="2" stroke-dasharray="5 6"/>
+      <circle cx="208" cy="263" r="6" fill="#13C7DD"/>
+      <path d="M220 263H290" stroke="#97ADBF" stroke-width="2" stroke-dasharray="5 6"/>
+      <text x="302" y="268" fill="#248957">ONLINE</text>
+    </g>
+  </g>
+</svg>

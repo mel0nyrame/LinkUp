@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+  <title id="title">LinkUp 自动认证流程</title>
+  <desc id="desc">从检测校园 Wi-Fi、探测 ACID、获取 Challenge、完成加密认证，到持续监控并在断线时重新开始。</desc>
+  <rect width="1200" height="330" rx="28" fill="#071526"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
+    <text x="58" y="62" fill="#F4F9FE" font-size="36" font-weight="760">一次配置，持续在线</text>
+    <text x="58" y="96" fill="#829CB3" font-size="19">LinkUp 将深澜认证链路收拢为后台循环</text>
+
+    <g transform="translate(58 144)">
+      <path d="M86 46H242M314 46H470M542 46H698M770 46H926" stroke="#31506B" stroke-width="3" stroke-dasharray="8 8"/>
+      <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" text-anchor="middle">
+        <g transform="translate(0)">
+          <circle cx="46" cy="46" r="46" fill="#0E3551" stroke="#13C7DD" stroke-width="2"/>
+          <text x="46" y="53" fill="#72E5F0" font-size="22" font-weight="700">Wi-Fi</text>
+          <text x="46" y="124" fill="#C8D7E3" font-size="19">检测网络</text>
+        </g>
+        <g transform="translate(228)">
+          <circle cx="46" cy="46" r="46" fill="#0E3551" stroke="#27A9F5" stroke-width="2"/>
+          <text x="46" y="53" fill="#7DC8FF" font-size="22" font-weight="700">ACID</text>
+          <text x="46" y="124" fill="#C8D7E3" font-size="19">探测接入点</text>
+        </g>
+        <g transform="translate(456)">
+          <circle cx="46" cy="46" r="46" fill="#0E3551" stroke="#4688FF" stroke-width="2"/>
+          <text x="46" y="53" fill="#91B2FF" font-size="20" font-weight="700">TOKEN</text>
+          <text x="46" y="124" fill="#C8D7E3" font-size="19">获取 Challenge</text>
+        </g>
+        <g transform="translate(684)">
+          <circle cx="46" cy="46" r="46" fill="#0E3551" stroke="#636BFF" stroke-width="2"/>
+          <text x="46" y="53" fill="#A7ABFF" font-size="19" font-weight="700">AUTH</text>
+          <text x="46" y="124" fill="#C8D7E3" font-size="19">加密并认证</text>
+        </g>
+        <g transform="translate(912)">
+          <circle cx="46" cy="46" r="46" fill="#103D35" stroke="#37D67A" stroke-width="2"/>
+          <circle cx="46" cy="46" r="11" fill="#37D67A"/>
+          <text x="46" y="124" fill="#C8D7E3" font-size="19">监控与重连</text>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

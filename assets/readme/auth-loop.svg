@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="610" viewBox="0 0 1200 610" role="img" aria-labelledby="title desc">
+  <title id="title">LinkUp 深澜认证与自动重连闭环</title>
+  <desc id="desc">LinkUp 检测 Wi-Fi、读取配置并查询在线状态；离线时探测 ACID、获取 Challenge、在本地生成认证参数、提交登录，再次确认在线。监控发现断线后重新进入流程。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071526"/>
+      <stop offset="1" stop-color="#0B2442"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#54738E"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#37D67A"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="610" rx="30" fill="url(#bg)"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
+    <text x="58" y="61" fill="#F4F9FE" font-size="36" font-weight="760">认证不是一次请求，而是一个闭环</text>
+    <text x="58" y="96" fill="#829CB3" font-size="19">登录前先判断，登录后再确认；断线时从头恢复</text>
+
+    <g fill="none" stroke="#54738E" stroke-width="3" marker-end="url(#arrow)">
+      <path d="M210 181H270"/>
+      <path d="M448 181H508"/>
+      <path d="M686 181H746"/>
+      <path d="M835 235V292"/>
+      <path d="M746 347H686"/>
+      <path d="M508 347H448"/>
+      <path d="M270 347H210"/>
+    </g>
+
+    <g transform="translate(58 132)">
+      <rect width="152" height="98" rx="22" fill="#0D304B" stroke="#13C7DD" stroke-width="2"/>
+      <text x="76" y="43" fill="#75E6F0" font-size="21" font-weight="720" text-anchor="middle">检测 Wi-Fi</text>
+      <text x="76" y="71" fill="#8FAABE" font-size="18" text-anchor="middle">确认网络可用</text>
+    </g>
+    <g transform="translate(270 132)">
+      <rect width="178" height="98" rx="22" fill="#0D304B" stroke="#25ADF3" stroke-width="2"/>
+      <text x="89" y="43" fill="#89D0FF" font-size="21" font-weight="720" text-anchor="middle">读取配置</text>
+      <text x="89" y="71" fill="#8FAABE" font-size="18" text-anchor="middle">账号 · 服务器</text>
+    </g>
+    <g transform="translate(508 132)">
+      <rect width="178" height="98" rx="22" fill="#0D304B" stroke="#4688FF" stroke-width="2"/>
+      <text x="89" y="43" fill="#A7C0FF" font-size="21" font-weight="720" text-anchor="middle">查询在线状态</text>
+      <text x="89" y="71" fill="#8FAABE" font-size="18" text-anchor="middle">rad_user_info</text>
+    </g>
+
+    <g transform="translate(746 132)">
+      <path d="M89 0L178 49L89 98L0 49Z" fill="#12374B" stroke="#37D67A" stroke-width="2"/>
+      <text x="89" y="44" fill="#C6F5D9" font-size="21" font-weight="720" text-anchor="middle">已经在线？</text>
+      <text x="89" y="69" fill="#78D69E" font-size="18" text-anchor="middle">状态分支</text>
+    </g>
+
+    <path d="M924 181H1053V467H982" fill="none" stroke="#37D67A" stroke-width="3" marker-end="url(#arrowGreen)"/>
+    <text x="946" y="166" fill="#62DB91" font-size="18" font-weight="700">是</text>
+    <text x="850" y="270" fill="#91A9BE" font-size="18" font-weight="700">否</text>
+
+    <g transform="translate(746 298)">
+      <rect width="178" height="98" rx="22" fill="#102D4B" stroke="#636BFF" stroke-width="2"/>
+      <text x="89" y="43" fill="#B6B9FF" font-size="21" font-weight="720" text-anchor="middle">探测 ACID</text>
+      <text x="89" y="71" fill="#8FAABE" font-size="18" text-anchor="middle">Portal 重定向</text>
+    </g>
+    <g transform="translate(508 298)">
+      <rect width="178" height="98" rx="22" fill="#102D4B" stroke="#5974FF" stroke-width="2"/>
+      <text x="89" y="43" fill="#AFB9FF" font-size="21" font-weight="720" text-anchor="middle">获取 Challenge</text>
+      <text x="89" y="71" fill="#8FAABE" font-size="18" text-anchor="middle">认证 Token</text>
+    </g>
+    <g transform="translate(270 298)">
+      <rect width="178" height="98" rx="22" fill="#102D4B" stroke="#4688FF" stroke-width="2"/>
+      <text x="89" y="40" fill="#A7C0FF" font-size="21" font-weight="720" text-anchor="middle">本地生成参数</text>
+      <text x="89" y="68" fill="#8FAABE" font-size="18" text-anchor="middle">HMAC · XXTEA</text>
+    </g>
+    <g transform="translate(58 298)">
+      <rect width="152" height="98" rx="22" fill="#102D4B" stroke="#25ADF3" stroke-width="2"/>
+      <text x="76" y="40" fill="#89D0FF" font-size="21" font-weight="720" text-anchor="middle">提交登录</text>
+      <text x="76" y="68" fill="#8FAABE" font-size="18" text-anchor="middle">srun_portal</text>
+    </g>
+
+    <path d="M134 396V467H290" fill="none" stroke="#54738E" stroke-width="3" marker-end="url(#arrow)"/>
+    <g transform="translate(290 424)">
+      <rect width="214" height="86" rx="22" fill="#0D304B" stroke="#4688FF" stroke-width="2"/>
+      <text x="107" y="38" fill="#A7C0FF" font-size="21" font-weight="720" text-anchor="middle">再次查询在线状态</text>
+      <text x="107" y="65" fill="#8FAABE" font-size="18" text-anchor="middle">不盲信登录响应</text>
+    </g>
+    <path d="M504 467H568" fill="none" stroke="#54738E" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g transform="translate(568 424)">
+      <rect width="178" height="86" rx="22" fill="#103D35" stroke="#37D67A" stroke-width="2"/>
+      <circle cx="35" cy="43" r="10" fill="#37D67A"/>
+      <text x="105" y="39" fill="#D2F8E0" font-size="21" font-weight="740" text-anchor="middle">确认在线</text>
+      <text x="105" y="65" fill="#79D69E" font-size="18" text-anchor="middle">认证完成</text>
+    </g>
+    <path d="M746 467H804" fill="none" stroke="#37D67A" stroke-width="3" marker-end="url(#arrowGreen)"/>
+
+    <g transform="translate(804 424)">
+      <rect width="178" height="86" rx="22" fill="#103D35" stroke="#37D67A" stroke-width="2"/>
+      <text x="89" y="38" fill="#D2F8E0" font-size="21" font-weight="740" text-anchor="middle">持续监控</text>
+      <text x="89" y="65" fill="#79D69E" font-size="18" text-anchor="middle">断线自动重连</text>
+    </g>
+
+    <path d="M893 510V553H134V526" fill="none" stroke="#54738E" stroke-width="3" stroke-dasharray="9 9" marker-end="url(#arrow)"/>
+    <rect x="469" y="536" width="154" height="34" rx="17" fill="#123957"/>
+    <text x="546" y="559" fill="#A8BDD0" font-size="17" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" text-anchor="middle">OFFLINE → RETRY</text>
+  </g>
+</svg>
