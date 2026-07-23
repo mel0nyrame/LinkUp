@@ -1,172 +1,144 @@
-# LinkUp - 校园网自动认证客户端
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="LinkUp：自动完成深澜校园网认证、断网重连与在线状态监控">
+</p>
 
-基于深澜(Srun)协议的校园网自动连接工具，支持自动检测网络状态、断网自动重连、后台持续监控等功能。
+<p align="center">
+  <a href="https://github.com/mel0nyrame/LinkUp/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/mel0nyrame/LinkUp?style=flat-square&color=247cff"></a>
+  <img alt="Platform: Android" src="https://img.shields.io/badge/platform-Android-34C759?style=flat-square">
+  <img alt="Built with Flutter" src="https://img.shields.io/badge/built%20with-Flutter-02569B?style=flat-square&logo=flutter&logoColor=white">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6f7f8f?style=flat-square"></a>
+</p>
+
+LinkUp 是一个面向 **深澜（Srun）校园网**的 Android 自动认证客户端。配置一次账号后，它会检测网络状态、自动探测 ACID、完成登录，并在断网时尝试重新连接。
+
+> [!NOTE]
+> LinkUp 是基于公开协议实现的第三方客户端，与深澜官方无关。
+
+## 界面预览
+
+<p align="center">
+  <a href="./assets/main_screen.jpg"><img src="./assets/main_screen.jpg" width="31%" alt="LinkUp 概况页，展示网络状态、在线设备和网络信息"></a>&nbsp;
+  <a href="./assets/setting_screen.jpg"><img src="./assets/setting_screen.jpg" width="31%" alt="LinkUp 设置页，展示账号信息和后台运行选项"></a>&nbsp;
+  <a href="./assets/setting_screen_2.jpg"><img src="./assets/setting_screen_2.jpg" width="31%" alt="LinkUp 网络配置页，展示 ACID 自动探测和认证服务器设置"></a>
+</p>
+
+<p align="center"><sub>概况与网络状态 · 账号与系统选项 · ACID 与认证服务器配置</sub></p>
+
+## 它解决什么
+
+- **自动认证** — 连接校园 Wi‑Fi 后自动完成深澜登录流程。
+- **断网重连** — 周期检测网络状态，离线时自动尝试恢复连接。
+- **自动探测 ACID** — 从 Portal 重定向链和登录页面识别接入点，无需逐个试值。
+- **状态一目了然** — 查看 IP、流量、在线时长和在线设备。
+- **适合后台运行** — 支持后台保活、开机自启与错误日志，便于长期使用和排障。
+
+<p align="center">
+  <img src="./assets/readme/workflow.svg" width="100%" alt="LinkUp 从检测 Wi-Fi、探测 ACID、获取 Challenge、加密认证到持续监控和重连的流程">
+</p>
+
+## 开始使用
+
+### 安装 APK
+
+1. 前往 [Releases](https://github.com/mel0nyrame/LinkUp/releases) 下载最新 APK。
+2. 在 Android 设备上允许安装来自此来源的应用并完成安装。
+3. 首次启动时填写学号或工号、密码；ACID 建议保持“自动获取”。
+
+进入概况页后，LinkUp 会自动检测并认证。下拉页面可立即触发一次手动刷新。
+
+### 从源码构建
+
+需要 Flutter SDK；本项目当前在 `pubspec.yaml` 中使用 Dart SDK `^3.12.0-239.0.dev`。
+
+```bash
+git clone https://github.com/mel0nyrame/LinkUp.git
+cd LinkUp
+flutter pub get
+flutter build apk --release
+```
+
+构建产物位于 `build/app/outputs/flutter-apk/app-release.apk`。
+
+## 工作原理
+
+<p align="center">
+  <img src="./assets/readme/auth-loop.svg" width="100%" alt="LinkUp 深澜认证闭环：检测 Wi-Fi 和在线状态，离线时探测 ACID、获取 Challenge、生成加密参数并登录，二次确认在线后持续监控，断线则重新尝试">
+</p>
+
+1. **登录前判断**：检测 Wi‑Fi、读取配置，并通过 `rad_user_info` 查询当前状态；已经在线则直接进入监控。
+2. **离线时认证**：自动探测 ACID、获取 Challenge，在本地通过 HMAC-MD5、XXTEA、自定义 Base64 与 SHA-1 生成认证参数，再提交登录。
+3. **登录后确认**：再次查询 `rad_user_info`，而不是仅依赖 Portal 的成功响应；监控发现断线后重新进入认证流程。
+
+## 平台与限制
+
+| 平台 | 支持情况 | 说明 |
+| --- | --- | --- |
+| Android | ✅ 主要支持平台 | 包含后台保活与开机自启 |
+| iOS | ⚠️ 尚未适配 | 暂不提供可用版本 |
+| Windows / macOS / Linux | ⚠️ 尚未适配 | 暂不提供可用版本 |
+| Web | ❌ 不支持 | 浏览器网络权限不满足认证需求 |
+
+部分 Android ROM 会限制后台活动。若自动重连在切到后台后停止，请同时：
+
+1. 在 LinkUp 的“系统设置”中开启保留后台运行；
+2. 将 LinkUp 加入系统电池优化白名单；
+3. 在系统设置中允许自启动（部分小米、华为、OPPO、vivo 设备需要额外授权）。
+
+## 常见问题
+
+<details>
+<summary><strong>提示“WiFi 未开启”</strong></summary>
+
+请确认设备已连接需要认证的校园 Wi‑Fi。LinkUp 不会通过移动数据执行校园网认证。
+</details>
+
+<details>
+<summary><strong>登录失败并提示 ACID 错误</strong></summary>
+
+优先将 ACID 模式切换为“自动获取”。若当前网络无法完成自动探测，再向学校网络中心确认接入点 ID 后手动填写。
+</details>
+
+<details>
+<summary><strong>应用切到后台后不再自动重连</strong></summary>
+
+开启“保留后台运行”，并检查系统的电池优化、自启动和后台活动权限。不同厂商的限制策略可能不同。
+</details>
+
+<details>
+<summary><strong>如何查看错误日志</strong></summary>
+
+可在应用的日志卡片中查看。Android 上日志文件位于应用私有目录 `app_flutter/error.log`，通常无法由普通文件管理器直接访问。
+</details>
+
+## 开发
+
+```bash
+flutter analyze     # 静态分析
+flutter test        # 运行测试
+```
+
+当 `RadUserInfo` 的 JSON 模型发生变化时，重新生成序列化代码：
+
+```bash
+flutter pub run build_runner build --delete-conflicting-outputs
+```
 
 ## 致谢
 
-- Flutter 团队提供的优秀框架
+LinkUp 使用 [Flutter](https://flutter.dev/) 构建，并参考了以下开源项目对深澜协议的实现：
+
 - [1328411791/GDOUYJ_Internet_Client](https://github.com/1328411791/GDOUYJ_Internet_Client)
 - [CyLzzh/srun_client](https://github.com/CyLzzh/srun_client)
 - [Mmx233/BitSrunLoginGo](https://github.com/Mmx233/BitSrunLoginGo)
 
-## 功能特性
+## Skills
 
-- 🔐 **自动认证**：支持深澜协议自动登录校园网
-- 🔄 **智能重连**：网络断开时自动检测并重连，无需手动操作
-- 🔍 **ACID自动探测**：通过 HTTP 重定向链自动探测接入点 ID，无需手动尝试
-- 📊 **状态监控**：实时显示在线状态、IP地址、流量统计、在线时长等信息
-- 📱 **后台保活**：支持后台持续运行，切换应用不影响监控
-- ⚡ **开机自启**：支持开机自动启动（Android）
-- 📝 **错误日志**：详细的错误日志记录，便于排查问题
-- 🎨 **Material Design 3**：现代化的界面设计
+本仓库的 `.opencode/` 目录中包含若干 OpenCode Skill，用于辅助开发与文档维护。这些 Skill 不参与 LinkUp 的运行时逻辑，仅在本地工具链中使用。各 Skill 的版权归其作者所有，本仓库按各自许可证条款使用。
 
-## 适用平台
+| Skill | 用途 | 来源 | 许可证 |
+| --- | --- | --- | --- |
+| beautify-github-readme | 设计 README 视觉系统与信息结构 | [oil-oil/beautify-github-readme](https://github.com/oil-oil/beautify-github-readme) | [MIT](https://github.com/oil-oil/beautify-github-readme/blob/main/LICENSE) © 2026 oil-oil |
 
-| 平台 | 状态 | 说明 |
-|------|------|------|
-| Android | ✅ 完整支持 | 支持所有功能包括后台保活和开机自启 |
-| iOS | ⚠️ 暂时不支持 | 暂无适配 |
-| Windows/macOS/Linux | ⚠️ 暂时不支持 | 暂无适配 |
-| Web | ❌ 不支持 | 由于网络权限限制，不支持 Web 平台 |
+## 许可与免责声明
 
-## 安装
-
-### Android
-
-1. 下载最新版本的 APK 文件
-2. 允许安装未知来源应用
-3. 安装完成后首次启动会提示配置账号
-
-### 从源码构建
-
-```bash
-# 克隆仓库
-git clone https://github.com/yourusername/linkup.git
-cd linkup
-
-# 安装依赖
-flutter pub get
-
-# 构建 Android APK
-flutter build apk --release
-
-# iOS 暂不支持
-```
-
-## 使用说明
-
-### 首次配置
-
-1. 首次启动应用会弹出配置对话框
-2. 输入学号/工号和密码
-3. 选择 ACID 模式：
-   - **自动获取**：通过 HTTP 重定向链自动探测当前网络接入点
-   - **手动指定**：手动输入 ACID 值（常见值：1, 2, 5, 11, 15）
-4. 点击保存并进入
-
-### 主界面
-
-- **概况页面**：显示在线状态、网络信息、流量统计、在线设备等
-- **设置页面**：修改账号信息、系统设置、网络配置
-
-### 下拉刷新
-
-在概况页面下拉可手动触发重新连接。
-
-### 后台运行
-
-在设置 > 系统设置中开启"保留后台运行"：
-- 开启后应用会持续监控网络状态，即使切换到后台
-- 建议同时将此应用加入系统电池优化白名单
-
-### 开机自启（Android）
-
-在设置 > 系统设置中开启"开机自启动"：
-- 开启后设备重启会自动启动应用
-- 部分国产 ROM（小米、华为、OPPO、vivo）可能需要在系统设置中额外授权
-
-## 项目结构
-
-```
-lib/
-├── main.dart                    # 应用入口
-├── navigation/
-│   └── MainNavigation.dart      # 主导航框架
-├── page/
-│   ├── AuthWrapperPage.dart     # 认证包装页（首次配置检测）
-│   ├── OverViewPage.dart        # 概况页（主页面）
-│   └── SettingsPage.dart        # 设置页
-├── components/
-│   ├── AccountCard.dart         # 账号信息卡片
-│   ├── DeviceInfoRow.dart       # 设备信息行组件
-│   ├── FirstSetupDialog.dart    # 首次配置对话框
-│   ├── GlassCard.dart           # 玻璃效果卡片
-│   ├── InfoCard.dart            # 信息卡片
-│   ├── InfoDataRow.dart         # 数据行组件
-│   ├── LogViewerCard.dart       # 日志查看卡片
-│   ├── NetWorkConfig.dart       # 网络配置卡片
-│   ├── OnlineDevicesCard.dart   # 在线设备卡片
-│   ├── StatusCard.dart          # 状态卡片
-│   ├── SystemSettingsCard.dart  # 系统设置卡片
-│   └── UpdateDialog.dart        # 更新对话框
-└── utils/
-    ├── AcidDetector.dart        # ACID 自动探测
-    ├── ChallengeResponse.dart   # Challenge 响应模型
-    ├── ConfigUtil.dart          # 配置存储工具
-    ├── LogUtil.dart             # 日志工具
-    ├── NetworkUtil.dart         # 网络状态检测
-    ├── RadUserInfo.dart         # 用户信息数据模型
-    ├── SrunClient.dart          # 深澜 API 客户端
-    ├── SrunEncrypt.dart         # 加密/校验工具
-    ├── SrunLogin.dart           # 登录逻辑编排
-    ├── SystemSettingsUtil.dart  # 系统设置工具
-    └── UpdateUtil.dart          # 应用更新检查
-```
-
-## 常见问题
-
-### Q: 为什么显示"WiFi未开启"？
-A: 应用需要连接校园网 WiFi 才能正常工作。请确保已连接到校园网无线网络。
-
-### Q: 登录失败，提示"ACID错误"？
-A: 尝试切换 ACID 模式为"自动获取"，或手动尝试其他 ACID 值（如 1, 2, 5, 11, 15）。
-
-### Q: 应用被杀后台怎么办？
-A: 
-1. 在设置中开启"保留后台运行"
-2. 将应用加入系统电池优化白名单
-3. 在系统设置中允许应用自启动（部分国产 ROM）
-
-### Q: 日志文件在哪里？
-A: 日志文件保存在应用配置目录下：
-- Android: `/data/data/com.mel0ny.linkup/app_flutter/error.log`
-
-## 错误代码对照
-
-| 错误代码 | 说明 | 解决方案 |
-|----------|------|----------|
-| E2901 | 密码错误或账号不存在 | 检查学号/工号和密码是否正确 |
-| E2902 | 账号不存在或已停用 | 联系网络中心确认账号状态 |
-| E2905 | 账号已欠费停机 | 前往网络中心充值 |
-| E2821 | IP 不在线 | 检查网络连接是否正常 |
-| E2833 | IP 已经被占用 | 等待一段时间后重试 |
-| E2606 | 用户被禁用 | 联系网络中心解除禁用 |
-| E3001 | 流量或时长已用尽 | 充值或购买流量包 |
-
-## 开发计划
-
-- [ ] 添加桌面端支持（Windows/macOS/Linux）
-- [ ] 支持多账号切换
-- [ ] 深色模式支持
-
-## 免责声明
-
-本工具仅供学习和个人使用，请勿用于非法用途。使用本工具产生的任何后果由使用者自行承担。
-
-## 许可证
-
-[MIT License](LICENSE)
-
----
-
-**注意**：本项目与深澜官方无关，是基于公开协议实现的第三方客户端。
+本项目采用 [MIT License](LICENSE) 开源，仅供学习和个人使用。请遵守所在学校的网络管理规定；使用本工具产生的后果由使用者自行承担。
