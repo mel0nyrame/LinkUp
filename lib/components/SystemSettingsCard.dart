@@ -37,7 +37,11 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
     setState(() => _isLoading = true);
     
     await SystemSettingsUtil.setKeepAlive(value);
-    
+    if (value) {
+      // Android 13+ 需要通知权限才能展示常驻通知。
+      await SystemSettingsUtil.requestNotificationPermission();
+    }
+
     if (mounted) {
       setState(() {
         _keepAlive = value;
@@ -93,7 +97,8 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
       builder: (context) => AlertDialog(
         title: const Text('建议设置'),
         content: const Text(
-          '为了确保应用能在后台持续运行，建议将此应用添加到电池优化白名单。\n\n'
+          '后台运行由前台服务承载，并会显示一条常驻通知说明认证状态。\n\n'
+          '如果通知被系统隐藏，或应用没有通知权限，Android 不会再展示该通知。\n\n'
           '部分国产 ROM (如小米、华为、OPPO、vivo)可能需要在系统设置中手动允许后台运行和自启动。',
         ),
         actions: [
@@ -186,9 +191,9 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
               contentPadding: EdgeInsets.zero,
               title: const Text('保留后台运行'),
               subtitle: Text(
-                _keepAlive 
-                    ? '应用将在后台持续监控网络状态（屏幕常亮）' 
-                    : '切换到后台时可能被系统休眠',
+                _keepAlive
+                    ? '由常驻通知的前台服务持续认证，离开应用后仍会重连'
+                    : '只在应用打开时认证，退出后不再自动重连',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey.shade600,
@@ -255,7 +260,8 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
                     const SizedBox(height: 4),
                     Text(
                       '部分国产 ROM (小米、华为、OPPO、vivo等)可能有额外的后台限制,'
-                      '建议前往系统设置 > 应用管理 > 自启动管理中手动开启。',
+                      '建议前往系统设置 > 应用管理 > 自启动管理中手动开启。\n'
+                      '在系统应用信息中强制停止 LinkUp 后，Android 不会为它恢复后台服务。',
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.blue.shade700,

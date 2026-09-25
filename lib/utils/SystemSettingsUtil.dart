@@ -1,23 +1,23 @@
 import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 
 /// 系统设置工具类
 class SystemSettingsUtil {
   static const String _keepAliveKey = 'keep_alive';
   static const String _autoStartKey = 'auto_start';
-  
+  static const MethodChannel _systemChannel = MethodChannel(
+    'com.mel0ny.linkup/system',
+  );
+
   static SharedPreferences? _prefs;
-  static bool _isKeepAliveEnabled = false;
 
   /// 初始化
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    _isKeepAliveEnabled = getKeepAlive();
-    
-    // 根据设置应用后台保活
+    // 认证运行时由 Android 前台服务承载，这里把已保存的设置应用到服务。
     await applyKeepAlive();
   }
 
@@ -28,7 +28,6 @@ class SystemSettingsUtil {
 
   /// 设置保留后台
   static Future<bool> setKeepAlive(bool value) async {
-    _isKeepAliveEnabled = value;
     final result = await _prefs?.setBool(_keepAliveKey, value) ?? false;
     await applyKeepAlive();
     return result;
@@ -42,7 +41,7 @@ class SystemSettingsUtil {
   /// 设置开机自启
   static Future<bool> setAutoStart(bool value) async {
     final result = await _prefs?.setBool(_autoStartKey, value) ?? false;
-    
+
     // Android 上检查权限
     if (Platform.isAndroid && value) {
       final hasPermission = await _checkAutoStartPermission();
@@ -51,44 +50,67 @@ class SystemSettingsUtil {
         await _requestAutoStartPermission();
       }
     }
-    
+
     return result;
   }
 
-  /// 应用后台保活设置
+  /// 把“保留后台运行”应用到 Android 前台认证服务。
+  ///
+  /// 认证运行时由服务持有的独立 FlutterEngine 承载，系统保活由前台服务负责，
+  /// 屏幕常亮不参与认证保活。
   static Future<void> applyKeepAlive() async {
-    if (_isKeepAliveEnabled) {
-      // 启用屏幕常亮（防止应用被系统休眠）
-      await WakelockPlus.enable();
-    } else {
-      await WakelockPlus.disable();
+    if (!Platform.isAndroid) return;
+
+    try {
+      if (getKeepAlive()) {
+        await _systemChannel.invokeMethod<void>('startAuthRuntime');
+      } else {
+        await _systemChannel.invokeMethod<void>('stopAuthRuntime');
+      }
+    } catch (e, stackTrace) {
+      await LogUtil.error('切换后台认证运行时失败', e, stackTrace);
+    }
+  }
+
+  /// 用户主动开启后台运行时申请通知权限。
+  ///
+  /// Android 13+ 没有通知权限时前台服务仍会运行，但系统不会展示常驻通知。
+  static Future<void> requestNotificationPermission() async {
+    if (!Platform.isAndroid) return;
+
+    try {
+      await _systemChannel.invokeMethod<void>('requestNotificationPermission');
+    } catch (e, stackTrace) {
+      await LogUtil.error('请求通知权限失败', e, stackTrace);
     }
   }
 
   /// 检查是否支持开机自启（仅 Android）
   static Future<bool> isAutoStartSupported() async {
     if (!Platform.isAndroid) return false;
-    
+
     try {
-      const platform = MethodChannel('com.mel0ny.linkup/system');
-      final bool result = await platform.invokeMethod('isAutoStartSupported');
+      final bool result = await _systemChannel.invokeMethod(
+        'isAutoStartSupported',
+      );
       return result;
     } catch (e, stackTrace) {
-      LogUtil.error('检查开机自启支持失败', e, stackTrace);
+      await LogUtil.error('检查开机自启支持失败', e, stackTrace);
       return false;
     }
   }
 
-  /// 检查开机自启权限（仅 Android）
+  /// 检查是否已开启开机自启权限（仅 Android）
   static Future<bool> _checkAutoStartPermission() async {
     if (!Platform.isAndroid) return false;
-    
+
     try {
-      const platform = MethodChannel('com.mel0ny.linkup/system');
-      final bool result = await platform.invokeMethod('checkAutoStartPermission');
+      final bool result = await _systemChannel.invokeMethod(
+        'checkAutoStartPermission',
+      );
       return result;
     } catch (e, stackTrace) {
-      LogUtil.error('检查开机自启权限失败', e, stackTrace);
+      await LogUtil.error('检查开机自启权限失败', e, stackTrace);
       return false;
     }
   }
@@ -96,24 +118,22 @@ class SystemSettingsUtil {
   /// 请求开机自启权限（打开设置页面）
   static Future<void> _requestAutoStartPermission() async {
     if (!Platform.isAndroid) return;
-    
+
     try {
-      const platform = MethodChannel('com.mel0ny.linkup/system');
-      await platform.invokeMethod('requestAutoStartPermission');
+      await _systemChannel.invokeMethod('requestAutoStartPermission');
     } catch (e, stackTrace) {
-      LogUtil.error('请求开机自启权限失败', e, stackTrace);
+      await LogUtil.error('请求开机自启权限失败', e, stackTrace);
     }
   }
 
   /// 打开电池优化白名单设置
   static Future<void> openBatteryOptimizationSettings() async {
     if (!Platform.isAndroid) return;
-    
+
     try {
-      const platform = MethodChannel('com.mel0ny.linkup/system');
-      await platform.invokeMethod('openBatteryOptimizationSettings');
+      await _systemChannel.invokeMethod('openBatteryOptimizationSettings');
     } catch (e, stackTrace) {
-      LogUtil.error('打开电池优化设置失败', e, stackTrace);
+      await LogUtil.error('打开电池优化设置失败', e, stackTrace);
     }
   }
 }

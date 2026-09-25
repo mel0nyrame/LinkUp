@@ -40,7 +40,6 @@ dependencies:
   path_provider: ^2.1.6
   flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.5.5
-  wakelock_plus: ^1.8.0
   dio: ^5.11.1
   url_launcher: ^6.3.2
   package_info_plus: ^10.2.1
