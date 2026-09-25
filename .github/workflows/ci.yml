@@ -14,13 +14,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      # 项目 SDK 约束为 ^3.12.0-239.0.dev，属于 Flutter master 通道
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: master
+          channel: stable
+          flutter-version-file: pubspec.yaml
           cache: true
 
       - name: Show Flutter version
@@ -30,7 +36,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate JSON serializable code
-        run: flutter pub run build_runner build --delete-conflicting-outputs
+        run: dart run build_runner build
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib/ test/
@@ -44,7 +50,7 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage/lcov.info

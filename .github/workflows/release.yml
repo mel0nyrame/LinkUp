@@ -21,25 +21,26 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: master
+          channel: stable
+          flutter-version-file: pubspec.yaml
           cache: true
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Generate JSON serializable code
-        run: flutter pub run build_runner build --delete-conflicting-outputs
+        run: dart run build_runner build
 
       - name: Run tests
         run: flutter test
@@ -55,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # 拿全 history 以便生成 changelog
 
@@ -73,15 +74,16 @@ jobs:
           echo "解析得到 tag=$TAG version=$VERSION"
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: master
+          channel: stable
+          flutter-version-file: pubspec.yaml
           cache: true
 
       - name: Show Flutter version
@@ -91,7 +93,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate JSON serializable code
-        run: flutter pub run build_runner build --delete-conflicting-outputs
+        run: dart run build_runner build
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
@@ -147,7 +149,7 @@ jobs:
           cat RELEASE_NOTES.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: LinkUp ${{ steps.version.outputs.version }}
