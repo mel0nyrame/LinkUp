@@ -48,7 +48,7 @@ LinkUp 是一个面向 **深澜（Srun）校园网**的 Android 自动认证客�
 
 ### 从源码构建
 
-需要 Flutter SDK；本项目当前在 `pubspec.yaml` 中使用 Dart SDK `^3.12.0-239.0.dev`。
+需要 Flutter `3.47.5`（stable，内置 Dart `3.13.4`）、JDK 21 和 Android SDK 36。具体版本以 `pubspec.yaml` 与 `android/` 为准。
 
 ```bash
 git clone https://github.com/mel0nyrame/LinkUp.git
@@ -113,15 +113,17 @@ flutter build apk --release
 ## 开发
 
 ```bash
-flutter analyze     # 静态分析
-flutter test        # 运行测试
+flutter analyze --no-fatal-infos  # 静态分析
+flutter test                      # 运行测试
 ```
 
 当 `RadUserInfo` 的 JSON 模型发生变化时，重新生成序列化代码：
 
 ```bash
-flutter pub run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```
+
+协议字段、加密链路、JSONP、ACID 探测与错误码说明见 [深澜认证协议技术文档](./深澜认证协议技术文档.md)。
 
 ## 致谢
 
@@ -130,14 +132,6 @@ LinkUp 使用 [Flutter](https://flutter.dev/) 构建，并参考了以下开源�
 - [1328411791/GDOUYJ_Internet_Client](https://github.com/1328411791/GDOUYJ_Internet_Client)
 - [CyLzzh/srun_client](https://github.com/CyLzzh/srun_client)
 - [Mmx233/BitSrunLoginGo](https://github.com/Mmx233/BitSrunLoginGo)
-
-## Skills
-
-本仓库的 `.opencode/` 目录中包含若干 OpenCode Skill，用于辅助开发与文档维护。这些 Skill 不参与 LinkUp 的运行时逻辑，仅在本地工具链中使用。各 Skill 的版权归其作者所有，本仓库按各自许可证条款使用。
-
-| Skill | 用途 | 来源 | 许可证 |
-| --- | --- | --- | --- |
-| beautify-github-readme | 设计 README 视觉系统与信息结构 | [oil-oil/beautify-github-readme](https://github.com/oil-oil/beautify-github-readme) | [MIT](https://github.com/oil-oil/beautify-github-readme/blob/main/LICENSE) © 2026 oil-oil |
 
 ## 许可与免责声明
 

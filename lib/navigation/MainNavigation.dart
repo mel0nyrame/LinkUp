@@ -396,9 +396,8 @@ class _MainNavigatorState extends State<MainNavigator> {
       // 复用 monitor tick 在线路径已经写入的 _userInfo（_checkOnlineStatus 内
       // 调用过 client.getUserInfo()），避免每个登录流程都重复请求一次 /rad_user_info
       // 但要校验 staleness：超过 _userInfoMaxAge 视为过期，强制重新拉取
-      // （IP 可能在 DHCP 续约 / WiFi 切换后已变）。登录成功后的"必须再调
-      // rad_user_info 确认"（CLAUDE.md §在线状态验证）在 line 464 的
-      // newInfo = await client.getUserInfo() 仍会执行
+      // （IP 可能在 DHCP 续约 / WiFi 切换后已变）。登录成功后仍会再次调用
+      // rad_user_info 确认真正在线
       final RadUserInfo info;
       final userInfoFresh = _userInfo != null &&
           _userInfo!.isOnline &&
@@ -540,8 +539,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
 
     // 7. 登录成功，刷新用户信息并验证在线状态
-    // CLAUDE.md §在线状态验证：srun_portal 返回 error: "ok" 不代表真正在线，
-    // 必须再次调用 rad_user_info 确认
+    // srun_portal 返回 error: "ok" 不代表真正在线，必须再次调用 rad_user_info 确认
     LogUtil.info('登录成功，正在验证在线状态...');
     final newInfo = await client.getUserInfo();
 
