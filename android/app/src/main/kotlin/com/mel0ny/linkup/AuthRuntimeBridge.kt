@@ -29,6 +29,12 @@ object AuthRuntimeBridge {
     /** 停止监控并释放协议资源。必须与 Dart 侧 `AuthRuntimeController.commandStop` 一致。 */
     const val COMMAND_STOP = "stop"
 
+    /**
+     * Wi-Fi 可用性变化。必须与 Dart 侧 `AuthRuntimeController.commandNetworkChanged`
+     * 一致，负载只有 `connected` 布尔值。
+     */
+    const val COMMAND_NETWORK_CHANGED = "networkChanged"
+
     /** 状态消费者，由前台服务注册，用于刷新常驻通知。 */
     var onState: ((Map<Any?, Any?>) -> Unit)? = null
 

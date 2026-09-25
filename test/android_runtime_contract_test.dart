@@ -31,6 +31,15 @@ void main() {
   final manifest = _read('android/app/src/main/AndroidManifest.xml');
   final state = _read('lib/utils/AuthRuntimeState.dart');
   final entrypoint = _read('lib/authRuntimeMain.dart');
+  final monitor = _read(
+    'android/app/src/main/kotlin/com/mel0ny/linkup/AuthRuntimeNetworkMonitor.kt',
+  );
+  final boot = _read(
+    'android/app/src/main/kotlin/com/mel0ny/linkup/BootReceiver.kt',
+  );
+  final controller = _read('lib/utils/AuthRuntimeController.dart');
+  final dartSettings = _read('lib/utils/SystemSettingsUtil.dart');
+  final config = _read('lib/utils/ConfigUtil.dart');
 
   group('通道与命令名跨语言一致', () {
     test('Dart 侧声明的通道名在 Kotlin 侧逐字出现', () {
@@ -59,6 +68,13 @@ void main() {
           'const val COMMAND_STOP = "${AuthRuntimeController.commandStop}"',
         ),
       );
+      expect(
+        bridge,
+        contains(
+          'const val COMMAND_NETWORK_CHANGED = '
+          '"${AuthRuntimeController.commandNetworkChanged}"',
+        ),
+      );
     });
 
     test('每个声明的命令都被运行时接受', () {
@@ -73,7 +89,7 @@ void main() {
           isNot(contains(command)),
         );
       }
-      expect(AuthRuntimeController.declaredCommands, hasLength(6));
+      expect(AuthRuntimeController.declaredCommands, hasLength(7));
     });
 
     test('wire 键在两侧拼写一致', () {
@@ -248,6 +264,170 @@ void main() {
     });
   });
 
+  group('网络事件恢复认证', () {
+    test('服务存活期间注册 Wi-Fi 回调，释放时注销', () {
+      final ensureMonitoring = _methodBody(
+        service,
+        'private fun ensureMonitoring()',
+      );
+      expect(
+        ensureMonitoring,
+        contains('startNetworkMonitor()'),
+        reason: '开始监控时必须注册网络回调，否则断网恢复要等下一个周期',
+      );
+      expect(ensureMonitoring, contains('AuthRuntimeBridge.COMMAND_START'));
+      expect(
+        _methodBody(service, 'private fun startNetworkMonitor()'),
+        contains('AuthRuntimeNetworkMonitor(this)'),
+      );
+      expect(
+        _methodBody(service, 'override fun onDestroy()'),
+        contains('stopNetworkMonitor()'),
+        reason: '销毁时必须注销回调，否则服务重启会累积监听',
+      );
+      expect(
+        _methodBody(service, 'fun stopRuntime()'),
+        contains('stopNetworkMonitor()'),
+      );
+      expect(
+        _methodBody(service, 'private fun stopNetworkMonitor()'),
+        contains('networkMonitor?.stop()'),
+      );
+      expect(monitor, contains('registerNetworkCallback'));
+      expect(monitor, contains('unregisterNetworkCallback'));
+      expect(monitor, contains('override fun onAvailable('));
+      expect(monitor, contains('override fun onLost('));
+    });
+
+    test('网络回调只上报可用性，不复制认证逻辑', () {
+      expect(
+        monitor,
+        contains('TRANSPORT_WIFI'),
+        reason: '只跟踪 Wi-Fi：未认证的校园网不会成为系统默认网络',
+      );
+      expect(
+        _methodBody(monitor, 'private fun report('),
+        contains('reported == connected'),
+        reason: '可用性没变就不下发，重复事件不会反复叫醒协调器',
+      );
+      final code = _codeOnly(monitor);
+      for (final forbidden in const [
+        'reality',
+        'challenge',
+        'password',
+        'getUserInfo',
+        'srun_portal',
+        'rad_user_info',
+      ]) {
+        expect(
+          code,
+          isNot(contains(forbidden)),
+          reason: '平台回调不得接触 $forbidden：Srun 协议只能在协调器里运行',
+        );
+      }
+    });
+
+    test('网络事件负载键在两侧拼写一致', () {
+      expect(
+        _methodBody(service, 'private fun startNetworkMonitor()'),
+        contains('AuthRuntimeBridge.COMMAND_NETWORK_CHANGED'),
+      );
+      _expectKeys(service, const ['connected']);
+      _expectKeys(controller, const ['connected']);
+      expect(
+        _methodBody(controller, 'case commandNetworkChanged:'),
+        contains("args?['connected'] == true"),
+        reason: '原生只发命令，可用性判断必须由协调器做',
+      );
+    });
+  });
+
+  group('开机自启', () {
+    test('配置存在且两个开关同时开启才启动服务', () {
+      final onReceive = _methodBody(boot, 'override fun onReceive(');
+      expect(onReceive, contains('isAccountConfigured'));
+      expect(onReceive, contains('isKeepAliveEnabled'));
+      expect(onReceive, contains('isAutoStartEnabled'));
+      expect(onReceive, contains('AuthRuntimeService.start(context)'));
+      // 三个条件缺一即返回：把 || 写成 && 会让"两个开关都开"变成"两个开关都关"才启动。
+      expect(
+        onReceive,
+        contains('if (!keepAlive || !autoStart || !configured) return'),
+        reason: '开机门必须是三条件合取的反面，任一不满足都不得启动服务',
+      );
+    });
+
+    test('运行期间改设置会立刻反映到服务启停', () {
+      final applyKeepAlive = _methodBody(
+        dartSettings,
+        'static Future<void> applyKeepAlive(',
+      );
+      expect(
+        applyKeepAlive,
+        contains('if (getKeepAlive())'),
+        reason: '保留后台运行是总开关，关闭即刻停服务',
+      );
+      expect(applyKeepAlive, contains('startAuthRuntime'));
+      expect(applyKeepAlive, contains('stopAuthRuntime'));
+      expect(
+        _methodBody(dartSettings, 'static Future<bool> setKeepAlive('),
+        contains('applyKeepAlive()'),
+        reason: '改开关必须走同一条应用路径，不能只写偏好',
+      );
+    });
+
+    test('开机不拉起 Activity', () {
+      final code = _codeOnly(boot);
+      expect(code, isNot(contains('startActivity')));
+      expect(code, isNot(contains('getLaunchIntentForPackage')));
+      expect(code, isNot(contains('PendingIntent')));
+    });
+
+    test('配置存在标记由配置 owner 维护，两侧键名与默认值一致', () {
+      expect(settings, contains('"flutter.account_configured"'));
+      expect(settings, contains('KEY_AUTO_START, false'));
+      expect(settings, contains('KEY_ACCOUNT_CONFIGURED, false'));
+      expect(dartSettings, contains("'auto_start'"));
+      expect(dartSettings, contains("'account_configured'"));
+      // 三个写入口都要同步：少一个，标记就会和磁盘上的配置脱节。
+      for (final entryPoint in const [
+        'static Future<bool> saveConfig(',
+        'static Future<bool> deleteConfig(',
+        'static Future<bool> configExists(',
+      ]) {
+        expect(
+          _methodBody(config, entryPoint),
+          contains('_syncAccountConfigured()'),
+          reason:
+              '$entryPoint 之后必须同步配置存在标记，'
+              '配置文件在 Dart 侧文档目录，原生读不到',
+        );
+      }
+    });
+
+    test('不用 WorkManager、精确闹钟或后台 Activity 兜底', () {
+      expect(_read('pubspec.yaml'), isNot(contains('workmanager')));
+      expect(
+        _read('android/app/build.gradle.kts'),
+        isNot(contains('workmanager')),
+      );
+      expect(
+        manifest,
+        isNot(contains('android.permission.SCHEDULE_EXACT_ALARM')),
+      );
+      expect(manifest, isNot(contains('android.permission.USE_EXACT_ALARM')));
+      expect(manifest, isNot(contains('android.permission.WAKE_LOCK')));
+      // 开机广播只由 BootReceiver 接收：出现第二个订阅者就说明有第二条启动路径。
+      expect(
+        RegExp(r'action\.BOOT_COMPLETED')
+            .allMatches(_codeOnly(manifest))
+            .length,
+        1,
+      );
+      expect(manifest, contains('android:name=".BootReceiver"'));
+    });
+  });
+
   group('常驻通知', () {
     test('低重要性渠道且持续可见', () {
       expect(notification, contains('NotificationManager.IMPORTANCE_LOW'));
@@ -272,6 +452,15 @@ void main() {
 }
 
 String _read(String path) => File(path).readAsStringSync();
+
+/// 去掉注释，只对可执行代码断言。
+///
+/// 说明文字可以自由提协议名词，"不接触协议"这类结论必须只看代码。
+String _codeOnly(String source) {
+  return source
+      .replaceAll(RegExp(r'/\*.*?\*/', dotAll: true), '')
+      .replaceAll(RegExp(r'//.*'), '');
+}
 
 void _expectKeys(String source, List<String> keys) {
   for (final key in keys) {

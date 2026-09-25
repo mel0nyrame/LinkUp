@@ -22,6 +22,7 @@ class AuthRuntimeController {
   static const String commandLogout = 'logout';
   static const String commandKickDevice = 'kickDevice';
   static const String commandConfigurationChanged = 'configurationChanged';
+  static const String commandNetworkChanged = 'networkChanged';
 
   /// 本运行时接受的全部命令。宿主下发的名字必须在此集合内。
   static const Set<String> declaredCommands = <String>{
@@ -31,6 +32,7 @@ class AuthRuntimeController {
     commandLogout,
     commandKickDevice,
     commandConfigurationChanged,
+    commandNetworkChanged,
   };
 
   final AuthenticationCoordinator coordinator;
@@ -72,6 +74,10 @@ class AuthRuntimeController {
         await coordinator.configurationChanged(
           hasConfig: args?['hasConfig'] == true,
         );
+        return null;
+      case commandNetworkChanged:
+        // 平台的 Wi-Fi 可用性事件，只描述网络条件，不携带认证决策。
+        await coordinator.networkChanged(connected: args?['connected'] == true);
         return null;
       default:
         await LogUtil.warning('收到未知的认证运行时命令');

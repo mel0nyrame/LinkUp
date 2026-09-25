@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SecretStore.dart';
+import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 
 const String defaultAuthServer = '10.129.1.1';
 const String defaultAcid = '1';
@@ -482,16 +483,41 @@ class ConfigUtil {
 
   static Future<AuthConfig?> loadConfig() => _repository.load();
 
-  static Future<bool> saveConfig(AuthConfig config) => _repository.save(config);
+  static Future<bool> saveConfig(AuthConfig config) async {
+    final saved = await _repository.save(config);
+    await _syncAccountConfigured();
+    return saved;
+  }
 
   static Future<bool> updateConfig(
     ConfigUpdate update, {
     bool Function()? canPersist,
   }) => _repository.update(update, canPersist: canPersist);
 
-  static Future<bool> deleteConfig() => _repository.delete();
+  static Future<bool> deleteConfig() async {
+    final deleted = await _repository.delete();
+    await _syncAccountConfigured();
+    return deleted;
+  }
 
-  static Future<bool> configExists() => _repository.exists();
+  static Future<bool> configExists() async {
+    final exists = await _repository.exists();
+    await _syncAccountConfigured();
+    return exists;
+  }
+
+  /// 同步开机自启依赖的“配置存在”标记。
+  ///
+  /// 配置文件在 Dart 的文档目录里，原生 BootReceiver 在 Dart isolate 启动前无法读取；
+  /// 这个偏好标记是唯一跨语言可读的事实。保存、删除和每次启动检查都重新同步，
+  /// 让标记不会和磁盘上的配置脱节。
+  static Future<void> _syncAccountConfigured() async {
+    try {
+      await SystemSettingsUtil.setAccountConfigured(await _repository.exists());
+    } catch (_) {
+      await LogUtil.warning('同步开机自启配置标记失败');
+    }
+  }
 
   static Future<String> _defaultPath() async {
     try {

@@ -339,15 +339,23 @@ class AuthenticationCoordinator {
     _protocolInstance?.reset();
   }
 
-  Future<AuthenticationResult> networkChanged() {
+  /// 响应平台网络可用性变化。
+  ///
+  /// [connected] 由原生 `ConnectivityManager` 回调给出，只描述 Wi-Fi 是否可用。
+  /// 任何一次事件都使当前网络世代失效：断开时丢弃已缓存的 ACID 与 Portal，
+  /// 恢复时立刻通过同一个单飞入口检查，不等在线周期或退避周期。
+  Future<AuthenticationResult> networkChanged({required bool connected}) {
     invalidateNetwork();
-    if (!_monitoring) return start();
+    if (!_monitoring) {
+      return connected ? start() : Future.value(_stoppedResult());
+    }
     final active = _inFlight;
     if (active != null) {
-      _checkAgainAfterInFlight = true;
+      if (connected) _checkAgainAfterInFlight = true;
       return active;
     }
     _cancelSchedule();
+    if (!connected) return Future.value(_offline('WiFi 未连接'));
     return check();
   }
 
@@ -464,6 +472,10 @@ class AuthenticationCoordinator {
 
   void _scheduleNext(AuthenticationResult result) {
     if (!_monitoring || _disposed) return;
+    if (result.status == AuthenticationStatus.offline) {
+      // 没有可用网络时重试不会改变结果，改为等平台网络事件唤醒。
+      return;
+    }
     final Duration delay;
     if (result.isOnline) {
       _consecutiveFailures = 0;

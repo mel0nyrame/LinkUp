@@ -8,6 +8,7 @@ import 'package:LinkUp/utils/LogUtil.dart';
 class SystemSettingsUtil {
   static const String _keepAliveKey = 'keep_alive';
   static const String _autoStartKey = 'auto_start';
+  static const String _accountConfiguredKey = 'account_configured';
   static const MethodChannel _systemChannel = MethodChannel(
     'com.mel0ny.linkup/system',
   );
@@ -19,6 +20,19 @@ class SystemSettingsUtil {
     _prefs = await SharedPreferences.getInstance();
     // 认证运行时由 Android 前台服务承载，这里把已保存的设置应用到服务。
     await applyKeepAlive();
+  }
+
+  /// 记录是否存在已保存的认证配置。
+  ///
+  /// 开机自启在 Dart isolate 启动前就要判定，配置文件却只有 Dart 侧能读；这个
+  /// 派生标记是唯一跨语言可读的“配置存在”事实，由 [ConfigUtil] 在保存、删除和
+  /// 每次启动检查时同步。
+  static Future<void> setAccountConfigured(bool value) async {
+    _prefs ??= await SharedPreferences.getInstance();
+    final result = await _prefs?.setBool(_accountConfiguredKey, value) ?? false;
+    if (!result) {
+      await LogUtil.warning('认证配置标记写入失败，开机自启可能不会启动服务');
+    }
   }
 
   /// 获取保留后台设置
