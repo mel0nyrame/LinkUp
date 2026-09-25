@@ -42,7 +42,7 @@ Activity 通过 `bindService` 绑定这一个运行时，用 `com.mel0ny.linkup/
 - `AuthRuntimeBridge` 是进程级单例，其生命周期由服务拥有。服务销毁时必须 `detachEngine()` 并让在途命令失败，否则 UI 的 `invokeMethod` 会悬挂。
 - `linkupAuthRuntimeDispatcher` 依赖 `@pragma('vm:entry-point')` 才能在 AOT 中保留。移除该注解会让 release 构建静默失去后台入口，因此 release 构建是必要验证项。
 - `BackgroundRuntimeSettings` 直接读取 `FlutterSharedPreferences` 的 `flutter.` 前缀键。该约定由 `shared_preferences` 插件决定，插件升级改变前缀或桶名时原生读取会静默失效。
-- 开机自启广播接收器仍然拉起 Activity。两个开关同时开启时才启动服务的语义属于 issue #7，本决策不覆盖该行为。
+- 开机自启广播接收器的行为已由 [ADR-0005](0005--event-driven-network-and-boot-recovery.md) 决定：三条件门启动服务且不拉起 Activity。
 - 平台契约测试通过两个 seam 覆盖：`test/auth_runtime_test.dart` 用假的宿主桥驱动 Dart 侧的运行时、状态发布和 UI 命令；`test/android_runtime_contract_test.dart` 直接断言两侧源码的通道名、命令名、wire 键、Manifest 声明和服务提升路径。后者存在的理由是这些约束没有其他机制能守住——`flutter analyze` 与 Kotlin 编译都发现不了跨语言漂移，服务是否被提升为 started 状态在纯 Dart 测试里也观察不到。Android 服务的实际生命周期、厂商 ROM 限制和开机场景由 issue #8 在真机上验收。
 
 ## Reintroduction conditions

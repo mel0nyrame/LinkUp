@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SecretStore.dart';
+import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 
 const String defaultAuthServer = '10.129.1.1';
 const String defaultAcid = '1';
@@ -378,63 +379,61 @@ class ConfigRepository {
   ///
   /// [canPersist] 在仓库操作队列内、实际写入前检查世代条件；认证流程用它
   /// 阻止网络环境变化后的旧 ACID 落盘。
-  Future<bool> update(
-    ConfigUpdate update, {
-    bool Function()? canPersist,
-  }) => _enqueue(() async {
-    if (!update.hasChanges) return true;
+  Future<bool> update(ConfigUpdate update, {bool Function()? canPersist}) =>
+      _enqueue(() async {
+        if (!update.hasChanges) return true;
 
-    try {
-      AuthConfig? current;
-      try {
-        current = await _loadUnlocked();
-      } on ConfigSecretException {
-        current = await _recoverWithPasswordUnlocked(update.password ?? '');
-      } on ConfigMigrationException {
-        current = await _recoverWithPasswordUnlocked(update.password ?? '');
-      }
-      if (current == null) return false;
+        try {
+          AuthConfig? current;
+          try {
+            current = await _loadUnlocked();
+          } on ConfigSecretException {
+            current = await _recoverWithPasswordUnlocked(update.password ?? '');
+          } on ConfigMigrationException {
+            current = await _recoverWithPasswordUnlocked(update.password ?? '');
+          }
+          if (current == null) return false;
 
-      if (update.username != null && update.username!.trim().isEmpty) {
-        return false;
-      }
-      if (update.password != null && update.password!.isEmpty) {
-        return false;
-      }
-      if (canPersist != null && !canPersist()) return false;
+          if (update.username != null && update.username!.trim().isEmpty) {
+            return false;
+          }
+          if (update.password != null && update.password!.isEmpty) {
+            return false;
+          }
+          if (canPersist != null && !canPersist()) return false;
 
-      if (update.password != null) {
-        await _writeSecretUnlocked(update.password!);
-      }
+          if (update.password != null) {
+            await _writeSecretUnlocked(update.password!);
+          }
 
-      final hasFileChange =
-          update.username != null ||
-          update.acid != null ||
-          update.autoAcid != null ||
-          update.authServer != null ||
-          update.userType != null;
-      if (!hasFileChange) return true;
+          final hasFileChange =
+              update.username != null ||
+              update.acid != null ||
+              update.autoAcid != null ||
+              update.authServer != null ||
+              update.userType != null;
+          if (!hasFileChange) return true;
 
-      final updated = current.copyWith(
-        username: update.username?.trim(),
-        acid: update.acid == null ? null : normalizeAcid(update.acid!),
-        hasExplicitAcid: update.acid?.trim().isNotEmpty,
-        autoAcid: update.autoAcid,
-        authServer: update.authServer == null
-            ? null
-            : normalizeAuthServer(update.authServer),
-        userType: update.userType?.trim(),
-      );
-      if (canPersist != null && !canPersist()) return false;
-      await _writeJsonUnlocked(updated.toJson());
-      return true;
-    } on ConfigMigrationException {
-      rethrow;
-    } catch (_) {
-      await LogUtil.warning('认证配置更新失败');
-      return false;
-    }
-  });
+          final updated = current.copyWith(
+            username: update.username?.trim(),
+            acid: update.acid == null ? null : normalizeAcid(update.acid!),
+            hasExplicitAcid: update.acid?.trim().isNotEmpty,
+            autoAcid: update.autoAcid,
+            authServer: update.authServer == null
+                ? null
+                : normalizeAuthServer(update.authServer),
+            userType: update.userType?.trim(),
+          );
+          if (canPersist != null && !canPersist()) return false;
+          await _writeJsonUnlocked(updated.toJson());
+          return true;
+        } on ConfigMigrationException {
+          rethrow;
+        } catch (_) {
+          await LogUtil.warning('认证配置更新失败');
+          return false;
+        }
+      });
 
   /// 删除普通配置和密码秘密；任一操作失败都返回 false，允许再次调用。
   Future<bool> delete() => _enqueue(() async {
@@ -484,16 +483,41 @@ class ConfigUtil {
 
   static Future<AuthConfig?> loadConfig() => _repository.load();
 
-  static Future<bool> saveConfig(AuthConfig config) => _repository.save(config);
+  static Future<bool> saveConfig(AuthConfig config) async {
+    final saved = await _repository.save(config);
+    await _syncAccountConfigured();
+    return saved;
+  }
 
   static Future<bool> updateConfig(
     ConfigUpdate update, {
     bool Function()? canPersist,
   }) => _repository.update(update, canPersist: canPersist);
 
-  static Future<bool> deleteConfig() => _repository.delete();
+  static Future<bool> deleteConfig() async {
+    final deleted = await _repository.delete();
+    await _syncAccountConfigured();
+    return deleted;
+  }
 
-  static Future<bool> configExists() => _repository.exists();
+  static Future<bool> configExists() async {
+    final exists = await _repository.exists();
+    await _syncAccountConfigured();
+    return exists;
+  }
+
+  /// 同步开机自启依赖的“配置存在”标记。
+  ///
+  /// 配置文件在 Dart 的文档目录里，原生 BootReceiver 在 Dart isolate 启动前无法读取；
+  /// 这个偏好标记是唯一跨语言可读的事实。保存、删除和每次启动检查都重新同步，
+  /// 让标记不会和磁盘上的配置脱节。
+  static Future<void> _syncAccountConfigured() async {
+    try {
+      await SystemSettingsUtil.setAccountConfigured(await _repository.exists());
+    } catch (_) {
+      await LogUtil.warning('同步开机自启配置标记失败');
+    }
+  }
 
   static Future<String> _defaultPath() async {
     try {

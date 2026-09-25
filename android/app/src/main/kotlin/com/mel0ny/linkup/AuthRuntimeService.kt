@@ -24,6 +24,7 @@ class AuthRuntimeService : Service() {
     private val binder = LocalBinder()
     private var engine: FlutterEngine? = null
     private var foreground = false
+    private var networkMonitor: AuthRuntimeNetworkMonitor? = null
 
     inner class LocalBinder : Binder() {
         val service: AuthRuntimeService get() = this@AuthRuntimeService
@@ -72,6 +73,7 @@ class AuthRuntimeService : Service() {
     }
 
     override fun onDestroy() {
+        stopNetworkMonitor()
         AuthRuntimeBridge.onState = null
         AuthRuntimeBridge.detachEngine()
         // 销毁 engine 即终止后台 isolate，HTTP client、Portal 缓存和调度随之释放。
@@ -88,11 +90,30 @@ class AuthRuntimeService : Service() {
      * 请求后台运行时保持监控。
      *
      * Activity 绑定、重新绑定和前台服务启动三条路径共享同一入口，协调器的单飞
-     * 锁会把重复请求合并为至多一次检查。
+     * 锁会把重复请求合并为至多一次检查。Wi-Fi 回调与运行时同生共死：注册后
+     * 网络事件随时能叫醒检查，释放时必须一并注销。
      */
     private fun ensureMonitoring() {
         if (BackgroundRuntimeSettings.isKeepAliveEnabled(this)) enterForeground()
         AuthRuntimeBridge.dispatch(AuthRuntimeBridge.COMMAND_START)
+        // 启动命令先于网络事件下发：协调器先进入监控，再响应网络变化。
+        startNetworkMonitor()
+    }
+
+    private fun startNetworkMonitor() {
+        val monitor = networkMonitor
+            ?: AuthRuntimeNetworkMonitor(this) { connected ->
+                AuthRuntimeBridge.dispatch(
+                    AuthRuntimeBridge.COMMAND_NETWORK_CHANGED,
+                    mapOf("connected" to connected),
+                )
+            }.also { networkMonitor = it }
+        monitor.start()
+    }
+
+    private fun stopNetworkMonitor() {
+        networkMonitor?.stop()
+        networkMonitor = null
     }
 
     /**
@@ -102,6 +123,7 @@ class AuthRuntimeService : Service() {
      * 服务不立即销毁，绑定结束后才释放 FlutterEngine——此时 UI 仍需要该运行时。
      */
     fun stopRuntime() {
+        stopNetworkMonitor()
         AuthRuntimeBridge.dispatch(AuthRuntimeBridge.COMMAND_STOP)
         if (foreground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
