@@ -11,7 +11,7 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 - **页面与组件**：入口在 `lib/main.dart`；导航状态由 `lib/navigation/MainNavigation.dart` 编排；页面和组件分别位于 `lib/page/`、`lib/components/`。
 - **认证与协议**：实现位于 `lib/utils/SrunClient.dart`、`SrunLogin.dart`、`SrunEncrypt.dart`、`AcidDetector.dart`。修改接口、加密、JSONP、ACID、重定向或错误码前，先读 `docs/深澜认证协议技术文档.md`；该文件是协议事实的唯一来源。
 - **本地数据与更新**：`ConfigUtil.dart` 保存认证配置，`SystemSettingsUtil.dart` 保存系统开关，`LogUtil.dart` 管理日志，`UpdateUtil.dart` 检查和安装更新。
-- **Android 原生**：入口与开机自启位于 `android/app/src/main/kotlin/com/mel0ny/linkup/`；Dart 与原生层通过 `com.mel0ny.linkup/system` MethodChannel 通信。
+- **Android 原生**：入口与开机自启位于 `android/app/src/main/kotlin/com/mel0ny/linkup/`；Dart 与原生层通过 `com.mel0ny.linkup/system` MethodChannel 通信。后台认证运行时由 `AuthRuntimeService` 承载，它用独立 FlutterEngine 运行 `lib/authRuntimeMain.dart`，并通过 `com.mel0ny.linkup/authRuntime` 与 `com.mel0ny.linkup/authUi` 两个通道连接 Dart。
 - **工具链与依赖**：以 `pubspec.yaml`、`pubspec.lock`、`android/` 和 `.github/workflows/` 为准；本文件不重复记录版本号。
 - **用户文档**：`README.md` 面向使用者和贡献者；协议细节不要重新复制到 README。
 
@@ -23,6 +23,7 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 - ACID 探测依赖手动跟随重定向并检查每一跳；恢复自动重定向会丢失 Portal URL、表单或 ACID。
 - 认证请求使用 `http`；`dio` 仅用于 APK 下载。保持这一职责边界。
 - 用户名、密码、Challenge、完整认证参数和下载令牌不得写入日志、文档或测试夹具。
+- 认证运行时只有一份 Dart 实现，由后台前台服务独占。Activity 的 FlutterEngine 不得创建协调器或认证周期 Timer，Kotlin 不得复制 Srun 协议逻辑。详见 `docs/adr/0004--foreground-service-owns-auth-runtime.md`。
 - `lib/utils/RadUserInfo.g.dart` 是生成文件；模型注解变化后用 build_runner 重新生成，不手改生成代码。
 - Gradle 与 CI 使用 JDK 21；Android 源码和 Kotlin 字节码目标保持 Java 17，因为当前 Android API 级别只保证到 Java 17 语言特性。
 - `liquid_glass_renderer` 是实验性依赖，当前构建会产生 shader 警告。除非任务明确要求，不替换它或重做液态玻璃 UI。
