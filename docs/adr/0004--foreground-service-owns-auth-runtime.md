@@ -16,7 +16,7 @@ Android 用一个非导出的 Foreground Service 承载后台认证运行时。�
 
 Dart 入口用 `@pragma('vm:entry-point')` 保留在 AOT 快照中。它在启动后通过 MethodChannel 上报自己的 `CallbackHandle`，宿主此后用 `DartExecutor.executeDartCallback` 这个 callback dispatcher 下发启动、停止、手动检查、注销、踢设备和配置变化命令。句柄尚未上报时命令会被排队并在就绪后按序补发，因此启动时序不需要和 Dart 入口竞争。宿主→Dart 的命令结果通过同一个通道以请求标识回传，UI 侧的 `invokeMethod` 因此仍是一个可 await 的 Future。
 
-服务类型使用 `specialUse` 并声明 `FOREGROUND_SERVICE_SPECIAL_USE` 与 `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`。不使用 `dataSync`：它受 Android 15+ 每 24 小时 6 小时限制，并且禁止从 `BOOT_COMPLETED` 启动。前台服务只在服务被 `startForegroundService` 启动时进入前台；Activity 可见时的绑定不会创建常驻通知。
+服务类型使用 `specialUse` 并声明 `FOREGROUND_SERVICE_SPECIAL_USE` 与 `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`。不使用 `dataSync`：它受 Android 15+ 每 24 小时 6 小时限制，并且禁止从 `BOOT_COMPLETED` 启动。开启“保留后台运行”时始终经 `startForegroundService` 把服务提升为 started 状态——仅绑定的服务在 Activity 解绑后会被系统销毁，后台认证无法继续——并在 `onCreate` 与 `onStartCommand` 中及时进入前台；关闭时只有绑定，没有常驻通知。
 
 桥只搬运命令和状态。协调器、Srun 协议、退避策略仍只有一份 Dart 实现，Kotlin 不复制任何认证规则。常驻通知文本由 `notificationContentFor(AuthRuntimeState)` 在 Dart 侧从状态枚举和重试间隔派生，不读取用户信息、ACID 或状态 message，因此通知在结构上不可能出现账号、密码、Challenge、HMD5 或签名。
 
@@ -31,6 +31,7 @@ Activity 通过 `bindService` 绑定这一个运行时，用 `com.mel0ny.linkup/
 - **Activity engine 与后台 engine 各自运行协调器**：会并发执行 Reality、`rad_user_info` 和登录，共享可变 Portal 缓存并互相覆盖 ACID 候选，因此不采用。
 - **把认证直接放进 Activity 的 FlutterEngine**：Activity 销毁后运行时一并消失，无法满足后台重连，因此不采用。
 - **宿主用 MethodChannel handler 直接接收命令**：MethodChannel 的处理器注册与 Dart 入口启动存在时序竞争，先到的命令会被静默丢弃；callback dispatcher 由 `CallbackHandle` 定位入口函数，不依赖注册时序，因此采用。
+- **开启后台运行时只经已绑定的服务进入前台**：`startForeground` 不会让服务进入 started 状态，仅绑定的服务在解绑后仍会被销毁，后台认证随之停止，因此必须走 `startForegroundService`。
 - **使用 `dataSync` 服务类型**：`dataSync` 受 6 小时上限约束且禁止开机启动，不适合长期校园网保活，因此不采用。
 - **使用 WorkManager、精确闹钟或后台 Activity 规避后台限制**：这些只是绕过系统策略，不会让认证真正持续，且引入额外调度来源，因此不采用。
 - **通知内容直接在 Kotlin 侧从状态映射拼装**：状态包含用户信息和认证参数，映射一旦写错就可能泄漏敏感数据；在 Dart 侧从脱敏快照派生可以结构性避免，因此不采用。
@@ -42,7 +43,7 @@ Activity 通过 `bindService` 绑定这一个运行时，用 `com.mel0ny.linkup/
 - `linkupAuthRuntimeDispatcher` 依赖 `@pragma('vm:entry-point')` 才能在 AOT 中保留。移除该注解会让 release 构建静默失去后台入口，因此 release 构建是必要验证项。
 - `BackgroundRuntimeSettings` 直接读取 `FlutterSharedPreferences` 的 `flutter.` 前缀键。该约定由 `shared_preferences` 插件决定，插件升级改变前缀或桶名时原生读取会静默失效。
 - 开机自启广播接收器仍然拉起 Activity。两个开关同时开启时才启动服务的语义属于 issue #7，本决策不覆盖该行为。
-- 平台契约测试通过 Dart 侧的窄 seam 覆盖服务启动、通知状态、UI 命令路由、Activity 销毁后继续运行和关闭后资源释放。Android 服务的实际生命周期、厂商 ROM 限制和开机场景由 issue #8 在真机上验收。
+- 平台契约测试通过两个 seam 覆盖：`test/auth_runtime_test.dart` 用假的宿主桥驱动 Dart 侧的运行时、状态发布和 UI 命令；`test/android_runtime_contract_test.dart` 直接断言两侧源码的通道名、命令名、wire 键、Manifest 声明和服务提升路径。后者存在的理由是这些约束没有其他机制能守住——`flutter analyze` 与 Kotlin 编译都发现不了跨语言漂移，服务是否被提升为 started 状态在纯 Dart 测试里也观察不到。Android 服务的实际生命周期、厂商 ROM 限制和开机场景由 issue #8 在真机上验收。
 
 ## Reintroduction conditions
 
