@@ -19,7 +19,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.7+1
 
 environment:
-  sdk: ^3.12.0-239.0.dev
+  sdk: ">=3.13.4 <4.0.0"
+  flutter: "3.47.5"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -31,29 +32,25 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
   crypto: ^3.0.7
   convert: ^3.1.2
-  http: ^1.1.0
-  json_annotation: '>=4.8.1'
-  connectivity_plus: ^7.0.0
-  path_provider: ^2.1.2
-  shared_preferences: ^2.5.3
-  wakelock_plus: ^1.2.11
-  dio: ^5.4.0
-  url_launcher: ^6.2.4
-  package_info_plus: ^9.0.0
-  open_filex: ^4.3.4 
+  http: ^1.6.0
+  json_annotation: ^4.12.0
+  connectivity_plus: ^7.3.1
+  path_provider: ^2.1.6
+  shared_preferences: ^2.5.5
+  wakelock_plus: ^1.8.0
+  dio: ^5.11.1
+  url_launcher: ^6.3.2
+  package_info_plus: ^10.2.1
+  open_filex: ^4.7.0
   liquid_glass_renderer: ^0.2.0-dev.4
-  flutter_floating_bottom_bar: ^2.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  build_runner: ^2.4.6
-  json_serializable: ^6.7.1
+  build_runner: ^2.16.1
+  json_serializable: ^6.14.1
   flutter_launcher_icons: ^0.14.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
