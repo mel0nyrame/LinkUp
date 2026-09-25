@@ -123,7 +123,7 @@ flutter test                      # 运行测试
 dart run build_runner build
 ```
 
-协议字段、加密链路、JSONP、ACID 探测与错误码说明见 [深澜认证协议技术文档](./深澜认证协议技术文档.md)。
+协议字段、加密链路、JSONP、ACID 探测与错误码说明见 [深澜认证协议技术文档](./docs/深澜认证协议技术文档.md)。
 
 ## 致谢
 

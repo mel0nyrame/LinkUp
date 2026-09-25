@@ -9,7 +9,7 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 ## 变更路由
 
 - **页面与组件**：入口在 `lib/main.dart`；导航状态由 `lib/navigation/MainNavigation.dart` 编排；页面和组件分别位于 `lib/page/`、`lib/components/`。
-- **认证与协议**：实现位于 `lib/utils/SrunClient.dart`、`SrunLogin.dart`、`SrunEncrypt.dart`、`AcidDetector.dart`。修改接口、加密、JSONP、ACID、重定向或错误码前，先读 `深澜认证协议技术文档.md`；该文件是协议事实的唯一来源。
+- **认证与协议**：实现位于 `lib/utils/SrunClient.dart`、`SrunLogin.dart`、`SrunEncrypt.dart`、`AcidDetector.dart`。修改接口、加密、JSONP、ACID、重定向或错误码前，先读 `docs/深澜认证协议技术文档.md`；该文件是协议事实的唯一来源。
 - **本地数据与更新**：`ConfigUtil.dart` 保存认证配置，`SystemSettingsUtil.dart` 保存系统开关，`LogUtil.dart` 管理日志，`UpdateUtil.dart` 检查和安装更新。
 - **Android 原生**：入口与开机自启位于 `android/app/src/main/kotlin/com/mel0ny/linkup/`；Dart 与原生层通过 `com.mel0ny.linkup/system` MethodChannel 通信。
 - **工具链与依赖**：以 `pubspec.yaml`、`pubspec.lock`、`android/` 和 `.github/workflows/` 为准；本文件不重复记录版本号。
