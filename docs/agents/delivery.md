@@ -30,6 +30,14 @@
 
 完成标准：五节都在，没有占位文本，`base`/`head`/commit 范围/链接真实有效。
 
+正文发出后需要改写时用 API 补丁，不要用 `gh pr edit`：
+
+```bash
+gh api -X PATCH "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/<N>" -F body=@pr_body.md
+```
+
+`gh pr edit` 在本仓库会因为查询已弃用的 Projects classic 卡片而整体失败，正文不会被更新。
+
 ## Review Gate
 
 ### 接线改动
@@ -40,6 +48,14 @@
 
 1. **跨语言契约断言**：通道名、命令名、wire 键、Manifest 声明和关键调用路径直接对两侧源码断言，落在 `flutter test` 里。`test/android_runtime_contract_test.dart` 是标准写法——它读源文件而不是模拟行为，所以 Kotlin 改错时它会翻红。纯 Dart 的 fake 复刻不了这条：它和被测的 Kotlin 各自演化，Kotlin 写错时测试仍然通过。
 2. **双轴 review**：跑 `/code-review`，Standards 与 Spec 两轴分开报告。这类改动的缺陷形态是"实现了规格但做错了"，Spec 轴是唯一能发现它的检查。
+
+### 评审的验证证据
+
+reviewer 以 PR 正文"验证汇总"里列出的命令与结果为验证证据，不自己重跑。需要判定某条验收条件无法验证时，结论里必须写出失败的工具链与原始错误（`Because LinkUp requires Flutter SDK version …` 这类）；本机共享 SDK 与 `pubspec.yaml` 不一致时，先按 `AGENTS.md` 变更流程第 0 步取仓库声明的版本再下结论，否则会把"用错 SDK"读成"跑不了"。
+
+### 已评估并接受
+
+reviewer 提不出确定性检查的判断类意见（重复代码、边界取舍、覆盖强度），由作者决定接受还是改。接受时写进 PR 正文"风险与回滚"，一句话包含：结论、为什么接受、如果后来出问题会怎样。理由是这类意见没有可自动化的判定，仓库里不留结论时下一轮 review 会原样重提，作者被迫重新判断一次。
 
 ### 长期决策
 

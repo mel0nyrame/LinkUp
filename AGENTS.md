@@ -31,11 +31,11 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 
 ## 变更流程
 
-0. **工具链预检**：比对 `flutter --version` 与 `pubspec.yaml` 的 `environment.flutter`。不一致时用独立 checkout 或 worktree 取仓库声明的版本，保持共享 SDK 的 checkout 原样。完成标准：`flutter pub get` 能成功。
+0. **工具链预检**：比对 `flutter --version` 与 `pubspec.yaml` 的 `environment.flutter`。不一致时用 `tool/flutter_sdk.sh` 取仓库声明的版本（命中缓存直接用，否则下载到缓存目录），后续所有 flutter/dart 命令都经它执行，保持共享 SDK 的 checkout 原样。完成标准：`tool/flutter_sdk.sh flutter pub get` 能成功。
 1. **定位行为**：先沿上述入口读取相关实现和调用方，并记录必须保持的协议或 UI 行为。完成标准：每个行为改动都能指向明确调用链。
 2. **实施最小修改**：沿用周边代码风格，只修改完成当前任务所需的文件。完成标准：差异中没有顺手重构、依赖漂移或无关格式变化。
 3. **生成派生文件**：修改 JSON 模型或生成器依赖后运行 `dart run build_runner build`；修改 `pubspec.yaml`/`pubspec.lock` 后重跑 `flutter pub get` 并纳入生成的 plugin registrant。完成标准：命令成功，生成文件已纳入差异且不含陈旧输出。
-4. **验证 Dart**：格式化本次触及的 Dart 文件，再运行 `flutter analyze --no-fatal-infos` 和 `flutter test`。完成标准：无 error/warning，测试全部通过；历史 info 债务不作为本次阻塞项。
+4. **验证 Dart**：格式化本次触及的 Dart 文件，再运行 `flutter analyze --no-fatal-infos` 和 `flutter test`。仓库整体刻意保留历史排版债务，CI 只判定本次触及的文件，所以触及的文件若带出无关重排，把它单独成一个 `style` 提交，让功能提交的差异里只剩功能改动。完成标准：无 error/warning，测试全部通过；历史 info 债务不作为本次阻塞项。
 5. **验证 Android**：涉及依赖、Gradle、插件、Manifest 或 Kotlin 时运行 `flutter build apk --debug`；涉及发布配置或原生行为时再运行 `flutter build apk --release`。完成标准：对应 APK 成功生成。构建只证明原生代码可编译，接线行为另有门槛，见交付 Review Gate。
 6. **交付**：commit 边界、push、PR 正文与 Review Gate 按 [delivery.md](docs/agents/delivery.md) 执行。完成标准：PR 正文五节齐全，该跑的 gate 已跑。
 
