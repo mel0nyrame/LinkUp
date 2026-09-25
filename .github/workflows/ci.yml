@@ -52,21 +52,16 @@ jobs:
           else
             echo "deps=false" >> "$GITHUB_OUTPUT"
           fi
-          if printf '%s\n' "$changed" | grep -E '\.dart$' | grep -qE '^(lib|test)/'; then
-            echo "dart=true" >> "$GITHUB_OUTPUT"
+          if printf '%s\n' "$changed" | grep -qE '^(android/|pubspec\.yaml$|pubspec\.lock$|\.github/workflows/ci\.yml$)'; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
           else
-            echo "dart=false" >> "$GITHUB_OUTPUT"
+            echo "android=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # 仓库整体刻意未格式化，判定范围限定为本次触及的文件：
-      # 既让"格式化本次触及的 Dart 文件"这条规则可执行，又不要求顺手清理历史债务。
-      - name: Verify formatting of touched Dart files
-        if: steps.changes.outputs.dart == 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- 'lib/*.dart' 'test/*.dart' \
-            | xargs -r dart format --output=none --set-exit-if-changed
+      # 一次全仓格式化之后，格式就是 CI 的永久门：新引入的排版漂移在 PR 上翻红，
+      # 不再靠"谁碰到那个文件谁负责"。（此前只判定本次触及的文件。）
+      - name: Verify Dart formatting
+        run: dart format --output=none --set-exit-if-changed .
 
       # 依赖集变化会让生成的 plugin registrant 漂移。历史上 flutter_secure_storage
       # 就是这样漏掉的：依赖引入了，registrant 没重新生成，也没有任何检查发现。
