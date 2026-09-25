@@ -44,7 +44,6 @@ void main() {
     test('命令句柄只发布一次并交给宿主用于 callback dispatcher', () async {
       final host = _FakeAuthRuntimeHost();
       final controller = _onlineController(host: host);
-      addTearDown(controller.dispose);
 
       await host.publishCommandHandle(4242);
 
@@ -77,7 +76,6 @@ void main() {
       final host = _FakeAuthRuntimeHost();
       final protocol = _FakeProtocol();
       final controller = _onlineController(host: host, protocol: protocol);
-      addTearDown(controller.dispose);
       await controller.execute(AuthRuntimeController.commandStart);
 
       final logout = await controller.execute(
@@ -107,7 +105,6 @@ void main() {
         scheduler: scheduler,
         protocol: protocol,
       );
-      addTearDown(controller.dispose);
 
       await controller.execute(AuthRuntimeController.commandStart);
       await controller.execute(
@@ -120,19 +117,28 @@ void main() {
       expect(controller.coordinator.state.status, AuthenticationStatus.stopped);
     });
 
-    test('释放运行时后不再发布状态', () async {
+    test('停止后待执行的任务不会重新发起认证', () async {
       final host = _FakeAuthRuntimeHost();
+      final scheduler = _FakeAuthenticationScheduler();
       final protocol = _FakeProtocol();
-      final controller = _onlineController(host: host, protocol: protocol);
+      final controller = _controller(
+        host: host,
+        scheduler: scheduler,
+        protocol: protocol,
+      );
 
       controller.subscribe();
-      await controller.dispose();
-      final publishedAfterDispose = host.states.length;
-
       await controller.execute(AuthRuntimeController.commandStart);
+      final pending = scheduler.takePending();
+      await controller.execute(AuthRuntimeController.commandStop);
+      final publishedAfterStop = host.states.length;
 
-      expect(host.states, hasLength(publishedAfterDispose));
-      expect(protocol.realityCalls, 0, reason: '释放后不得再发起认证探测');
+      await pending!();
+
+      expect(protocol.realityCalls, 1, reason: '停止前的那次调度不得再发起探测');
+      expect(scheduler.hasPending, isFalse);
+      expect(host.states, hasLength(publishedAfterStop));
+      expect(controller.coordinator.state.status, AuthenticationStatus.stopped);
     });
   });
 
@@ -299,15 +305,14 @@ void main() {
       addTearDown(client.dispose);
       await client.attach();
 
-      final manual = await client.manualCheck();
+      // start/manualCheck/configurationChanged 不回传结果，只有注销与踢设备带回值。
+      await client.manualCheck();
       final loggedOut = await client.logout();
       final kicked = await client.kickDevice('10.0.0.9');
-      final reconfigured = await client.configurationChanged(hasConfig: false);
+      await client.configurationChanged(hasConfig: false);
 
-      expect(manual, isTrue);
       expect(loggedOut, isFalse);
       expect(kicked, isTrue);
-      expect(reconfigured, isTrue);
       expect(
         calls
             .where((call) => call.method == 'command')
@@ -374,7 +379,6 @@ void main() {
       addTearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(uiChannel, null);
-        controller.dispose();
       });
 
       final visible = AuthRuntimeClient(channel: uiChannel);
@@ -422,7 +426,6 @@ void main() {
       );
       controller.subscribe();
       await _pump();
-      addTearDown(controller.dispose);
 
       final uiChannel = const MethodChannel(AuthRuntimeClient.uiChannelName);
       final bridge = _FakePlatformBridge(controller, runtimeHost);
@@ -646,6 +649,12 @@ class _FakeAuthenticationScheduler implements AuthenticationScheduler {
     final pending = _pending!;
     _pending = null;
     await Future<void>.sync(pending.callback);
+  }
+
+  /// 取出当前待执行的回调但不触发它，用于验证取消后该回调不再生效。
+  FutureOr<void> Function()? takePending() {
+    final pending = _pending;
+    return pending?.callback;
   }
 
   @override

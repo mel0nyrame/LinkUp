@@ -60,12 +60,16 @@ object AuthRuntimeBridge {
             .setMethodCallHandler(::handleRuntimeCall)
     }
 
-    /** 释放后台 engine。运行时销毁后不再接受命令。 */
+    /**
+     * 释放后台 engine。运行时销毁后不再接受命令。
+     *
+     * [latestState] 保留最后一次发布的状态：服务重建时新绑定的 UI 应先看到它，
+     * 而不是空白。关闭“保留后台运行”时 `stop` 已把状态发布为 `stopped`。
+     */
     fun detachEngine() {
         engine = null
         assets = null
         commandHandle = null
-        latestState = null
         queuedCommands.clear()
         failPendingResults()
     }

@@ -64,6 +64,10 @@ class SystemSettingsUtil {
     try {
       if (getKeepAlive()) {
         await _systemChannel.invokeMethod<void>('startAuthRuntime');
+        // “保留后台运行”默认为开启，新装用户不会主动触发设置项，因此在前台服务
+        // 真正开始常驻时申请通知权限。Android 拒绝多次后不再弹窗，用户拒绝也
+        // 不会中断认证。
+        await requestNotificationPermission();
       } else {
         await _systemChannel.invokeMethod<void>('stopAuthRuntime');
       }
@@ -72,9 +76,10 @@ class SystemSettingsUtil {
     }
   }
 
-  /// 用户主动开启后台运行时申请通知权限。
+  /// 为常驻通知申请权限。
   ///
-  /// Android 13+ 没有通知权限时前台服务仍会运行，但系统不会展示常驻通知。
+  /// Android 13+ 没有通知权限时前台服务仍会运行，但系统不会展示常驻通知，因此
+  /// 拒绝不会中断认证。
   static Future<void> requestNotificationPermission() async {
     if (!Platform.isAndroid) return;
 

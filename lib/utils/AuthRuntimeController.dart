@@ -10,6 +10,9 @@ import 'package:LinkUp/utils/LogUtil.dart';
 /// 它持有唯一的 [AuthenticationCoordinator]、订阅状态流并把状态发布给宿主，
 /// 同时执行宿主通过 callback dispatcher 下发的命令。UI、通知和平台入口都路由
 /// 到这里，不允许出现第二个协调器。
+///
+/// 运行时的释放由宿主销毁后台 FlutterEngine 表达：isolate 结束即释放 HTTP
+/// client、Portal 缓存与调度，本类不另设拆卸入口。
 class AuthRuntimeController {
   AuthRuntimeController({required this.coordinator, required this.host});
 
@@ -20,11 +23,20 @@ class AuthRuntimeController {
   static const String commandKickDevice = 'kickDevice';
   static const String commandConfigurationChanged = 'configurationChanged';
 
+  /// 本运行时接受的全部命令。宿主下发的名字必须在此集合内。
+  static const Set<String> declaredCommands = <String>{
+    commandStart,
+    commandStop,
+    commandManualCheck,
+    commandLogout,
+    commandKickDevice,
+    commandConfigurationChanged,
+  };
+
   final AuthenticationCoordinator coordinator;
   final AuthRuntimeHost host;
 
   StreamSubscription<AuthenticationState>? _subscription;
-  bool _disposed = false;
 
   /// 开始把协调器状态转发给宿主，并立即发布当前状态。
   void subscribe() {
@@ -33,14 +45,13 @@ class AuthRuntimeController {
   }
 
   void _publish(AuthenticationState state) {
-    if (_disposed) return;
     unawaited(host.publishState(AuthRuntimeState.fromCoordinatorState(state)));
   }
 
   /// 执行一条宿主命令，返回需要回传给调用方的结果。
+  ///
+  /// 返回 `null` 表示该命令没有结果，宿主不会为它分配请求标识。
   Future<Object?> execute(String command, [Map<String, Object?>? args]) async {
-    if (_disposed) return null;
-
     switch (command) {
       case commandStart:
         await coordinator.start();
@@ -66,14 +77,5 @@ class AuthRuntimeController {
         await LogUtil.warning('收到未知的认证运行时命令');
         return null;
     }
-  }
-
-  /// 停止协调器并释放 HTTP client、Portal 缓存和状态流。
-  Future<void> dispose() async {
-    if (_disposed) return;
-    _disposed = true;
-    await _subscription?.cancel();
-    _subscription = null;
-    await coordinator.dispose();
   }
 }

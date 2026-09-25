@@ -121,8 +121,15 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * 开启“保留后台运行”。
+     *
+     * 必须走 `startForegroundService` 把服务提升为 started 状态：仅绑定的服务在
+     * Activity 解绑后会被系统销毁，后台认证无法继续。已绑定的服务实例与新启动的
+     * 是同一个，因此无需再经 binder 转发。
+     */
     private fun startAuthRuntime() {
-        authRuntime?.service?.startForegroundRuntime() ?: AuthRuntimeService.start(this)
+        AuthRuntimeService.start(this)
     }
 
     private fun stopAuthRuntime() {

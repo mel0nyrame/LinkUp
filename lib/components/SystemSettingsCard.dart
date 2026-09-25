@@ -37,10 +37,6 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
     setState(() => _isLoading = true);
     
     await SystemSettingsUtil.setKeepAlive(value);
-    if (value) {
-      // Android 13+ 需要通知权限才能展示常驻通知。
-      await SystemSettingsUtil.requestNotificationPermission();
-    }
 
     if (mounted) {
       setState(() {

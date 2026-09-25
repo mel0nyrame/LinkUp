@@ -34,16 +34,20 @@ class AuthRuntimeService : Service() {
         AuthRuntimeNotification.ensureChannel(this)
         AuthRuntimeBridge.onState = { state -> publishState(state) }
         createAuthRuntime()
+        if (BackgroundRuntimeSettings.isKeepAliveEnabled(this)) {
+            // 开启“保留后台运行”时立即建立常驻通知，不等待首次状态变化。
+            enterForeground()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder {
         // Activity 可见时只绑定这一个运行时，不创建第二个协调器。
-        AuthRuntimeBridge.dispatch(AuthRuntimeBridge.COMMAND_START)
+        ensureMonitoring()
         return binder
     }
 
     override fun onRebind(intent: Intent?) {
-        AuthRuntimeBridge.dispatch(AuthRuntimeBridge.COMMAND_START)
+        ensureMonitoring()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -54,13 +58,14 @@ class AuthRuntimeService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Android 要求通过 startForegroundService 启动的服务尽快进入前台。
-        enterForeground()
         if (!BackgroundRuntimeSettings.isKeepAliveEnabled(this)) {
+            // Android 要求通过 startForegroundService 启动的服务尽快进入前台，
+            // 之后未开启“保留后台运行”的服务不常驻。
+            enterForeground()
             stopSelf()
             return START_NOT_STICKY
         }
-        AuthRuntimeBridge.dispatch(AuthRuntimeBridge.COMMAND_START)
+        ensureMonitoring()
         // START_STICKY 让系统在允许的回收后重建服务并恢复运行时。用户主动
         // force-stop 属于系统不会恢复的边界，文档不承诺该场景。
         return START_STICKY
@@ -79,9 +84,14 @@ class AuthRuntimeService : Service() {
         super.onDestroy()
     }
 
-    /** 开启“保留后台运行”时进入前台并恢复监控。 */
-    fun startForegroundRuntime() {
-        enterForeground()
+    /**
+     * 请求后台运行时保持监控。
+     *
+     * Activity 绑定、重新绑定和前台服务启动三条路径共享同一入口，协调器的单飞
+     * 锁会把重复请求合并为至多一次检查。
+     */
+    private fun ensureMonitoring() {
+        if (BackgroundRuntimeSettings.isKeepAliveEnabled(this)) enterForeground()
         AuthRuntimeBridge.dispatch(AuthRuntimeBridge.COMMAND_START)
     }
 
@@ -89,7 +99,7 @@ class AuthRuntimeService : Service() {
      * 关闭“保留后台运行”时停止前台服务并释放认证运行时资源。
      *
      * 运行时先停止调度并释放 HTTP client 与 Portal 缓存；仍被 Activity 绑定时
-     * 服务不立即销毁，绑定结束后才释放 FlutterEngine。
+     * 服务不立即销毁，绑定结束后才释放 FlutterEngine——此时 UI 仍需要该运行时。
      */
     fun stopRuntime() {
         AuthRuntimeBridge.dispatch(AuthRuntimeBridge.COMMAND_STOP)

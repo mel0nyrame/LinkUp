@@ -46,29 +46,37 @@ class AuthRuntimeClient {
   /// 请求后台运行时立即开始监控。
   ///
   /// Activity 刚变为可见时使用，让概况页立即反映一次真实检查结果。
-  Future<bool> start() => _command(AuthRuntimeController.commandStart);
+  Future<void> start() => _fire(AuthRuntimeController.commandStart);
 
-  Future<bool> manualCheck() =>
-      _command(AuthRuntimeController.commandManualCheck);
+  Future<void> manualCheck() => _fire(AuthRuntimeController.commandManualCheck);
 
-  Future<bool> logout() => _command(AuthRuntimeController.commandLogout);
-
-  Future<bool> kickDevice(String ip) => _command(
-    AuthRuntimeController.commandKickDevice,
-    <String, Object?>{'ip': ip},
-  );
-
-  Future<bool> configurationChanged({required bool hasConfig}) => _command(
+  /// 认证配置保存或删除后通知运行时，使其取消旧调度并重新评估监控。
+  Future<void> configurationChanged({required bool hasConfig}) => _fire(
     AuthRuntimeController.commandConfigurationChanged,
     <String, Object?>{'hasConfig': hasConfig},
   );
 
-  Future<bool> _command(String name, [Map<String, Object?>? args]) async {
-    final result = await _invoke('command', <String, Object?>{
+  /// 注销结果决定 UI 提示，因此需要命令回传值。
+  Future<bool> logout() async =>
+      await _command(AuthRuntimeController.commandLogout) == true;
+
+  /// 踢设备结果决定 UI 提示，因此需要命令回传值。
+  Future<bool> kickDevice(String ip) async =>
+      await _command(
+        AuthRuntimeController.commandKickDevice,
+        <String, Object?>{'ip': ip},
+      ) ==
+      true;
+
+  Future<void> _fire(String name, [Map<String, Object?>? args]) async {
+    await _command(name, args);
+  }
+
+  Future<Object?> _command(String name, [Map<String, Object?>? args]) {
+    return _invoke('command', <String, Object?>{
       'name': name,
       'args': args,
     });
-    return result == true;
   }
 
   Future<Object?> _invoke(String method, [Object? arguments]) async {
