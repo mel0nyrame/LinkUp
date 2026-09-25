@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/LogUtil.dart';
 
@@ -11,7 +12,7 @@ class AcidDetector {
     r'top\.self\.location\.href=[\x27\x22](.+?)[\x27\x22]',
     caseSensitive: false,
   );
-  
+
   static final RegExp _metaRedirectReg = RegExp(
     r'<meta[^>]*http-equiv=[\x27\x22]refresh[\x27\x22][^>]*url=(.+?)[\s\x27\x22\>]',
     caseSensitive: false,
@@ -28,11 +29,11 @@ class AcidDetector {
 
   /// 多个检测入口地址（优先级排序）
   static const List<String> _detectUrls = [
-    'http://www.msftconnecttest.com/connecttest.txt',  // Windows
-    'http://captive.apple.com/hotspot-detect.html',     // Apple
+    'http://www.msftconnecttest.com/connecttest.txt', // Windows
+    'http://captive.apple.com/hotspot-detect.html', // Apple
     'http://connectivitycheck.gstatic.com/generate_204', // Android
-    'http://detectportal.firefox.com/canonical.html',    // Firefox
-    'http://www.baidu.com',                              // 通用 fallback
+    'http://detectportal.firefox.com/canonical.html', // Firefox
+    'http://www.baidu.com', // 通用 fallback
   ];
 
   /// 认证服务器基础地址
@@ -41,10 +42,13 @@ class AcidDetector {
   /// 缓存的页面内容
   String? _cachedPage;
   String? _cachedPageUrl;
+  int _cacheGeneration = 0;
+  final http.Client? _httpClient;
 
-  AcidDetector({required this.baseUrl});
+  AcidDetector({required this.baseUrl, http.Client? client})
+    : _httpClient = client;
 
-  /// 检测 ACID - 优先使用 Reality 模式
+  /// 从当前服务器或缓存页面检测 ACID；Reality 候选由协调器单独处理。
   Future<String?> detectAcid() async {
     LogUtil.info('[AcidDetector] 开始检测 ACID...');
     LogUtil.info('[AcidDetector] 认证服务器: $baseUrl');
@@ -82,11 +86,13 @@ class AcidDetector {
   /// 多个检测 URL 并发竞速：首个无错的结果胜出，整体延迟 ≤ 单个超时（5s）
   /// 若所有都失败，返回汇总错误
   Future<(String?, bool, String?)> reality({bool getAcid = true}) async {
-    LogUtil.info('[AcidDetector] Reality 模式检测（并发 ${_detectUrls.length} 个地址）...');
+    LogUtil.info(
+      '[AcidDetector] Reality 模式检测（并发 ${_detectUrls.length} 个地址）...',
+    );
 
     // 共享 client：first-success 时关闭它会取消所有 in-flight loser 的 socket，
     // 避免 5s timeout 内 4× orphan http.Client 浪费（mobile battery / radio）
-    final sharedClient = http.Client();
+    final sharedClient = _httpClient ?? http.Client();
 
     // 每个 URL 包装为 Future；并发竞速，最快的成功结果胜出
     final completer = Completer<(String?, bool, String?)>();
@@ -96,7 +102,11 @@ class AcidDetector {
     for (final detectUrl in _detectUrls) {
       // _realityWithUrl 内部已 try/catch 把所有异常包装为返回值，永不抛出，
       // 因此这里无需 .catchError
-      _realityWithUrl(detectUrl, getAcid: getAcid, sharedClient: sharedClient).then((result) {
+      _realityWithUrl(
+        detectUrl,
+        getAcid: getAcid,
+        sharedClient: sharedClient,
+      ).then((result) {
         final (_, _, err) = result;
         if (!completer.isCompleted) {
           if (err == null) {
@@ -118,7 +128,7 @@ class AcidDetector {
     // 关闭共享 client：close 后任何在飞 send() 都会立即抛 ClientException，
     // 已被 _followRedirect 内部 try/catch 捕获；_followRedirect 不会重复 close
     // （ownsClient=false），不会抛 StateError
-    sharedClient.close();
+    if (_httpClient == null) sharedClient.close();
     return result;
   }
 
@@ -132,6 +142,7 @@ class AcidDetector {
     http.Client? sharedClient,
   }) async {
     try {
+      final cacheGeneration = _cacheGeneration;
       final startUrl = Uri.parse(url);
       String? detectedAcid;
       String? localAcidUrl; // 本地变量暂存，与 _cachedPage 原子写入避免并发污染
@@ -145,7 +156,9 @@ class AcidDetector {
           if (getAcid) {
             detectedAcid = _extractAcidFromQuery(addr);
             if (detectedAcid != null) {
-              LogUtil.info('[AcidDetector] Reality: URL 中捕获 ACID=$detectedAcid');
+              LogUtil.info(
+                '[AcidDetector] Reality: URL 中捕获 ACID=$detectedAcid',
+              );
               localAcidUrl = addr.toString();
             }
           }
@@ -160,7 +173,7 @@ class AcidDetector {
 
       // 缓存页面内容和对应 URL — 原子写入，防止并发 reality() 调用中
       // _cachedPage 来自请求 A 而 _cachedPageUrl 来自请求 B
-      if (body != null) {
+      if (body != null && cacheGeneration == _cacheGeneration) {
         _cachedPage = body;
         if (localAcidUrl != null) {
           _cachedPageUrl = localAcidUrl;
@@ -174,7 +187,9 @@ class AcidDetector {
         final looksLikePortal = body != null && _looksLikePortal(body);
         isOnline = hostMatches && !looksLikePortal;
         if (hostMatches && looksLikePortal) {
-          LogUtil.warning('[AcidDetector] Reality: host 匹配但响应像 portal 拦截，判定为离线');
+          LogUtil.warning(
+            '[AcidDetector] Reality: host 匹配但响应像 portal 拦截，判定为离线',
+          );
         }
       }
 
@@ -201,9 +216,24 @@ class AcidDetector {
         lower.contains('ac_id:');
   }
 
+  Future<http.Response> _get(Uri uri) async {
+    final client = _httpClient;
+    if (client != null) {
+      return client.get(uri, headers: {'User-Agent': _userAgent});
+    }
+
+    final ownedClient = http.Client();
+    try {
+      return await ownedClient.get(uri, headers: {'User-Agent': _userAgent});
+    } finally {
+      ownedClient.close();
+    }
+  }
+
   /// 从重定向链检测 ACID（从 baseUrl 开始）
   Future<String?> _detectFromRedirect() async {
     LogUtil.info('[AcidDetector] 阶段 1: 从认证服务器重定向链检测...');
+    final cacheGeneration = _cacheGeneration;
 
     try {
       final startUrl = Uri.parse(baseUrl);
@@ -216,13 +246,16 @@ class AcidDetector {
           if (acid != null) {
             LogUtil.info('[AcidDetector] URL 中找到 ACID: $acid');
             foundAcid = acid;
-            _cachedPageUrl = addr.toString();
+            if (cacheGeneration == _cacheGeneration) {
+              _cachedPageUrl = addr.toString();
+            }
             return true;
           }
           return false;
         },
       );
 
+      if (cacheGeneration != _cacheGeneration) return null;
       return foundAcid;
     } catch (e) {
       LogUtil.error('[AcidDetector] 重定向链检测失败', e);
@@ -239,19 +272,18 @@ class AcidDetector {
 
     // 否则请求登录页面
     LogUtil.info('[AcidDetector] 阶段 2: 从登录页面 HTML 检测...');
+    final cacheGeneration = _cacheGeneration;
 
     try {
       final pageUrl = _cachedPageUrl ?? '$baseUrl/srun_portal_pc.php';
       LogUtil.info('[AcidDetector] 请求: $pageUrl');
 
-      final response = await http.get(
-        Uri.parse(pageUrl),
-        headers: {'User-Agent': _userAgent},
-      ).timeout(const Duration(seconds: 5));
+      final response = await _get(Uri.parse(pageUrl))
+          .timeout(const Duration(seconds: 5));
 
       LogUtil.info('[AcidDetector] 响应: ${response.statusCode}');
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && cacheGeneration == _cacheGeneration) {
         _cachedPage = response.body;
         return _extractAcidFromHtml(_cachedPage!);
       } else {
@@ -275,8 +307,8 @@ class AcidDetector {
     required bool Function(Uri addr) onNextAddr,
     http.Client? sharedClient,
   }) async {
-    final ownsClient = sharedClient == null;
-    final client = sharedClient ?? http.Client();
+    final ownsClient = sharedClient == null && _httpClient == null;
+    final client = sharedClient ?? _httpClient ?? http.Client();
     final visitedUris = <String>{};
     Uri currentAddr = startAddr;
     int redirectCount = 0;
@@ -298,7 +330,8 @@ class AcidDetector {
           request.followRedirects = false;
           request.headers['User-Agent'] = _userAgent;
 
-          final streamedResponse = await client.send(request)
+          final streamedResponse = await client
+              .send(request)
               .timeout(const Duration(seconds: 5));
           response = await http.Response.fromStream(streamedResponse);
         } on SocketException catch (e) {
@@ -310,7 +343,7 @@ class AcidDetector {
         if (response.statusCode < 300) {
           // 2xx - 检查 JS/Meta 跳转
           final body = response.body;
-          
+
           // JS 跳转
           final jsMatch = _jsRedirectReg.firstMatch(body);
           if (jsMatch != null) {
@@ -323,7 +356,7 @@ class AcidDetector {
               continue;
             }
           }
-          
+
           // Meta 跳转
           final metaMatch = _metaRedirectReg.firstMatch(body);
           if (metaMatch != null) {
@@ -339,7 +372,6 @@ class AcidDetector {
 
           // 没有跳转
           return (response, body, null);
-          
         } else if (response.statusCode < 400) {
           // 3xx 重定向
           final location = response.headers['location'];
@@ -373,14 +405,14 @@ class AcidDetector {
   /// 解析重定向 URL
   Uri _joinRedirectLocation(Uri addr, String loc) {
     loc = loc.trim();
-    
+
     if (loc.startsWith('http://') || loc.startsWith('https://')) {
       return Uri.parse(loc);
     }
-    
+
     // 处理转义字符
     loc = loc.replaceAll(r'\/', '/');
-    
+
     if (loc.startsWith('/')) {
       final qIndex = loc.indexOf('?');
       if (qIndex >= 0) {
@@ -429,6 +461,7 @@ class AcidDetector {
   }
 
   void reset() {
+    _cacheGeneration++;
     _cachedPage = null;
     _cachedPageUrl = null;
   }
@@ -437,18 +470,17 @@ class AcidDetector {
   /// 从登录页 HTML 中找到 portal JS 文件，提取 var enc = ...
   Future<String?> detectEnc() async {
     LogUtil.info('[AcidDetector] 开始检测 enc 版本...');
+    final cacheGeneration = _cacheGeneration;
 
     try {
       // 确保有登录页内容缓存
       if (_cachedPage == null) {
         final pageUrl = _cachedPageUrl ?? '$baseUrl/srun_portal_pc.php';
         LogUtil.info('[AcidDetector] 请求登录页: $pageUrl');
-        final response = await http.get(
-          Uri.parse(pageUrl),
-          headers: {'User-Agent': _userAgent},
-        ).timeout(const Duration(seconds: 5));
+        final response = await _get(Uri.parse(pageUrl))
+            .timeout(const Duration(seconds: 5));
 
-        if (response.statusCode == 200) {
+        if (response.statusCode == 200 && cacheGeneration == _cacheGeneration) {
           _cachedPage = response.body;
         } else {
           LogUtil.warning('[AcidDetector] 获取登录页失败: ${response.statusCode}');
@@ -471,15 +503,13 @@ class AcidDetector {
       final jsUrl = Uri.parse(baseUrl).replace(path: jsPath);
       LogUtil.info('[AcidDetector] 请求 JS 文件: $jsUrl');
 
-      final jsResponse = await http.get(
-        jsUrl,
-        headers: {'User-Agent': _userAgent},
-      ).timeout(const Duration(seconds: 5));
+      final jsResponse = await _get(jsUrl).timeout(const Duration(seconds: 5));
 
       if (jsResponse.statusCode != 200) {
         LogUtil.warning('[AcidDetector] 获取 JS 文件失败: ${jsResponse.statusCode}');
         return null;
       }
+      if (cacheGeneration != _cacheGeneration) return null;
 
       // 从 JS 内容中提取 var enc = ...
       final encReg = RegExp(r'var enc = (.*?)[,;]');

@@ -3,7 +3,9 @@ import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SrunEncrypt.dart';
+
 import 'dart:convert';
+
 import 'package:LinkUp/utils/RadUserInfo.dart';
 
 class SrunClient {
@@ -11,7 +13,9 @@ class SrunClient {
   String get baseURL => "http://" + host + "/cgi-bin";
   String get urlUserInfo => baseURL + "/rad_user_info";
   String get urlChallenge => baseURL + "/get_challenge";
-  String get urlPortal => baseURL + "/srun_portal";
+  String get urlPortal => urlPortalForHost(host);
+
+  String urlPortalForHost(String host) => "http://$host/cgi-bin/srun_portal";
 
   String get callback => "jQueryCallback";
   String get userAgent =>
@@ -22,8 +26,9 @@ class SrunClient {
 
   final http.Client _client;
 
-  SrunClient({http.Client? client, this.host = "10.129.1.1"}) : _client = client ?? http.Client();
-  
+  SrunClient({http.Client? client, this.host = "10.129.1.1"})
+    : _client = client ?? http.Client();
+
   /// 更新认证服务器地址
   void setHost(String newHost) {
     host = newHost;
@@ -32,14 +37,18 @@ class SrunClient {
 
   // 从 JSONP 提取 JSON
   String _extractJsonFromJsonp(String jsonp, String callbackName) {
+    final trimmed = jsonp.trim();
     final prefix = '$callbackName(';
-    if (!jsonp.startsWith(prefix)) {
-      throw FormatException('Invalid JSONP format');
+    if (trimmed.startsWith(prefix) && trimmed.endsWith(')')) {
+      return trimmed.substring(prefix.length, trimmed.length - 1);
     }
-    if (!jsonp.endsWith(')')) {
-      throw FormatException('Invalid JSONP ending');
+
+    final start = trimmed.indexOf('(');
+    final end = trimmed.lastIndexOf(')');
+    if (start >= 0 && end > start) {
+      return trimmed.substring(start + 1, end);
     }
-    return jsonp.substring(prefix.length, jsonp.length - 1);
+    throw const FormatException('Invalid JSONP format');
   }
 
   // 获取 IP 和在线状态
@@ -49,9 +58,7 @@ class SrunClient {
       '_': DateTime.now().millisecondsSinceEpoch.toString(),
     };
 
-    final uri = Uri.parse(
-      urlUserInfo,
-    ).replace(queryParameters: params);
+    final uri = Uri.parse(urlUserInfo).replace(queryParameters: params);
 
     LogUtil.info('[SrunClient] 请求用户信息: $urlUserInfo');
 
@@ -75,7 +82,7 @@ class SrunClient {
       final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
 
       final userInfo = RadUserInfo.fromJson(jsonData);
-      LogUtil.info('[SrunClient] 用户信息解析成功: online=${userInfo.isOnline}, ip=${userInfo.onlineIp ?? "unknown"}');
+      LogUtil.info('[SrunClient] 用户信息解析成功: online=${userInfo.isOnline}');
       return userInfo;
     } on FormatException catch (e) {
       LogUtil.error('[SrunClient] 解析用户信息失败', e);
@@ -93,7 +100,6 @@ class SrunClient {
     required String username,
     required String ip,
   }) async {
-    
     final params = {
       'callback': callback,
       'username': username,
@@ -101,11 +107,9 @@ class SrunClient {
       '_': DateTime.now().millisecondsSinceEpoch.toString(),
     };
 
-    final uri = Uri.parse(urlChallenge).replace(
-      queryParameters: params,
-    );
+    final uri = Uri.parse(urlChallenge).replace(queryParameters: params);
 
-    LogUtil.info('[SrunClient] 请求 Challenge: username=$username, ip=$ip');
+    LogUtil.info('[SrunClient] 请求 Challenge');
 
     try {
       final response = await _client.get(
@@ -127,11 +131,15 @@ class SrunClient {
       final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
 
       final challengeResp = ChallengeResponse.fromJson(jsonData);
-      
+
       // 检查返回状态
       if (!challengeResp.isSuccess) {
-        LogUtil.warning('[SrunClient] 获取 Challenge 失败: ${challengeResp.error} - ${challengeResp.errorMsg}');
-        throw Exception('Get challenge failed: ${challengeResp.error} - ${challengeResp.errorMsg}');
+        LogUtil.warning(
+          '[SrunClient] 获取 Challenge 失败: ${challengeResp.error} - ${challengeResp.errorMsg}',
+        );
+        throw Exception(
+          'Get challenge failed: ${challengeResp.error} - ${challengeResp.errorMsg}',
+        );
       }
 
       // 检查 challenge 是否为空（登录前必须检查）
@@ -142,7 +150,6 @@ class SrunClient {
 
       LogUtil.info('[SrunClient] 获取 Challenge 成功');
       return challengeResp;
-
     } on FormatException catch (e) {
       LogUtil.error('[SrunClient] 解析 Challenge 响应失败', e);
       throw Exception('JSONP parse error: $e');
@@ -155,11 +162,67 @@ class SrunClient {
     }
   }
 
+  /// 发送 JSONP 请求并提取 callback 内的 JSON。
+  ///
+  /// 登录服务通过此方法复用注入的 HTTP client，避免认证流程退回全局
+  /// [http.get] 或共享的可变客户端。
+  Future<Map<String, dynamic>> requestJsonp(
+    String url,
+    Map<String, String> params,
+  ) async {
+    final uri = Uri.parse(url).replace(queryParameters: params);
+    final displayUri = uri.replace(
+      queryParameters: Map<String, String>.from(
+        uri.queryParameters.map(
+          (key, value) => MapEntry(
+            key,
+            const {
+                  'password',
+                  'sign',
+                  'username',
+                  'info',
+                  'chksum',
+                  'ip',
+                  'ac_id',
+                }.contains(key)
+                ? '****'
+                : value,
+          ),
+        ),
+      ),
+    );
+    LogUtil.info('[SrunClient] HTTP GET: $displayUri');
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'User-Agent': userAgent,
+          'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
+        },
+      );
+      if (response.statusCode != 200) {
+        throw Exception('HTTP error: ${response.statusCode}');
+      }
+
+      final callbackName = params['callback'] ?? callback;
+      final jsonString = _extractJsonFromJsonp(response.body, callbackName);
+      final decoded = jsonDecode(jsonString);
+      if (decoded is! Map) {
+        throw const FormatException('JSONP payload is not an object');
+      }
+      return Map<String, dynamic>.from(decoded);
+    } on FormatException {
+      rethrow;
+    } on http.ClientException {
+      rethrow;
+    } catch (error) {
+      throw Exception('Srun request failed: $error');
+    }
+  }
+
   // DM 注销 — 调用 /cgi-bin/rad_user_dm，签名格式与登录不同
-  Future<bool> dmLogout({
-    required String username,
-    required String ip,
-  }) async {
+  Future<bool> dmLogout({required String username, required String ip}) async {
     final time = (DateTime.now().millisecondsSinceEpoch / 1000).floor();
     const unbind = 1;
     final signStr = '$time$username$ip$unbind$time';
@@ -175,8 +238,9 @@ class SrunClient {
       '_': DateTime.now().millisecondsSinceEpoch.toString(),
     };
 
-    final uri = Uri.parse('$baseURL/rad_user_dm').replace(queryParameters: params);
-    LogUtil.info('[SrunClient] DM 注销: username=$username, ip=$ip');
+    final uri = Uri.parse('$baseURL/rad_user_dm')
+        .replace(queryParameters: params);
+    LogUtil.info('[SrunClient] DM 注销请求');
 
     try {
       final response = await _client.get(
@@ -188,7 +252,7 @@ class SrunClient {
       }
       final jsonStr = _extractJsonFromJsonp(response.body, callback);
       final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
-      LogUtil.info('[SrunClient] DM 注销响应: $jsonData');
+      LogUtil.info('[SrunClient] DM 注销响应已解析');
       return jsonData['error'] == 'ok';
     } catch (e) {
       LogUtil.error('[SrunClient] DM 注销失败', e);
