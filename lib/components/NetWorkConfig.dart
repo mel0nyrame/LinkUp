@@ -7,7 +7,9 @@ import 'package:LinkUp/components/GlassCard.dart';
 import 'package:LinkUp/main.dart';
 
 class NetworkConfigCard extends StatefulWidget {
-  const NetworkConfigCard({super.key});
+  const NetworkConfigCard({super.key, this.onConfigChanged});
+
+  final VoidCallback? onConfigChanged;
 
   @override
   State<NetworkConfigCard> createState() => _NetworkConfigCardState();
@@ -52,7 +54,10 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
   Future<void> _saveAutoAcid() async {
     try {
-      await ConfigUtil.updateConfig(ConfigUpdate(autoAcid: _autoAcid));
+      final success = await ConfigUtil.updateConfig(
+        ConfigUpdate(autoAcid: _autoAcid),
+      );
+      if (success && mounted) widget.onConfigChanged?.call();
     } on ConfigStorageException {
       // 认证流程会显示配置读取失败，不把秘密或底层异常展示给用户。
     }
@@ -60,7 +65,10 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
   Future<void> _saveAcid() async {
     try {
-      await ConfigUtil.updateConfig(ConfigUpdate(acid: _acidCtrl.text));
+      final success = await ConfigUtil.updateConfig(
+        ConfigUpdate(acid: _acidCtrl.text),
+      );
+      if (success && mounted) widget.onConfigChanged?.call();
     } on ConfigStorageException {
       // 认证流程会显示配置读取失败，不把秘密或底层异常展示给用户。
     }
@@ -76,6 +84,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('认证服务器已更新，下次登录生效')));
+      widget.onConfigChanged?.call();
     } on ConfigStorageException {
       // 认证流程会显示配置读取失败，不把秘密或底层异常展示给用户。
     }

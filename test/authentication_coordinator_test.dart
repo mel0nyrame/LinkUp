@@ -257,6 +257,52 @@ void main() {
     expect(protocol.realityCalls, 1);
   });
 
+  test('慢 Reality 期间合并定时、网络和手动触发', () async {
+    final gate = Completer<void>();
+    final secondLogin = Completer<void>();
+    final scheduler = _FakeAuthenticationScheduler();
+    var loginCount = 0;
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+      realityGate: gate,
+      realityGateCall: 2,
+      afterLogin: () {
+        loginCount++;
+        if (loginCount == 2) secondLogin.complete();
+      },
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    await coordinator.start();
+    final slowCheck = coordinator.check();
+    await protocol.realityGateStarted.future;
+
+    final timerTrigger = scheduler.fireLast();
+    unawaited(coordinator.networkChanged());
+    unawaited(coordinator.manualCheck());
+    expect(protocol.realityCalls, 2);
+
+    gate.complete();
+    await timerTrigger;
+    expect((await slowCheck).status, AuthenticationStatus.stale);
+    await secondLogin.future;
+
+    expect(protocol.realityCalls, 3);
+    expect(protocol.maxConcurrentRealityCalls, 1);
+    expect(protocol.realityGetAcidCalls, [true, true, false]);
+  });
+
   test('网络事件在单飞期间排队一次新的检查', () async {
     final gate = Completer<void>();
     final secondLogin = Completer<void>();
@@ -393,7 +439,7 @@ void main() {
 
     final result = await coordinator.check();
 
-    expect(result.status, AuthenticationStatus.failed);
+    expect(result.status, AuthenticationStatus.offline);
     expect(protocol.realityCalls, 0);
     expect(config.updates, isEmpty);
   });
@@ -420,6 +466,425 @@ void main() {
 
     expect(result.status, AuthenticationStatus.stale);
     expect(config.updates, isEmpty);
+  });
+
+  test('稳定在线状态使用 30 秒检查周期', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    final result = await coordinator.start();
+
+    expect(result.status, AuthenticationStatus.online);
+    expect(scheduler.lastDelay, const Duration(seconds: 30));
+  });
+
+  test('连续失败从 3 秒指数退避到最多 60 秒', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: _FakeAuthenticationProtocol(
+        realityResult: const RealityProbeResult(),
+        userInfo: const [],
+      ),
+      networkState: _FakeNetworkState(connected: false),
+      scheduler: scheduler,
+    );
+
+    await coordinator.start();
+
+    expect(coordinator.state.status, AuthenticationStatus.backingOff);
+    expect(coordinator.state.retryAfter, const Duration(seconds: 3));
+
+    for (var i = 0; i < 6; i++) {
+      await scheduler.fireLast();
+    }
+
+    expect(scheduler.delays, const [
+      Duration(seconds: 3),
+      Duration(seconds: 6),
+      Duration(seconds: 12),
+      Duration(seconds: 24),
+      Duration(seconds: 48),
+      Duration(seconds: 60),
+      Duration(seconds: 60),
+    ]);
+  });
+
+  test('停止和重新启动不会清零连续失败计数', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(),
+      userInfo: const [],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      protocolFactory: () => protocol,
+      networkState: _FakeNetworkState(connected: false),
+      scheduler: scheduler,
+    );
+
+    await coordinator.start();
+    await coordinator.stop();
+    await coordinator.start();
+
+    expect(scheduler.delays, const [
+      Duration(seconds: 3),
+      Duration(seconds: 6),
+    ]);
+  });
+
+  test('有效网络变化取消退避并立即请求检查', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final network = _FakeNetworkState(connected: false);
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: _FakeAuthenticationProtocol(
+        realityResult: const RealityProbeResult(acid: '143'),
+        userInfo: [
+          RadUserInfo(clientIp: '10.0.0.8', error: ''),
+          RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+        ],
+      ),
+      networkState: network,
+      scheduler: scheduler,
+    );
+
+    await coordinator.start();
+    network.connected = true;
+    final result = await coordinator.networkChanged();
+
+    expect(result.status, AuthenticationStatus.online);
+    expect(network.generation, 'network-2');
+    expect(scheduler.cancelCalls, greaterThan(0));
+    expect(scheduler.lastDelay, const Duration(seconds: 30));
+  });
+
+  test('手动刷新立即检查并使用保存的 ACID', () async {
+    final network = _FakeNetworkState(connected: false);
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config(autoAcid: false)),
+      protocol: protocol,
+      networkState: network,
+      scheduler: _FakeAuthenticationScheduler(),
+    );
+
+    await coordinator.start();
+    network.connected = true;
+    final result = await coordinator.manualCheck();
+
+    expect(result.status, AuthenticationStatus.online);
+    expect(protocol.lastRealityGetAcid, isFalse);
+    expect(protocol.loginParameters?.acid, '1');
+  });
+
+  test('Reality 异常释放单飞锁并允许下一轮执行', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+      realityFailuresRemaining: 1,
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    final first = await coordinator.start();
+    expect(first.status, AuthenticationStatus.failed);
+    expect(scheduler.lastDelay, const Duration(seconds: 3));
+
+    await scheduler.fireLast();
+
+    expect(protocol.realityCalls, 2);
+    expect(coordinator.state.status, AuthenticationStatus.online);
+    expect(scheduler.lastDelay, const Duration(seconds: 30));
+  });
+
+  test('Portal 假成功不会清零退避，只有在线确认成功才恢复周期', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143', isOnline: true),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    final first = await coordinator.start();
+    expect(first.status, AuthenticationStatus.failed);
+    expect(scheduler.lastDelay, const Duration(seconds: 3));
+
+    await scheduler.fireLast();
+
+    expect(coordinator.state.status, AuthenticationStatus.online);
+    expect(scheduler.delays, const [
+      Duration(seconds: 3),
+      Duration(seconds: 30),
+    ]);
+  });
+
+  test('停止监控释放调度、Portal 缓存和协议资源', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final network = _FakeNetworkState();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: network,
+      scheduler: scheduler,
+    );
+
+    expect(coordinator.state.status, AuthenticationStatus.stopped);
+    await coordinator.start();
+    final resetCallsBeforeStop = protocol.resetCalls;
+    await coordinator.stop();
+
+    expect(coordinator.state.status, AuthenticationStatus.stopped);
+    expect(scheduler.cancelCalls, greaterThan(0));
+    expect(protocol.resetCalls, resetCallsBeforeStop + 1);
+    expect(protocol.disposeCalls, 1);
+    expect(network.generation, 'network-2');
+  });
+
+  test('停止后重新监控使用新的协议资源', () async {
+    final firstProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final secondProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: firstProtocol,
+      protocolFactory: () => secondProtocol,
+      networkState: _FakeNetworkState(),
+      scheduler: _FakeAuthenticationScheduler(),
+    );
+
+    await coordinator.start();
+    await coordinator.stop();
+    final result = await coordinator.start();
+
+    expect(result.status, AuthenticationStatus.online, reason: result.message);
+    expect(firstProtocol.disposeCalls, 1);
+    expect(secondProtocol.realityCalls, 1);
+  });
+
+  test('未提供协议工厂时停止后不会复用已释放实例', () async {
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: _FakeAuthenticationScheduler(),
+    );
+
+    await coordinator.start();
+    await coordinator.stop();
+    final result = await coordinator.start();
+
+    expect(result.status, AuthenticationStatus.stopped);
+    expect(protocol.realityCalls, 1);
+    expect(protocol.disposeCalls, 1);
+  });
+
+  test('注销后停止调度并释放认证资源', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    await coordinator.start();
+    final success = await coordinator.logout();
+
+    expect(success, isTrue);
+    expect(protocol.logoutCalls, 1);
+    expect(protocol.disposeCalls, 1);
+    expect(scheduler.hasPending, isFalse);
+    expect(coordinator.state.status, AuthenticationStatus.stopped);
+  });
+
+  test('配置变化取消旧调度，删除配置后保持停止', () async {
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    await coordinator.start();
+    await coordinator.configurationChanged(hasConfig: false);
+
+    expect(coordinator.state.status, AuthenticationStatus.stopped);
+    expect(scheduler.hasPending, isFalse);
+    expect(protocol.disposeCalls, 1);
+  });
+
+  test('认证服务器变化后使用新协议世代立即检查', () async {
+    final firstProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final secondProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final config = _FakeConfigSource(_config());
+    final coordinator = AuthenticationCoordinator(
+      configSource: config,
+      protocol: firstProtocol,
+      protocolFactory: () => secondProtocol,
+      networkState: _FakeNetworkState(),
+      scheduler: _FakeAuthenticationScheduler(),
+    );
+
+    await coordinator.start();
+    config.config = _config().copyWith(authServer: '10.129.1.2');
+    final result = await coordinator.configurationChanged(hasConfig: true);
+
+    expect(result.status, AuthenticationStatus.online);
+    expect(firstProtocol.disposeCalls, 1);
+    expect(secondProtocol.servers, ['10.129.1.2']);
+  });
+
+  test('停止后的有效网络变化会恢复监控并立即检查', () async {
+    final firstProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final secondProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final scheduler = _FakeAuthenticationScheduler();
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: firstProtocol,
+      protocolFactory: () => secondProtocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    await coordinator.start();
+    await coordinator.stop();
+    final result = await coordinator.networkChanged();
+
+    expect(result.status, AuthenticationStatus.online);
+    expect(scheduler.hasPending, isTrue);
+    expect(secondProtocol.realityCalls, 1);
+  });
+
+  test('停止会使慢 Reality 的旧网络世代失效', () async {
+    final gate = Completer<void>();
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: const [],
+      realityGate: gate,
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    final check = coordinator.start();
+    await protocol.realityStarted.future;
+    final stop = coordinator.stop();
+    gate.complete();
+    final result = await check;
+    await stop;
+
+    expect(result.status, AuthenticationStatus.stale);
+    expect(protocol.userInfoCalls, 0);
+    expect(protocol.disposeCalls, 1);
+    expect(scheduler.hasPending, isFalse);
+    expect(coordinator.state.status, AuthenticationStatus.stopped);
   });
 }
 
@@ -474,6 +939,34 @@ class _FakeNetworkState implements AuthenticationNetworkState {
   }
 }
 
+class _FakeAuthenticationScheduler implements AuthenticationScheduler {
+  final List<Duration> delays = [];
+  ({Duration delay, FutureOr<void> Function() callback})? _pending;
+  int cancelCalls = 0;
+
+  Duration? get lastDelay => delays.isEmpty ? null : delays.last;
+
+  bool get hasPending => _pending != null;
+
+  @override
+  void schedule(Duration delay, FutureOr<void> Function() callback) {
+    delays.add(delay);
+    _pending = (delay: delay, callback: callback);
+  }
+
+  Future<void> fireLast() async {
+    final pending = _pending!;
+    _pending = null;
+    await Future<void>.sync(pending.callback);
+  }
+
+  @override
+  void cancel() {
+    _pending = null;
+    cancelCalls++;
+  }
+}
+
 class _FakeAuthenticationProtocol implements AuthenticationProtocol {
   _FakeAuthenticationProtocol({
     required this.realityResult,
@@ -482,6 +975,8 @@ class _FakeAuthenticationProtocol implements AuthenticationProtocol {
     this.loginSuccess = true,
     this.detectedEnc = 'srun_bx1',
     this.realityGate,
+    this.realityGateCall = 1,
+    this.realityFailuresRemaining = 0,
     this.afterLogin,
     this.loginErrorType,
   });
@@ -492,15 +987,26 @@ class _FakeAuthenticationProtocol implements AuthenticationProtocol {
   final bool loginSuccess;
   final String? detectedEnc;
   final Completer<void>? realityGate;
+  final int realityGateCall;
+  final Completer<void> realityGateStarted = Completer<void>();
+  int realityFailuresRemaining;
   final void Function()? afterLogin;
   final LoginErrorType? loginErrorType;
   final List<String> servers = [];
+  final List<bool> realityGetAcidCalls = [];
+  final Completer<void> realityStarted = Completer<void>();
   int rootProbeCalls = 0;
   int realityCalls = 0;
+  int maxConcurrentRealityCalls = 0;
+  int userInfoCalls = 0;
+  int logoutCalls = 0;
+  int resetCalls = 0;
+  int disposeCalls = 0;
   bool? lastRealityGetAcid;
   AuthParameters? loginParameters;
 
   int _userInfoIndex = 0;
+  int _activeRealityCalls = 0;
 
   @override
   Future<RealityProbeResult> reality(
@@ -508,14 +1014,32 @@ class _FakeAuthenticationProtocol implements AuthenticationProtocol {
     bool getAcid = true,
   }) async {
     realityCalls++;
+    if (realityCalls == 1) realityStarted.complete();
     lastRealityGetAcid = getAcid;
+    realityGetAcidCalls.add(getAcid);
     servers.add(server);
-    await realityGate?.future;
-    return realityResult;
+    _activeRealityCalls++;
+    if (_activeRealityCalls > maxConcurrentRealityCalls) {
+      maxConcurrentRealityCalls = _activeRealityCalls;
+    }
+    try {
+      if (realityFailuresRemaining > 0) {
+        realityFailuresRemaining--;
+        throw StateError('fixture failure');
+      }
+      if (realityCalls == realityGateCall && realityGate != null) {
+        if (!realityGateStarted.isCompleted) realityGateStarted.complete();
+        await realityGate!.future;
+      }
+      return realityResult;
+    } finally {
+      _activeRealityCalls--;
+    }
   }
 
   @override
   Future<RadUserInfo> getUserInfo(String server) async {
+    userInfoCalls++;
     final result = userInfo[_userInfoIndex++];
     return result;
   }
@@ -565,12 +1089,17 @@ class _FakeAuthenticationProtocol implements AuthenticationProtocol {
     required String username,
     required String ip,
   }) async {
+    logoutCalls++;
     return true;
   }
 
   @override
-  void reset() {}
+  void reset() {
+    resetCalls++;
+  }
 
   @override
-  void dispose() {}
+  void dispose() {
+    disposeCalls++;
+  }
 }

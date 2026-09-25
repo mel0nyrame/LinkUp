@@ -27,7 +27,6 @@ class _MainNavigatorState extends State<MainNavigator> {
   bool _isLoading = false;
   String? _statusMessage;
   bool _isOnline = false;
-  bool _shouldStopMonitor = false;
   RadUserInfo? _userInfo;
   String _currentAcid = '1';
 
@@ -35,13 +34,9 @@ class _MainNavigatorState extends State<MainNavigator> {
   late final StreamSubscription<AuthenticationState> _authStateSubscription;
   StreamSubscription<dynamic>? _networkSubscription;
   bool _ownsCoordinator = false;
-  Timer? _monitorTimer;
 
   // 用户操作锁只保护 UI 交互；认证协议本身由协调器单飞锁保护。
   bool _userOperationInProgress = false;
-
-  // 检查间隔（秒）
-  static const int checkInterval = 3;
 
   @override
   void initState() {
@@ -52,6 +47,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       _coordinator = AuthenticationCoordinator(
         configSource: ConfigUtilSource(),
         protocol: SrunAuthenticationProtocol(),
+        protocolFactory: SrunAuthenticationProtocol.new,
         networkState: AuthenticationNetworkTracker(),
       );
       _ownsCoordinator = true;
@@ -61,8 +57,7 @@ class _MainNavigatorState extends State<MainNavigator> {
 
     _authStateSubscription = _coordinator.states.listen(_onAuthenticationState);
     _networkSubscription = NetworkUtil.onConnectivityChanged.listen((_) {
-      _coordinator.invalidateNetwork();
-      _coordinator.requestCheck();
+      unawaited(_coordinator.networkChanged());
     });
 
     // 页面加载后检查更新
@@ -70,8 +65,9 @@ class _MainNavigatorState extends State<MainNavigator> {
       _checkForUpdate();
     });
 
-    // 启动监控
-    _startMonitor();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_coordinator.start());
+    });
   }
 
   void _onAuthenticationState(AuthenticationState state) {
@@ -100,13 +96,26 @@ class _MainNavigatorState extends State<MainNavigator> {
       case AuthenticationStatus.failed:
       case AuthenticationStatus.cancelled:
       case AuthenticationStatus.stale:
+      case AuthenticationStatus.backingOff:
         setState(() {
           _isLoading = false;
           _isOnline = false;
           _statusMessage = state.message ?? '认证未完成，将自动重试';
         });
-      case AuthenticationStatus.idle:
       case AuthenticationStatus.offline:
+        setState(() {
+          _isLoading = false;
+          _isOnline = false;
+          _statusMessage = state.message ?? 'WiFi 未连接';
+        });
+      case AuthenticationStatus.stopped:
+        setState(() {
+          _isLoading = false;
+          _isOnline = false;
+          _userInfo = null;
+          _statusMessage = state.message;
+        });
+      case AuthenticationStatus.idle:
         setState(() {
           _isLoading = false;
           _isOnline = false;
@@ -136,41 +145,10 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   @override
   void dispose() {
-    _shouldStopMonitor = true;
-    _monitorTimer?.cancel();
     unawaited(_authStateSubscription.cancel());
     unawaited(_networkSubscription?.cancel());
     if (_ownsCoordinator) unawaited(_coordinator.dispose());
     super.dispose();
-  }
-
-  // 启动网络监控
-  void _startMonitor() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_shouldStopMonitor || !mounted) return;
-
-      unawaited(_checkAndReconnect());
-      _monitorTimer = Timer.periodic(
-        const Duration(seconds: checkInterval),
-        (_) => unawaited(_checkAndReconnect()),
-      );
-    });
-  }
-
-  // 重建监控定时器（注销/手动刷新路径）。
-  Future<void> _restartMonitor() async {
-    if (_shouldStopMonitor || !mounted) return;
-    _monitorTimer?.cancel();
-    _monitorTimer = Timer.periodic(
-      const Duration(seconds: checkInterval),
-      (_) => unawaited(_checkAndReconnect()),
-    );
-  }
-
-  // 检查连接状态并自动重连
-  Future<void> _checkAndReconnect() async {
-    if (_shouldStopMonitor || !mounted) return;
-    await _runCoordinatorCheck();
   }
 
   Future<void> _runCoordinatorCheck({bool? manual}) async {
@@ -255,7 +233,6 @@ class _MainNavigatorState extends State<MainNavigator> {
     if (confirmed != true || !mounted) return;
 
     _userOperationInProgress = true;
-    _monitorTimer?.cancel();
     setState(() {
       _isLoading = true;
       _statusMessage = '正在注销...';
@@ -276,7 +253,6 @@ class _MainNavigatorState extends State<MainNavigator> {
           backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
         ),
       );
-      if (success) await _restartMonitor();
     } catch (error, stackTrace) {
       LogUtil.error('注销异常', error, stackTrace);
       if (mounted) {
@@ -321,12 +297,10 @@ class _MainNavigatorState extends State<MainNavigator> {
   Future<void> _manualLogin() async {
     if (_userOperationInProgress) return;
     _userOperationInProgress = true;
-    _monitorTimer?.cancel();
     try {
-      await _runCoordinatorCheck();
+      await _runCoordinatorCheck(manual: true);
     } finally {
       _userOperationInProgress = false;
-      await _restartMonitor();
     }
   }
 
@@ -371,7 +345,13 @@ class _MainNavigatorState extends State<MainNavigator> {
                 onRefresh: () => _manualLogin(),
                 onKickDevice: _kickDevice,
               ),
-              const SettingsPage(),
+              SettingsPage(
+                onConfigChanged: (hasConfig) {
+                  unawaited(
+                    _coordinator.configurationChanged(hasConfig: hasConfig),
+                  );
+                },
+              ),
             ],
           ),
           // Floating liquid glass pill — transparent background, no Scaffold chrome
