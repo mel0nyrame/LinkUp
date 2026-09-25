@@ -57,11 +57,6 @@ jobs:
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
           fi
-          if printf '%s\n' "$changed" | grep -qE '^(android/|pubspec\.yaml$|pubspec\.lock$|\.github/workflows/ci\.yml$)'; then
-            echo "android=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "android=false" >> "$GITHUB_OUTPUT"
-          fi
 
       # 一次全仓格式化之后，格式就是 CI 的永久门：新引入的排版漂移在 PR 上翻红，
       # 不再靠"谁碰到那个文件谁负责"。（此前只判定本次触及的文件。）
