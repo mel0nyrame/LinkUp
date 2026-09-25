@@ -45,11 +45,14 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
 
     try {
       final success = await ConfigUtil.saveConfig(
-        username: _usernameCtrl.text.trim(),
-        password: _passwordCtrl.text,
-        acid: _acidCtrl.text.trim(),
-        authServer: _authServerCtrl.text.trim(),
-        userType: _userTypeCtrl.text.trim(),
+        AuthConfig(
+          username: _usernameCtrl.text.trim(),
+          password: _passwordCtrl.text,
+          acid: _acidCtrl.text.trim(),
+          autoAcid: true,
+          authServer: _authServerCtrl.text.trim(),
+          userType: _userTypeCtrl.text.trim(),
+        ),
       );
 
       if (!mounted) return;
@@ -70,15 +73,15 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
           ),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _isSaving = false;
-        _errorMessage = '保存异常: $e';
+        _errorMessage = '保存失败，请检查应用存储权限或重启应用后重试';
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('保存异常: $e'),
+        const SnackBar(
+          content: Text('保存失败，请检查应用存储权限'),
           backgroundColor: Colors.red,
         ),
       );
@@ -188,8 +191,8 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
                     ),
                     keyboardType: TextInputType.url,
                     validator: (v) {
-                      if (v?.isEmpty == true) return '请输入认证服务器地址';
-                      final trimmed = v!.trim();
+                      final trimmed = v?.trim() ?? '';
+                      if (trimmed.isEmpty) return null;
                       if (!RegExp(r'^[0-9a-zA-Z\.-]+$').hasMatch(trimmed)) {
                         return '格式不正确，请输入 IP 或域名';
                       }

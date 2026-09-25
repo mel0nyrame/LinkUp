@@ -34,49 +34,50 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
   // 加载配置
   Future<void> _loadConfig() async {
-    final config = await ConfigUtil.loadConfig();
-    if (!mounted) return;
-    if (config != null) {
-      setState(() {
-        _autoAcid = config['auto_acid'] ?? true;
-        _displayAcid = config['acid'] ?? '1';
-        _acidCtrl.text = _displayAcid;
-        _authServerCtrl.text = config['auth_server'] ?? '10.129.1.1';
-      });
+    try {
+      final config = await ConfigUtil.loadConfig();
+      if (!mounted) return;
+      if (config != null) {
+        setState(() {
+          _autoAcid = config.autoAcid;
+          _displayAcid = config.acid;
+          _acidCtrl.text = config.acid;
+          _authServerCtrl.text = config.authServer;
+        });
+      }
+    } on ConfigStorageException {
+      // 保留默认显示值，认证流程会通过仓库读取错误状态。
     }
   }
 
-  // 保存配置（仅写文件，不调用 setState/Context，无需 mounted 守卫）
-  Future<void> _saveConfig() async {
-    final config = await ConfigUtil.loadConfig();
-    if (config != null) {
-      await ConfigUtil.saveConfig(
-        username: config['username'] ?? '',
-        password: config['password'] ?? '',
-        acid: _acidCtrl.text,
-        autoAcid: _autoAcid,
-        authServer: _authServerCtrl.text,
-      );
+  Future<void> _saveAutoAcid() async {
+    try {
+      await ConfigUtil.updateConfig(ConfigUpdate(autoAcid: _autoAcid));
+    } on ConfigStorageException {
+      // 认证流程会显示配置读取失败，不把秘密或底层异常展示给用户。
+    }
+  }
+
+  Future<void> _saveAcid() async {
+    try {
+      await ConfigUtil.updateConfig(ConfigUpdate(acid: _acidCtrl.text));
+    } on ConfigStorageException {
+      // 认证流程会显示配置读取失败，不把秘密或底层异常展示给用户。
     }
   }
 
   // 保存认证服务器
   Future<void> _saveAuthServer() async {
-    final config = await ConfigUtil.loadConfig();
-    if (!mounted) return;
-    if (config != null) {
-      await ConfigUtil.saveConfig(
-        username: config['username'] ?? '',
-        password: config['password'] ?? '',
-        acid: config['acid'] ?? '1',
-        autoAcid: config['auto_acid'] ?? true,
-        authServer: _authServerCtrl.text,
+    try {
+      final success = await ConfigUtil.updateConfig(
+        ConfigUpdate(authServer: _authServerCtrl.text),
       );
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('认证服务器已更新，下次登录生效')));
-      }
+      if (!mounted || !success) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('认证服务器已更新，下次登录生效')));
+    } on ConfigStorageException {
+      // 认证流程会显示配置读取失败，不把秘密或底层异常展示给用户。
     }
   }
 
@@ -130,7 +131,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                 setState(() {
                   _autoAcid = value;
                 });
-                _saveConfig();
+                _saveAutoAcid();
               },
               secondary: Icon(
                 _autoAcid ? Icons.auto_fix_high : Icons.edit,
@@ -247,7 +248,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
         controller: _acidCtrl,
         onChanged: (value) {
           _displayAcid = value;
-          _saveConfig();
+          _saveAcid();
         },
         decoration: InputDecoration(
           labelText: 'ACID (接入点 ID)',
@@ -266,7 +267,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                 _acidCtrl.text = '1';
                 _displayAcid = '1';
               });
-              _saveConfig();
+              _saveAcid();
             },
           ),
         ),

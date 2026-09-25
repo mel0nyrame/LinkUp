@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="linkup_auth" />
+    <exclude domain="sharedpref" path="FlutterSecureKeyStorage:linkup_auth" />
+    <exclude domain="sharedpref" path="FlutterSecureStorageConfiguration:linkup_auth" />
+    <exclude domain="root" path="app_flutter/linkup_config.json" />
+</full-backup-content>

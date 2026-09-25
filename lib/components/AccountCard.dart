@@ -18,8 +18,8 @@ class _AccountcartState extends State<AccountCard> {
   final TextEditingController _userTypeCtrl = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = true;
-  String? _acid;
-  bool? _autoAcid;
+  String _loadedUsername = '';
+  String _loadedUserType = '';
 
   @override
   void initState() {
@@ -37,18 +37,25 @@ class _AccountcartState extends State<AccountCard> {
 
   // 加载当前配置
   Future<void> _loadCurrentConfig() async {
-    final config = await ConfigUtil.loadConfig();
-    if (!mounted) return;
-    if (config != null) {
-      setState(() {
-        _usernameCtrl.text = config['username'] ?? '';
-        _passwordCtrl.text = config['password'] ?? '';
-        _userTypeCtrl.text = config['user_type'] ?? '';
-        _acid = config['acid'] ?? '1';
-        _autoAcid = config['auto_acid'] ?? true;
-        _isLoading = false;
-      });
-    } else {
+    try {
+      final config = await ConfigUtil.loadConfig();
+      if (!mounted) return;
+      if (config != null) {
+        setState(() {
+          _usernameCtrl.text = config.username;
+          _passwordCtrl.text = config.password;
+          _userTypeCtrl.text = config.userType;
+          _loadedUsername = config.username;
+          _loadedUserType = config.userType;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } on ConfigStorageException {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -69,13 +76,27 @@ class _AccountcartState extends State<AccountCard> {
 
     setState(() => _isLoading = true);
 
-    final success = await ConfigUtil.saveConfig(
-      username: username,
-      password: password,
-      acid: _acid ?? '1',
-      autoAcid: _autoAcid ?? true,
-      userType: _userTypeCtrl.text.trim(),
-    );
+    final userType = _userTypeCtrl.text.trim();
+    final accountChanged =
+        username != _loadedUsername || userType != _loadedUserType;
+    bool success;
+    try {
+      success = await ConfigUtil.updateConfig(
+        accountChanged
+            ? ConfigUpdate(
+                username: username,
+                password: password,
+                userType: userType,
+              )
+            : ConfigUpdate(password: password),
+      );
+      if (success) {
+        _loadedUsername = username;
+        _loadedUserType = userType;
+      }
+    } on ConfigStorageException {
+      success = false;
+    }
 
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -131,8 +152,8 @@ class _AccountcartState extends State<AccountCard> {
         _usernameCtrl.clear();
         _passwordCtrl.clear();
         _userTypeCtrl.clear();
-        _acid = '1';
-        _autoAcid = true;
+        _loadedUsername = '';
+        _loadedUserType = '';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('配置已删除'), backgroundColor: Colors.green),
