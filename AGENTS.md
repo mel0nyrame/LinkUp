@@ -9,9 +9,9 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 ## 变更路由
 
 - **页面与组件**：入口在 `lib/main.dart`；导航状态由 `lib/navigation/MainNavigation.dart` 编排；页面和组件分别位于 `lib/page/`、`lib/components/`。
-- **认证与协议**：实现位于 `lib/utils/SrunClient.dart`、`SrunLogin.dart`、`SrunEncrypt.dart`、`AcidDetector.dart`。修改接口、加密、JSONP、ACID、重定向或错误码前，先读 `docs/深澜认证协议技术文档.md`；该文件是协议事实的唯一来源。
+- **认证与协议**：认证周期由 `lib/utils/AuthenticationCoordinator.dart` 独占（单飞、调度、网络世代、状态流），改认证行为从它读起；协议实现在 `lib/utils/SrunClient.dart`、`SrunLogin.dart`、`SrunEncrypt.dart`、`AcidDetector.dart`。修改接口、加密、JSONP、ACID、重定向或错误码前，先读 `docs/深澜认证协议技术文档.md`；该文件是协议事实的唯一来源。决策背景见 `docs/adr/0002--centralize-authentication-attempt-authority.md` 与 `docs/adr/0003--coordinator-owns-monitoring-schedule.md`。
 - **本地数据与更新**：`ConfigUtil.dart` 保存认证配置，`SystemSettingsUtil.dart` 保存系统开关，`LogUtil.dart` 管理日志，`UpdateUtil.dart` 检查和安装更新。
-- **Android 原生**：入口与开机自启位于 `android/app/src/main/kotlin/com/mel0ny/linkup/`；Dart 与原生层通过 `com.mel0ny.linkup/system` MethodChannel 通信。后台认证运行时由 `AuthRuntimeService` 承载，它用独立 FlutterEngine 运行 `lib/authRuntimeMain.dart`，并通过 `com.mel0ny.linkup/authRuntime` 与 `com.mel0ny.linkup/authUi` 两个通道连接 Dart。
+- **Android 原生**：入口与开机自启位于 `android/app/src/main/kotlin/com/mel0ny/linkup/`；Dart 与原生层通过 `com.mel0ny.linkup/system` MethodChannel 通信。后台认证运行时由 `AuthRuntimeService` 承载，它用独立 FlutterEngine 运行 `lib/authRuntimeMain.dart`，并通过 `com.mel0ny.linkup/authRuntime` 与 `com.mel0ny.linkup/authUi` 两个通道连接 Dart。命令名与通道名的唯一来源是同目录的 `AuthRuntimeBridge.kt`；后台开关与开机门读 Dart 写入的 `FlutterSharedPreferences` 键（`shared_preferences` 加的 `flutter.` 前缀），由 `BackgroundRuntimeSettings.kt` 封装。
 - **工具链与依赖**：以 `pubspec.yaml`、`pubspec.lock`、`android/` 和 `.github/workflows/` 为准；本文件不重复记录版本号。本机 SDK 可能与 `environment.flutter` 不一致，先做变更流程第 0 步。
 - **用户文档**：`README.md` 面向使用者和贡献者；协议细节不要重新复制到 README。
 
