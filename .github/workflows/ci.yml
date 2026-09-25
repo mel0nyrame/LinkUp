@@ -57,6 +57,11 @@ jobs:
           else
             echo "dart=false" >> "$GITHUB_OUTPUT"
           fi
+          if printf '%s\n' "$changed" | grep -qE '^(android/|pubspec\.yaml$|pubspec\.lock$|\.github/workflows/ci\.yml$)'; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # 仓库整体刻意未格式化，判定范围限定为本次触及的文件：
       # 既让"格式化本次触及的 Dart 文件"这条规则可执行，又不要求顺手清理历史债务。
@@ -84,6 +89,12 @@ jobs:
 
       - name: Run tests
         run: flutter test --coverage
+
+      # 源码断言读的是文本：Kotlin 语法写错、依赖写错、Manifest 引用不存在时，
+      # test/android_runtime_contract_test.dart 照样通过。编译是唯一能翻红的检查。
+      - name: Build debug APK
+        if: steps.changes.outputs.android == 'true'
+        run: flutter build apk --debug
 
       - name: Upload coverage
         if: always()
