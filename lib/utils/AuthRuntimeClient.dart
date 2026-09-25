@@ -62,10 +62,9 @@ class AuthRuntimeClient {
 
   /// 踢设备结果决定 UI 提示，因此需要命令回传值。
   Future<bool> kickDevice(String ip) async =>
-      await _command(
-        AuthRuntimeController.commandKickDevice,
-        <String, Object?>{'ip': ip},
-      ) ==
+      await _command(AuthRuntimeController.commandKickDevice, <String, Object?>{
+        'ip': ip,
+      }) ==
       true;
 
   Future<void> _fire(String name, [Map<String, Object?>? args]) async {
@@ -73,10 +72,7 @@ class AuthRuntimeClient {
   }
 
   Future<Object?> _command(String name, [Map<String, Object?>? args]) {
-    return _invoke('command', <String, Object?>{
-      'name': name,
-      'args': args,
-    });
+    return _invoke('command', <String, Object?>{'name': name, 'args': args});
   }
 
   Future<Object?> _invoke(String method, [Object? arguments]) async {
