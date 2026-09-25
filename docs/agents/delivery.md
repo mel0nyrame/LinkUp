@@ -53,6 +53,10 @@ gh api -X PATCH "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pu
 
 reviewer 以 PR 正文"验证汇总"里列出的命令与结果为验证证据，不自己重跑。需要判定某条验收条件无法验证时，结论里必须写出失败的工具链与原始错误（`Because LinkUp requires Flutter SDK version …` 这类）；本机共享 SDK 与 `pubspec.yaml` 不一致时，先按 `AGENTS.md` 变更流程第 0 步取仓库声明的版本再下结论，否则会把"用错 SDK"读成"跑不了"。
 
+### 已评估并接受
+
+reviewer 提不出确定性检查的判断类意见（重复代码、边界取舍、覆盖强度），由作者决定接受还是改。接受时写进 PR 正文"风险与回滚"，一句话包含：结论、为什么接受、如果后来出问题会怎样。理由是这类意见没有可自动化的判定，仓库里不留结论时下一轮 review 会原样重提，作者被迫重新判断一次。
+
 ### 长期决策
 
 命中 `talang-adr` 的触发面时写 ADR，状态字段写清生命周期。ADR 负责理由与被拒绝的替代方案，README 负责用户可观察的行为，两者不互相复制。
