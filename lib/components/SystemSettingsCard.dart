@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 import 'package:LinkUp/components/GlassCard.dart';
@@ -35,24 +36,22 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
   /// 设置保留后台
   Future<void> _setKeepAlive(bool value) async {
     setState(() => _isLoading = true);
-    
+
     await SystemSettingsUtil.setKeepAlive(value);
-    
+
     if (mounted) {
       setState(() {
         _keepAlive = value;
         _isLoading = false;
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(value 
-              ? '后台运行已开启' 
-              : '后台运行已关闭'),
+          content: Text(value ? '后台运行已开启' : '后台运行已关闭'),
           duration: const Duration(seconds: 2),
         ),
       );
-      
+
       // 如果开启后台运行，提示用户添加电池白名单
       if (value && Platform.isAndroid) {
         _showBatteryOptimizationDialog();
@@ -63,15 +62,15 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
   /// 设置开机自启
   Future<void> _setAutoStart(bool value) async {
     setState(() => _isLoading = true);
-    
+
     await SystemSettingsUtil.setAutoStart(value);
-    
+
     if (mounted) {
       setState(() {
         _autoStart = value;
         _isLoading = false;
       });
-      
+
       if (value) {
         // 如果开启开机自启，显示提示
         _showAutoStartGuide();
@@ -93,7 +92,8 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
       builder: (context) => AlertDialog(
         title: const Text('建议设置'),
         content: const Text(
-          '为了确保应用能在后台持续运行，建议将此应用添加到电池优化白名单。\n\n'
+          '后台运行由前台服务承载，并会显示一条常驻通知说明认证状态。\n\n'
+          '如果通知被系统隐藏，或应用没有通知权限，Android 不会再展示该通知。\n\n'
           '部分国产 ROM (如小米、华为、OPPO、vivo)可能需要在系统设置中手动允许后台运行和自启动。',
         ),
         actions: [
@@ -147,9 +147,7 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
     final colorScheme = Theme.of(context).colorScheme;
 
     if (_isLoading) {
-      return const GlassCard(
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const GlassCard(child: Center(child: CircularProgressIndicator()));
     }
 
     return GlassCard(
@@ -165,8 +163,11 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
                   color: MyApp.iosBlue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.settings_applications,
-                    color: MyApp.iosBlue, size: 18),
+                child: const Icon(
+                  Icons.settings_applications,
+                  color: MyApp.iosBlue,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
               const Text(
@@ -180,91 +181,83 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
             ],
           ),
           const SizedBox(height: 12),
-            
-            // 保留后台
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('保留后台运行'),
-              subtitle: Text(
-                _keepAlive 
-                    ? '应用将在后台持续监控网络状态（屏幕常亮）' 
-                    : '切换到后台时可能被系统休眠',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              value: _keepAlive,
-              onChanged: _setKeepAlive,
-              secondary: Icon(
-                _keepAlive ? Icons.memory : Icons.memory_outlined,
-                color: colorScheme.primary,
-              ),
-            ),
 
-            const Divider(height: 8),
-
-            // 开机自启
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('开机自启动'),
-              subtitle: Text(
-                _autoStart 
-                    ? '设备启动时自动运行本应用' 
-                    : '需要手动打开应用',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              value: _autoStart,
-              onChanged: _setAutoStart,
-              secondary: Icon(
-                _autoStart ? Icons.power_settings_new : Icons.power_off_outlined,
-                color: _autoStart ? Colors.green : Colors.grey,
-              ),
+          // 保留后台
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('保留后台运行'),
+            subtitle: Text(
+              _keepAlive ? '由常驻通知的前台服务持续认证，离开应用后仍会重连' : '只在应用打开时认证，退出后不再自动重连',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
-            
-            // 提示信息
-            if (_autoStart || _keepAlive)
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-                        const SizedBox(width: 8),
-                        Text(
-                          '提示',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '部分国产 ROM (小米、华为、OPPO、vivo等)可能有额外的后台限制,'
-                      '建议前往系统设置 > 应用管理 > 自启动管理中手动开启。',
-                      style: TextStyle(
-                        fontSize: 11,
+            value: _keepAlive,
+            onChanged: _setKeepAlive,
+            secondary: Icon(
+              _keepAlive ? Icons.memory : Icons.memory_outlined,
+              color: colorScheme.primary,
+            ),
+          ),
+
+          const Divider(height: 8),
+
+          // 开机自启
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('开机自启动'),
+            subtitle: Text(
+              _autoStart ? '设备启动时自动运行本应用' : '需要手动打开应用',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            value: _autoStart,
+            onChanged: _setAutoStart,
+            secondary: Icon(
+              _autoStart ? Icons.power_settings_new : Icons.power_off_outlined,
+              color: _autoStart ? Colors.green : Colors.grey,
+            ),
+          ),
+
+          // 提示信息
+          if (_autoStart || _keepAlive)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
                         color: Colors.blue.shade700,
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '提示',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '部分国产 ROM (小米、华为、OPPO、vivo等)可能有额外的后台限制,'
+                    '建议前往系统设置 > 应用管理 > 自启动管理中手动开启。\n'
+                    '在系统应用信息中强制停止 LinkUp 后，Android 不会为它恢复后台服务。',
+                    style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
+                  ),
+                ],
               ),
-          ],
+            ),
+        ],
       ),
     );
   }

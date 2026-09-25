@@ -488,14 +488,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.0-dev.4"
-  listen:
-    dependency: transitive
-    description:
-      name: listen
-      sha256: "47501a08016a43fcad79252439d723f50f14f88fa7bfd8a177e0a417e5c9e1f2"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.1"
   logging:
     dependency: transitive
     description:
@@ -949,22 +941,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "15.3.0"
-  wakelock_plus:
-    dependency: "direct main"
-    description:
-      name: wakelock_plus
-      sha256: "22b3e7e937721de70e63c85e7139f4ac781dc22863b9262431a53ac030eb074b"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.8.0"
-  wakelock_plus_platform_interface:
-    dependency: transitive
-    description:
-      name: wakelock_plus_platform_interface
-      sha256: "764c25504562abc8ac3406f5d175f126b276e6ba916c7c2675690b73368ca384"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.7.0"
   watcher:
     dependency: transitive
     description:

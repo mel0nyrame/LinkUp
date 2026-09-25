@@ -5,8 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     
@@ -46,6 +47,23 @@
             </intent-filter>
         </activity>
         
+        <!--
+            后台校园网认证运行时。
+
+            服务类型为 specialUse：持续校园网连通性认证是 LinkUp 的核心功能，
+            Android 没有可替代的专用 API，深澜 Srun 协议必须在应用进程内维持
+            长驻的 HTTP 探测与登录轮询。不使用 dataSync，因为它在 Android 15+
+            受每 24 小时 6 小时限制，并且禁止从 BOOT_COMPLETED 启动。
+        -->
+        <service
+            android:name=".AuthRuntimeService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps continuous campus-network (Srun) authentication alive; no dedicated Android API replaces this in-app protocol session." />
+        </service>
+
         <!-- 开机自启广播接收器 -->
         <receiver 
             android:name=".BootReceiver"

@@ -4,19 +4,19 @@ import 'package:LinkUp/components/UpdateDialog.dart';
 import 'package:LinkUp/utils/UpdateUtil.dart';
 import 'package:LinkUp/main.dart';
 import 'package:flutter/material.dart';
+import 'package:LinkUp/utils/AuthRuntimeClient.dart';
+import 'package:LinkUp/utils/AuthRuntimeState.dart';
+import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import 'package:LinkUp/page/OverViewPage.dart';
 import 'package:LinkUp/page/SettingsPage.dart';
-import 'package:LinkUp/utils/NetworkUtil.dart';
-import 'package:LinkUp/utils/RadUserInfo.dart';
-import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
-import 'package:LinkUp/utils/SrunAuthenticationProtocol.dart';
 
 class MainNavigator extends StatefulWidget {
-  const MainNavigator({super.key, this.coordinator});
+  const MainNavigator({super.key, this.client});
 
-  final AuthenticationCoordinator? coordinator;
+  final AuthRuntimeClient? client;
 
   @override
   State<MainNavigator> createState() => _MainNavigatorState();
@@ -30,35 +30,21 @@ class _MainNavigatorState extends State<MainNavigator> {
   RadUserInfo? _userInfo;
   String _currentAcid = '1';
 
-  late final AuthenticationCoordinator _coordinator;
-  late final StreamSubscription<AuthenticationState> _authStateSubscription;
-  StreamSubscription<dynamic>? _networkSubscription;
-  bool _ownsCoordinator = false;
+  late final AuthRuntimeClient _client;
+  StreamSubscription<AuthRuntimeState>? _authStateSubscription;
 
-  // 用户操作锁只保护 UI 交互；认证协议本身由协调器单飞锁保护。
+  // 用户操作锁只保护 UI 交互；认证协议本身由后台运行时单飞锁保护。
   bool _userOperationInProgress = false;
 
   @override
   void initState() {
     super.initState();
 
-    final injectedCoordinator = widget.coordinator;
-    if (injectedCoordinator == null) {
-      _coordinator = AuthenticationCoordinator(
-        configSource: ConfigUtilSource(),
-        protocol: SrunAuthenticationProtocol(),
-        protocolFactory: SrunAuthenticationProtocol.new,
-        networkState: AuthenticationNetworkTracker(),
-      );
-      _ownsCoordinator = true;
-    } else {
-      _coordinator = injectedCoordinator;
-    }
+    _client = widget.client ?? AuthRuntimeClient();
+    _authStateSubscription = _client.states.listen(_onAuthRuntimeState);
 
-    _authStateSubscription = _coordinator.states.listen(_onAuthenticationState);
-    _networkSubscription = NetworkUtil.onConnectivityChanged.listen((_) {
-      unawaited(_coordinator.networkChanged());
-    });
+    // Activity 只绑定后台认证运行时，不在这里创建协调器或认证周期 Timer。
+    unawaited(_client.attach());
 
     // 页面加载后检查更新
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -66,11 +52,11 @@ class _MainNavigatorState extends State<MainNavigator> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_coordinator.start());
+      if (mounted) unawaited(_client.start());
     });
   }
 
-  void _onAuthenticationState(AuthenticationState state) {
+  void _onAuthRuntimeState(AuthRuntimeState state) {
     if (!mounted) return;
 
     switch (state.status) {
@@ -90,7 +76,7 @@ class _MainNavigatorState extends State<MainNavigator> {
           _isLoading = false;
           _isOnline = true;
           _userInfo = state.userInfo ?? _userInfo;
-          _currentAcid = state.parameters?.acid ?? _currentAcid;
+          _currentAcid = state.acid ?? _currentAcid;
           _statusMessage = state.message ?? '已在线';
         });
       case AuthenticationStatus.failed:
@@ -145,14 +131,9 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   @override
   void dispose() {
-    unawaited(_authStateSubscription.cancel());
-    unawaited(_networkSubscription?.cancel());
-    if (_ownsCoordinator) unawaited(_coordinator.dispose());
+    unawaited(_authStateSubscription?.cancel());
+    unawaited(_client.dispose());
     super.dispose();
-  }
-
-  Future<void> _runCoordinatorCheck({bool? manual}) async {
-    await _coordinator.authenticate(manual: manual);
   }
 
   Widget _buildNavItem({
@@ -239,7 +220,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     });
 
     try {
-      final success = await _coordinator.logout();
+      final success = await _client.logout();
       if (!mounted) return;
       setState(() {
         _isOnline = false;
@@ -269,7 +250,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   // 踢设备下线 — 通过 DM 接口强制解绑账号下的指定 IP
   Future<bool> _kickDevice(String targetIp) async {
     try {
-      final success = await _coordinator.kickDevice(targetIp);
+      final success = await _client.kickDevice(targetIp);
       if (!mounted) return success;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -293,12 +274,12 @@ class _MainNavigatorState extends State<MainNavigator> {
     }
   }
 
-  // 手动触发登录（下拉刷新）
+  // 手动触发检查（下拉刷新）
   Future<void> _manualLogin() async {
     if (_userOperationInProgress) return;
     _userOperationInProgress = true;
     try {
-      await _runCoordinatorCheck(manual: true);
+      await _client.manualCheck();
     } finally {
       _userOperationInProgress = false;
     }
@@ -342,14 +323,12 @@ class _MainNavigatorState extends State<MainNavigator> {
                 isOnline: _isOnline,
                 currentAcid: _currentAcid,
                 userInfo: _userInfo,
-                onRefresh: () => _manualLogin(),
+                onRefresh: _manualLogin,
                 onKickDevice: _kickDevice,
               ),
               SettingsPage(
                 onConfigChanged: (hasConfig) {
-                  unawaited(
-                    _coordinator.configurationChanged(hasConfig: hasConfig),
-                  );
+                  unawaited(_client.configurationChanged(hasConfig: hasConfig));
                 },
               ),
             ],
