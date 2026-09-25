@@ -12,7 +12,7 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 - **认证与协议**：实现位于 `lib/utils/SrunClient.dart`、`SrunLogin.dart`、`SrunEncrypt.dart`、`AcidDetector.dart`。修改接口、加密、JSONP、ACID、重定向或错误码前，先读 `docs/深澜认证协议技术文档.md`；该文件是协议事实的唯一来源。
 - **本地数据与更新**：`ConfigUtil.dart` 保存认证配置，`SystemSettingsUtil.dart` 保存系统开关，`LogUtil.dart` 管理日志，`UpdateUtil.dart` 检查和安装更新。
 - **Android 原生**：入口与开机自启位于 `android/app/src/main/kotlin/com/mel0ny/linkup/`；Dart 与原生层通过 `com.mel0ny.linkup/system` MethodChannel 通信。后台认证运行时由 `AuthRuntimeService` 承载，它用独立 FlutterEngine 运行 `lib/authRuntimeMain.dart`，并通过 `com.mel0ny.linkup/authRuntime` 与 `com.mel0ny.linkup/authUi` 两个通道连接 Dart。
-- **工具链与依赖**：以 `pubspec.yaml`、`pubspec.lock`、`android/` 和 `.github/workflows/` 为准；本文件不重复记录版本号。
+- **工具链与依赖**：以 `pubspec.yaml`、`pubspec.lock`、`android/` 和 `.github/workflows/` 为准；本文件不重复记录版本号。本机 SDK 可能与 `environment.flutter` 不一致，先做变更流程第 0 步。
 - **用户文档**：`README.md` 面向使用者和贡献者；协议细节不要重新复制到 README。
 
 ## 不可破坏约束
@@ -31,11 +31,13 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 
 ## 变更流程
 
+0. **工具链预检**：比对 `flutter --version` 与 `pubspec.yaml` 的 `environment.flutter`。不一致时用独立 checkout 或 worktree 取仓库声明的版本，保持共享 SDK 的 checkout 原样。完成标准：`flutter pub get` 能成功。
 1. **定位行为**：先沿上述入口读取相关实现和调用方，并记录必须保持的协议或 UI 行为。完成标准：每个行为改动都能指向明确调用链。
 2. **实施最小修改**：沿用周边代码风格，只修改完成当前任务所需的文件。完成标准：差异中没有顺手重构、依赖漂移或无关格式变化。
-3. **生成派生文件**：修改 JSON 模型或生成器依赖后运行 `dart run build_runner build`。完成标准：命令成功，生成文件已纳入差异且不含陈旧输出。
+3. **生成派生文件**：修改 JSON 模型或生成器依赖后运行 `dart run build_runner build`；修改 `pubspec.yaml`/`pubspec.lock` 后重跑 `flutter pub get` 并纳入生成的 plugin registrant。完成标准：命令成功，生成文件已纳入差异且不含陈旧输出。
 4. **验证 Dart**：格式化本次触及的 Dart 文件，再运行 `flutter analyze --no-fatal-infos` 和 `flutter test`。完成标准：无 error/warning，测试全部通过；历史 info 债务不作为本次阻塞项。
-5. **验证 Android**：涉及依赖、Gradle、插件、Manifest 或 Kotlin 时运行 `flutter build apk --debug`；涉及发布配置或原生行为时再运行 `flutter build apk --release`。完成标准：对应 APK 成功生成。
+5. **验证 Android**：涉及依赖、Gradle、插件、Manifest 或 Kotlin 时运行 `flutter build apk --debug`；涉及发布配置或原生行为时再运行 `flutter build apk --release`。完成标准：对应 APK 成功生成。构建只证明原生代码可编译，接线行为另有门槛，见交付 Review Gate。
+6. **交付**：commit 边界、push、PR 正文与 Review Gate 按 [delivery.md](docs/agents/delivery.md) 执行。完成标准：PR 正文五节齐全，该跑的 gate 已跑。
 
 最终运行 `git diff --check`，并用 `rg` 确认文档和配置没有残留的旧命令、旧渠道或已删除文件引用。
 
@@ -52,3 +54,7 @@ Issues use one `bug` or `enhancement` category and one canonical state label. Se
 ### Domain docs
 
 This repo uses single-context domain docs. See `docs/agents/domain.md`.
+
+### Delivery
+
+PR 正文形状、Review Gate 与 tracker 关联见 `docs/agents/delivery.md`。改动 `android/` 下的 Manifest、Kotlin 或 MethodChannel 接线时必读。
