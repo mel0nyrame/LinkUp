@@ -12,7 +12,7 @@ class OverviewPage extends StatefulWidget {
   final bool isOnline;
   final String? currentAcid;
   final RadUserInfo? userInfo;
-  final VoidCallback? onRefresh;
+  final Future<void> Function()? onRefresh;
   final Future<bool> Function(String targetIp)? onKickDevice;
 
   const OverviewPage({
@@ -132,8 +132,7 @@ class _OverviewPageState extends State<OverviewPage> {
     return RefreshIndicator(
       color: MyApp.iosBlue,
       onRefresh: () async {
-        widget.onRefresh?.call();
-        await Future.delayed(const Duration(milliseconds: 500));
+        await widget.onRefresh?.call();
       },
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(),

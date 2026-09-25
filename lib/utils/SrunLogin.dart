@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:LinkUp/utils/AuthParameters.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunEncrypt.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
@@ -85,7 +85,10 @@ class LoginResult {
 }
 
 class SrunLogin {
-  static SrunClient client = SrunClient();
+  SrunLogin({SrunClient? client, http.Client? httpClient})
+    : client = client ?? SrunClient(client: httpClient);
+
+  final SrunClient client;
 
   /// 根据服务器返回的错误信息分析错误类型
   /// 参考 Go 代码中的错误码映射
@@ -97,7 +100,7 @@ class SrunLogin {
     final msgLower = errorMsg.toLowerCase();
     final resLower = res.toLowerCase();
 
-    // 注意：alreadyOnline 检测已移至 srucPortalLogin 成功路径 (error == 'ok' 时先判断)，
+    // 注意：alreadyOnline 检测已移至 login 成功路径 (error == 'ok' 时先判断)，
     // _analyzeErrorType 仅在失败分支被调用，已不可能进入 error == 'ok' 的分支
 
     // 账号密码错误 - 包含常见错误码
@@ -221,71 +224,78 @@ class SrunLogin {
     }
   }
 
-  static Future<LoginResult> srucPortalLogin(
-    String username,
-    String password,
-    String acid,
-    String token,
-    String ip, {
-    String encVer = 'srun_bx1',
-  }) async {
-    try {
-      String hmd5Password = SrunEnrypt.Hmd5(password, token);
+  Future<LoginResult> login({
+    required AuthParameters parameters,
+    required String password,
+    required String challenge,
+  }) {
+    return _loginInternal(parameters, password, challenge);
+  }
 
-      SrunInfo infoObj = SrunInfo(
-        username: username,
+  Future<LoginResult> _loginInternal(
+    AuthParameters parameters,
+    String password,
+    String challenge,
+  ) async {
+    try {
+      final hmd5Password = SrunEnrypt.Hmd5(password, challenge);
+
+      final infoObj = SrunInfo(
+        username: parameters.username,
         password: password,
-        ip: ip,
-        acid: acid,
-        encVer: encVer,
+        ip: parameters.ip,
+        acid: parameters.acid,
+        encVer: parameters.enc,
       );
 
-      String info = SrunEnrypt.getInfo(infoObj.toJson(), token);
+      final info = SrunEnrypt.getInfo(
+        infoObj.toJson(),
+        challenge,
+        prefix: parameters.protocolPrefix,
+      );
 
-      String chkStr = SrunEnrypt.Chkstr(
-        token,
-        username,
+      final chkStr = SrunEnrypt.Chkstr(
+        challenge,
+        parameters.username,
         hmd5Password,
-        acid,
-        ip,
-        client.n,
-        client.enc,
+        parameters.acid,
+        parameters.ip,
+        parameters.n,
+        parameters.enc,
         info,
       );
 
-      String chkSum = SrunEnrypt.Sha1(chkStr);
-
-      String currentTime = DateTime.now().millisecondsSinceEpoch.toString();
+      final chkSum = SrunEnrypt.Sha1(chkStr);
+      final currentTime = DateTime.now().millisecondsSinceEpoch.toString();
 
       final params = {
         'action': 'login',
-        'callback': client.callback,
-        'username': username,
-        // 仅支持 MD5 密码方案；OTP 短信验证码登录（Portal.js line 1171 的 '{OTP}' + password 分支）
-        // 暂未实现，因为配置层（ConfigUtil / SrunInfo）未暴露 otp 字段
+        'callback': parameters.callback,
+        'username': parameters.username,
+        // 仅支持 MD5 密码方案；OTP 短信验证码登录暂未实现。
         'password': '{MD5}$hmd5Password',
         'os': 'Windows 10',
         'name': 'Windows',
         'double_stack': '0',
         'chksum': chkSum,
         'info': info,
-        'ac_id': acid,
-        'ip': ip,
-        'n': client.n,
-        'type': client.type,
+        'ac_id': parameters.acid,
+        'ip': parameters.ip,
+        'n': parameters.n,
+        'type': parameters.type,
         '_': currentTime,
       };
 
-      LogUtil.info('发送登录请求: username=$username, acid=$acid');
+      LogUtil.info('发送登录请求');
 
       // 使用 doRequest 发送请求并解析响应
       final result = await doRequest<Map<String, dynamic>>(
-        client.urlPortal,
+        client.urlPortalForHost(parameters.server),
         params,
         <String, dynamic>{},
       );
 
-      LogUtil.info('登录响应: $result');
+      LogUtil.info('登录响应已解析');
 
       // doRequest 返回的是解析后的 Map，如果为 null 表示解析失败
       if (result == null) {
@@ -303,16 +313,15 @@ class SrunLogin {
       final sucMsg = result['suc_msg'] as String? ?? '';
       final res = result['res'] as String? ?? '';
 
-      LogUtil.info(
-        '解析结果: error=$error, errorMsg=$errorMsg, sucMsg=$sucMsg, res=$res',
-      );
+      LogUtil.info('登录响应字段已解析');
 
       final resLower = res.toLowerCase();
 
       // 已经在线 — error == 'ok' 但 res 指示本次登录是冗余操作。
       // 必须先于通用成功检查，否则会被误归类为普通 success
       if (error == 'ok' &&
-          (resLower.contains('login_ok') || resLower.contains('already_online'))) {
+          (resLower.contains('login_ok') ||
+              resLower.contains('already_online'))) {
         return LoginResult(
           success: true,
           message: '已经在线，无需重复登录',
@@ -389,10 +398,7 @@ class SrunLogin {
 
   /// DM 注销 — 使用 /cgi-bin/rad_user_dm 端点。
   /// 签名格式 sha1(time + username + ip + 1 + time)，与登录加密链完全不同。
-  static Future<bool> dmLogout({
-    required String username,
-    required String ip,
-  }) async {
+  Future<bool> dmLogout({required String username, required String ip}) async {
     try {
       final result = await client.dmLogout(username: username, ip: ip);
       LogUtil.info('DM 注销结果: $result');
@@ -403,78 +409,29 @@ class SrunLogin {
     }
   }
 
-  static Future<T?> doRequest<T>(
+  Future<T?> doRequest<T>(
     String uri,
     Map<String, Object>? params,
     T? target, [
     void Function(T target, dynamic json)? filler,
   ]) async {
-    final fullUri = Uri.parse(uri).replace(queryParameters: params);
+    final stringParams = <String, String>{
+      for (final entry in (params ?? const <String, Object>{}).entries)
+        entry.key: entry.value.toString(),
+    };
+    final json = await client.requestJsonp(uri, stringParams);
+    if (target == null) return null;
 
-    // 脱敏 URL 中的密码参数
-    final displayUri = fullUri.replace(
-      queryParameters: Map<String, String>.from(fullUri.queryParameters.map(
-        (key, value) => MapEntry(
-          key,
-          (key == 'password' || key == 'sign') ? '****' : value,
-        ),
-      )),
-    );
-    LogUtil.info('HTTP GET: $displayUri');
-
-    final response = await http.get(
-      fullUri,
-      headers: {'User-Agent': client.userAgent},
-    );
-
-    if (response.statusCode != 200) {
-      LogUtil.warning('HTTP 错误: ${response.statusCode}');
-      throw Exception('HTTP error: ${response.statusCode}');
+    if (filler != null) {
+      filler(target, json);
+      return target;
     }
 
-    final body = response.body;
-
-    if (target == null) {
-      return null;
+    if (target is Map) {
+      target.addAll(json.cast<String, dynamic>());
+      return target;
     }
 
-    // 优先用 callback 名称精确提取 JSONP，回退到括号匹配
-    var processedBody = body;
-    final callbackName = params?['callback'] as String?;
-    if (callbackName != null &&
-        processedBody.startsWith('$callbackName(') &&
-        processedBody.endsWith(')')) {
-      processedBody = processedBody.substring(
-        callbackName.length + 1,
-        processedBody.length - 1,
-      );
-    } else {
-      // 回退方案：用首尾括号位置提取
-      final start = processedBody.indexOf('(');
-      final end = processedBody.lastIndexOf(')');
-      if (start != -1 && end != -1 && end > start) {
-        processedBody = processedBody.substring(start + 1, end);
-      }
-    }
-
-    try {
-      final json = jsonDecode(processedBody);
-
-      if (filler != null) {
-        filler(target, json);
-        return target;
-      }
-
-      if (target is Map && json is Map) {
-        target.addAll(json.cast<String, dynamic>());
-        return target;
-      }
-
-      return json as T?;
-    } catch (e) {
-      LogUtil.error('JSON 解析失败', e);
-      throw FormatException('JSON 解析失败: $e | Raw: $body');
-    }
+    return json as T?;
   }
 }
-

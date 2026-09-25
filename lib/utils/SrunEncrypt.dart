@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:crypto/crypto.dart';
 import 'package:convert/convert.dart';
 
 class SrunEnrypt {
-  static const String _customAlpha = 
+  static const String _customAlpha =
       'LVoJPiCN2R8G90yg+hmFHuacZ1OWMnrsSTXkYpUq/3dlbfKwv6xztjI7DeBE45QA';
-  
-  static const String _standardAlpha = 
+
+  static const String _standardAlpha =
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
   static String Hmd5(String message, String key) {
@@ -29,7 +30,7 @@ class SrunEnrypt {
     String acId,
     String ip,
     String n,
-    String type,
+    String enc,
     String info,
   ) {
     return token +
@@ -43,16 +44,20 @@ class SrunEnrypt {
         token +
         n +
         token +
-        type +
+        enc +
         token +
         info;
   }
 
-  static String getInfo(Map<String, dynamic> info, String token) {
+  static String getInfo(
+    Map<String, dynamic> info,
+    String token, {
+    String prefix = '{SRBX1}',
+  }) {
     final jsonStr = jsonEncode(info);
     final encrypted = _xxteaEncrypt(jsonStr, token);
     final base64Str = _customBase64Encode(encrypted);
-    return '{SRBX1}$base64Str';
+    return '$prefix$base64Str';
   }
 
   static Uint8List _xxteaEncrypt(String plaintext, String key) {
@@ -60,7 +65,7 @@ class SrunEnrypt {
 
     final v = _strToLongs(plaintext, true);
     final k = _strToLongs(key, false);
-    
+
     final keyArr = List<int>.filled(4, 0);
     for (int i = 0; i < k.length && i < 4; i++) {
       keyArr[i] = k[i];
@@ -82,7 +87,7 @@ class SrunEnrypt {
     while (q-- > 0) {
       d = (d + delta) & 0xFFFFFFFF;
       e = (d >>> 2) & 3;
-      
+
       for (int p = 0; p < n; p++) {
         y = v[p + 1];
         int m = ((z >>> 5) ^ (y << 2)) & 0xFFFFFFFF;
@@ -91,7 +96,7 @@ class SrunEnrypt {
         v[p] = (v[p] + m) & 0xFFFFFFFF;
         z = v[p];
       }
-      
+
       y = v[0];
       int m = ((z >>> 5) ^ (y << 2)) & 0xFFFFFFFF;
       m = (m + ((y >>> 3) ^ (z << 4) ^ (d ^ y))) & 0xFFFFFFFF;
@@ -106,7 +111,7 @@ class SrunEnrypt {
   static List<int> _strToLongs(String s, bool includeLength) {
     final List<int> result = [];
     final bytes = latin1.encode(s);
-    
+
     for (int i = 0; i < bytes.length; i += 4) {
       int val = 0;
       for (int j = 0; j < 4 && i + j < bytes.length; j++) {
@@ -114,18 +119,18 @@ class SrunEnrypt {
       }
       result.add(val);
     }
-    
+
     if (includeLength) {
       result.add(bytes.length);
     }
-    
+
     return result;
   }
 
   static Uint8List _longsToBytes(List<int> longs, bool includeLength) {
     final List<int> bytes = [];
     int length = longs.length;
-    
+
     for (int i = 0; i < length; i++) {
       final val = longs[i];
       bytes.add(val & 0xFF);
@@ -133,14 +138,14 @@ class SrunEnrypt {
       bytes.add((val >>> 16) & 0xFF);
       bytes.add((val >>> 24) & 0xFF);
     }
-    
+
     if (includeLength && longs.isNotEmpty) {
       final realLen = longs.last;
       if (realLen < bytes.length) {
         return Uint8List.fromList(bytes.sublist(0, realLen));
       }
     }
-    
+
     return Uint8List.fromList(bytes);
   }
 
@@ -168,8 +173,8 @@ class SrunInfo {
     required this.password,
     required this.ip,
     required this.acid,
-    this.encVer = 'srun_bx1',
-  });
+    String encVer = 'srun_bx1',
+  }) : encVer = encVer == 'srun_bx1' ? encVer : 'srun_bx1';
 
   Map<String, dynamic> toJson() => {
     'username': username,

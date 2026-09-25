@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:LinkUp/components/UpdateDialog.dart';
 import 'package:LinkUp/utils/UpdateUtil.dart';
 import 'package:LinkUp/main.dart';
@@ -7,15 +8,15 @@ import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import 'package:LinkUp/page/OverViewPage.dart';
 import 'package:LinkUp/page/SettingsPage.dart';
-import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/NetworkUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
-import 'package:LinkUp/utils/SrunClient.dart';
-import 'package:LinkUp/utils/SrunLogin.dart';
-import 'package:LinkUp/utils/AcidDetector.dart';
+import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
+import 'package:LinkUp/utils/SrunAuthenticationProtocol.dart';
 
 class MainNavigator extends StatefulWidget {
-  const MainNavigator({super.key});
+  const MainNavigator({super.key, this.coordinator});
+
+  final AuthenticationCoordinator? coordinator;
 
   @override
   State<MainNavigator> createState() => _MainNavigatorState();
@@ -29,49 +30,40 @@ class _MainNavigatorState extends State<MainNavigator> {
   bool _shouldStopMonitor = false;
   RadUserInfo? _userInfo;
   String _currentAcid = '1';
-  String _currentEnc = 'srun_bx1';
 
-  final SrunClient client = SrunClient();
+  late final AuthenticationCoordinator _coordinator;
+  late final StreamSubscription<AuthenticationState> _authStateSubscription;
+  StreamSubscription<dynamic>? _networkSubscription;
+  bool _ownsCoordinator = false;
   Timer? _monitorTimer;
-  Timer? _retryTimer;
 
-  // 共享 AcidDetector — 跨 monitor / login cycle 复用，保留 _cachedPage
-  // 和 _cachedPageUrl 缓存，避免每次 new 一个都丢失 portal HTML 缓存
-  AcidDetector? _detector;
-
-  AcidDetector _getDetector() {
-    // 如果已创建但 baseUrl 过期（settings 改了 auth_server 但 monitor 还没
-    // 通过 _restartMonitor 重新同步 client.host），重建 detector 让它跟随
-    // 当前的 client.baseURL；否则用现有实例（保留 _cachedPage 缓存）
-    if (_detector != null && _detector!.baseUrl != client.baseURL) {
-      _detector!.reset();
-      _detector = null;
-    }
-    return _detector ??= AcidDetector(baseUrl: client.baseURL);
-  }
-
-  // _userInfo 写入时间（用于 _doLogin 复用时校验 staleness，
-  // 避免 monitor 几秒前缓存的 IP 与当前网络已切换的 IP 不一致）
-  DateTime? _userInfoAt;
-
-  // 5s 内的 _userInfo 视为 fresh 可复用；超过 5s 一律重新拉取 /rad_user_info
-  // 防止用户切换网络 / DHCP 续约后 IP 已变而我们仍用旧 IP 登录
-  static const Duration _userInfoMaxAge = Duration(seconds: 5);
-
-  // _handleLogout 与 _manualLogin 互斥标志（专用，不与 _isLoading 混用；
-  // _isLoading 是 UI spinner 状态，_userOperationInProgress 是 user-action 锁）
+  // 用户操作锁只保护 UI 交互；认证协议本身由协调器单飞锁保护。
   bool _userOperationInProgress = false;
 
   // 检查间隔（秒）
   static const int checkInterval = 3;
 
-  // 退避策略
-  int _consecutiveFailures = 0;
-  static const int maxBackoffSeconds = 60;
-
   @override
   void initState() {
     super.initState();
+
+    final injectedCoordinator = widget.coordinator;
+    if (injectedCoordinator == null) {
+      _coordinator = AuthenticationCoordinator(
+        configSource: ConfigUtilSource(),
+        protocol: SrunAuthenticationProtocol(),
+        networkState: AuthenticationNetworkTracker(),
+      );
+      _ownsCoordinator = true;
+    } else {
+      _coordinator = injectedCoordinator;
+    }
+
+    _authStateSubscription = _coordinator.states.listen(_onAuthenticationState);
+    _networkSubscription = NetworkUtil.onConnectivityChanged.listen((_) {
+      _coordinator.invalidateNetwork();
+      _coordinator.requestCheck();
+    });
 
     // 页面加载后检查更新
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,6 +72,46 @@ class _MainNavigatorState extends State<MainNavigator> {
 
     // 启动监控
     _startMonitor();
+  }
+
+  void _onAuthenticationState(AuthenticationState state) {
+    if (!mounted) return;
+
+    switch (state.status) {
+      case AuthenticationStatus.checking:
+        setState(() {
+          _isLoading = true;
+          _statusMessage = '正在检查网络状态...';
+        });
+      case AuthenticationStatus.authenticating:
+        setState(() {
+          _isLoading = true;
+          _statusMessage = '正在登录...';
+        });
+      case AuthenticationStatus.online:
+      case AuthenticationStatus.alreadyOnline:
+        setState(() {
+          _isLoading = false;
+          _isOnline = true;
+          _userInfo = state.userInfo ?? _userInfo;
+          _currentAcid = state.parameters?.acid ?? _currentAcid;
+          _statusMessage = state.message ?? '已在线';
+        });
+      case AuthenticationStatus.failed:
+      case AuthenticationStatus.cancelled:
+      case AuthenticationStatus.stale:
+        setState(() {
+          _isLoading = false;
+          _isOnline = false;
+          _statusMessage = state.message ?? '认证未完成，将自动重试';
+        });
+      case AuthenticationStatus.idle:
+      case AuthenticationStatus.offline:
+        setState(() {
+          _isLoading = false;
+          _isOnline = false;
+        });
+    }
   }
 
   Future<void> _checkForUpdate() async {
@@ -106,504 +138,43 @@ class _MainNavigatorState extends State<MainNavigator> {
   void dispose() {
     _shouldStopMonitor = true;
     _monitorTimer?.cancel();
-    _retryTimer?.cancel();
-    // 清掉 AcidDetector 内部 portal HTML 缓存，避免下次启动时拿到脏数据
-    _detector?.reset();
-    _detector = null;
+    unawaited(_authStateSubscription.cancel());
+    unawaited(_networkSubscription?.cancel());
+    if (_ownsCoordinator) unawaited(_coordinator.dispose());
     super.dispose();
   }
 
   // 启动网络监控
   void _startMonitor() {
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // 先同步认证服务器地址，避免首次 _checkOnlineStatus 使用默认 host
-      // 探测错误目标导致整轮监控用错地址
-      await _syncHostFromConfig();
-
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_shouldStopMonitor || !mounted) return;
 
-      // 立即执行一次检查
-      _checkAndReconnect();
-
-      // 定时检查（每3秒）
+      unawaited(_checkAndReconnect());
       _monitorTimer = Timer.periodic(
         const Duration(seconds: checkInterval),
-        (_) => _checkAndReconnect(),
+        (_) => unawaited(_checkAndReconnect()),
       );
     });
   }
 
-  // 从本地配置同步认证服务器到 SrunClient
-  Future<void> _syncHostFromConfig() async {
-    try {
-      final config = await ConfigUtil.loadConfig();
-      if (config == null) return;
-      final authServer = config.authServer;
-      if (client.host != authServer) {
-        client.setHost(authServer);
-        SrunLogin.client.setHost(authServer);
-        LogUtil.info('监控启动前同步认证服务器: $authServer');
-      }
-    } catch (e) {
-      LogUtil.warning('同步认证服务器失败: $e');
-    }
-  }
-
   // 重建监控定时器（注销/手动刷新路径）。
-  // 先同步 host，避免用户在设置页改了 auth_server 后新 timer 还跑在旧 host 上；
-  // 之后 cancel 旧 timer 再启新的，防止重叠触发。
   Future<void> _restartMonitor() async {
-    await _syncHostFromConfig();
     if (_shouldStopMonitor || !mounted) return;
     _monitorTimer?.cancel();
     _monitorTimer = Timer.periodic(
       const Duration(seconds: checkInterval),
-      (_) => _checkAndReconnect(),
+      (_) => unawaited(_checkAndReconnect()),
     );
   }
 
   // 检查连接状态并自动重连
   Future<void> _checkAndReconnect() async {
-    if (_shouldStopMonitor) return;
-    if (_isLoading) return; // 如果正在登录中，跳过
-
-    // 检查是否已在线
-    final isConnected = await _checkOnlineStatus();
-
-    if (isConnected == true) {
-      // 已在线，重置退避计数
-      if (_consecutiveFailures > 0) {
-        LogUtil.info('检测到在线状态，重置退避计数');
-        _consecutiveFailures = 0;
-      }
-      if (!_isOnline) {
-        // await 之后检查 mounted，避免 dispose race 触发 setState-after-dispose
-        if (!mounted) return;
-        setState(() {
-          _isOnline = true;
-          _statusMessage = '已在线';
-        });
-      }
-      return;
-    }
-
-    if (isConnected == false) {
-      // await 之后检查 mounted，避免 dispose race 触发 setState-after-dispose
-      if (!mounted) return;
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '网络断开，正在自动重连...';
-      });
-    } else {
-      if (!mounted) return;
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '网络检测失败，尝试连接...';
-      });
-    }
-
-    // 执行安全登录
-    await _safeLogin();
+    if (_shouldStopMonitor || !mounted) return;
+    await _runCoordinatorCheck();
   }
 
-  // 检查在线状态 - 使用 Reality 模式同时检测在线状态和 ACID
-  Future<bool?> _checkOnlineStatus() async {
-    try {
-      LogUtil.info('检查在线状态...');
-      
-      // 使用 Reality 模式检测（同时检测在线状态和 ACID）
-      final (detectedAcid, isOnline, err) = await _getDetector().reality(
-        getAcid: true,
-      );
-
-      if (err != null) {
-        LogUtil.error('Reality 检测失败', err);
-        // Reality 失败时，尝试直接请求认证服务器看是否能通
-        LogUtil.info('尝试直接请求认证服务器...');
-      }
-
-      LogUtil.info('Reality 检测结果: 在线=$isOnline, ACID=$detectedAcid, 错误=$err');
-
-      // 仅在线时保存检测到的 ACID 到配置，避免离线时从错误 captive portal
-      // 检测到错误 ACID 覆盖用户手动配置
-      if (isOnline && detectedAcid != null && detectedAcid.isNotEmpty) {
-        _currentAcid = detectedAcid;
-        // 保存到配置
-        final updated = await ConfigUtil.updateConfig(
-          ConfigUpdate(acid: detectedAcid),
-        );
-        if (updated) {
-          LogUtil.info('Reality 模式保存 ACID: $detectedAcid');
-        }
-      } else if (detectedAcid != null && detectedAcid.isNotEmpty) {
-        // 离线时仅暂存到内存供本轮登录使用，不写入配置文件
-        _currentAcid = detectedAcid;
-        LogUtil.info('Reality 检测到 ACID（离线，仅内存暂存）: $detectedAcid');
-      }
-
-      if (isOnline) {
-        // 已在线，获取用户信息
-        try {
-          final info = await client.getUserInfo();
-          _userInfo = info;
-          _userInfoAt = DateTime.now();
-          LogUtil.info('在线状态: true, IP: ${info.onlineIp ?? "unknown"}');
-        } catch (e) {
-          LogUtil.warning('已在线但获取用户信息失败: $e');
-        }
-      }
-      
-      return isOnline;
-    } catch (e, stackTrace) {
-      LogUtil.error('检查在线状态失败', e, stackTrace);
-      return null; // 返回 null 表示检测失败（网络问题），不是不在线
-    }
-  }
-
-  // 安全登录（带异常捕获和退避策略）
-  Future<void> _safeLogin() async {
-    // 同时占用 _isLoading（UI spinner + monitor tick 跳过）和 _userOperationInProgress
-    // （user-action 锁），确保 monitor-driven login 期间 _handleLogout / _manualLogin
-    // 不会并发触发；finally 中清两个标志
-    setState(() {
-      _isLoading = true;
-    });
-    _userOperationInProgress = true;
-
-    // 退避策略：连续失败越多，等待越久
-    if (_consecutiveFailures > 0) {
-      final backoffSeconds = (checkInterval * (1 << (_consecutiveFailures - 1)))
-          .clamp(checkInterval, maxBackoffSeconds);
-      LogUtil.info('退避等待 ${backoffSeconds}s（连续失败 $_consecutiveFailures 次）');
-      await Future.delayed(Duration(seconds: backoffSeconds));
-      if (_shouldStopMonitor || !mounted) {
-        // 退出前清掉 _isLoading，避免后续 monitor tick 一直跳过
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-    }
-
-    try {
-      LogUtil.info('开始安全登录流程');
-      await _doLogin();
-      LogUtil.info('安全登录流程结束');
-    } on ConfigStorageException catch (error, stackTrace) {
-      LogUtil.error('认证配置不可用', error, stackTrace);
-      if (mounted) {
-        setState(() {
-          _statusMessage = '认证配置不可用，请在设置中重试';
-          _isLoading = false;
-        });
-      }
-    } catch (e, stackTrace) {
-      LogUtil.error('登录逻辑异常', e, stackTrace);
-      if (mounted) {
-        setState(() {
-          _statusMessage = '登录异常，请重试';
-          _isLoading = false;
-        });
-      }
-    } finally {
-      // 释放 user-action 锁：让 _handleLogout / _manualLogin 后续可执行
-      _userOperationInProgress = false;
-    }
-
-    // 根据结果更新退避计数
-    if (_isOnline) {
-      if (_consecutiveFailures > 0) {
-        LogUtil.info('登录成功，重置退避计数（之前连续失败 $_consecutiveFailures 次）');
-      }
-      _consecutiveFailures = 0;
-    } else {
-      _consecutiveFailures++;
-      LogUtil.info('登录未成功，连续失败 $_consecutiveFailures 次');
-    }
-  }
-
-  // 执行登录
-  Future<void> _doLogin() async {
-    LogUtil.info('========== 开始执行登录 ==========');
-    setState(() {
-      _isLoading = true;
-      _statusMessage = '正在检测网络状态...';
-    });
-
-    // 1. 检测 WiFi 是否开启
-    bool isWifiConnected = false;
-    for (int i = 0; i < 3; i++) {
-      isWifiConnected = await NetworkUtil.isWifiConnected();
-      LogUtil.info('WiFi 连接状态检测第${i + 1}次: $isWifiConnected');
-      if (isWifiConnected) break;
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-    
-    if (!isWifiConnected) {
-      LogUtil.warning('WiFi 未连接，尝试直接请求认证服务器...');
-    }
-
-    setState(() {
-      _statusMessage = '正在获取配置...';
-    });
-
-    // 2. 读取本地保存的配置
-    LogUtil.info('正在读取本地配置...');
-    final config = await ConfigUtil.loadConfig();
-    if (config == null) {
-      LogUtil.warning('未找到配置信息');
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '未找到配置信息';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    final String password = config.password;
-    String acid = config.acid;
-    _currentAcid = acid;
-    final bool autoAcid = config.autoAcid;
-    final String authServer = config.authServer;
-    final String username = config.authenticatedUsername;
-
-    // 设置认证服务器地址（MainNavigator 实例 + SrunLogin 静态实例同步更新，
-    // 避免 srucPortalLogin 内部使用 SrunLogin.client 时仍指向默认 host）
-    if (client.host != authServer) {
-      client.setHost(authServer);
-      SrunLogin.client.setHost(authServer);
-      LogUtil.info('认证服务器地址已设置为: $authServer');
-    }
-
-    LogUtil.info('认证配置已加载');
-
-    if (username.isEmpty || password.isEmpty) {
-      LogUtil.warning('账号或密码为空，终止登录');
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '账号或密码为空';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    setState(() => _statusMessage = '正在获取网络信息...');
-    LogUtil.info('正在获取用户信息...');
-
-    // 3. 获取 IP 和用户信息
-    final String ip;
-    try {
-      // 复用 monitor tick 在线路径已经写入的 _userInfo（_checkOnlineStatus 内
-      // 调用过 client.getUserInfo()），避免每个登录流程都重复请求一次 /rad_user_info
-      // 但要校验 staleness：超过 _userInfoMaxAge 视为过期，强制重新拉取
-      // （IP 可能在 DHCP 续约 / WiFi 切换后已变）。登录成功后仍会再次调用
-      // rad_user_info 确认真正在线
-      final RadUserInfo info;
-      final userInfoFresh = _userInfo != null &&
-          _userInfo!.isOnline &&
-          _userInfoAt != null &&
-          DateTime.now().difference(_userInfoAt!) < _userInfoMaxAge;
-      if (userInfoFresh) {
-        info = _userInfo!;
-        LogUtil.info('复用 monitor tick 的 userInfo（IP=${info.clientIp ?? info.onlineIp}）');
-      } else {
-        info = await client.getUserInfo();
-        _userInfo = info;
-        _userInfoAt = DateTime.now();
-      }
-      // 优先使用 client_ip（始终存在），回退到 online_ip
-      ip = (info.clientIp?.isNotEmpty == true ? info.clientIp : info.onlineIp) ?? '';
-      LogUtil.info('获取到用户信息: clientIp=${info.clientIp}, onlineIp=${info.onlineIp}, 使用IP=$ip, 是否在线=${info.isOnline}');
-
-      // 再次检查是否已经在线（可能在这期间已连接）
-      if (info.isOnline) {
-        LogUtil.info('用户已在线，跳过登录');
-        setState(() {
-          _isOnline = true;
-          _statusMessage = '已在线';
-          _isLoading = false;
-        });
-        return;
-      }
-    } catch (e) {
-      LogUtil.error('获取用户信息失败', e);
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '无法连接认证服务器: $e';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    setState(() => _statusMessage = '正在获取认证令牌...');
-    LogUtil.info('正在获取 Challenge/Token...');
-
-    // 4. 获取 Challenge/Token
-    late final String token;
-    try {
-      final challenge = await client.getChallenge(username: username, ip: ip);
-      token = challenge.challenge;
-      LogUtil.info(
-        '获取到 Token: ${token.substring(0, token.length > 10 ? 10 : token.length)}...',
-      );
-    } catch (e) {
-      LogUtil.error('获取认证令牌失败', e);
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '获取认证令牌失败: $e';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    setState(() => _statusMessage = '正在登录...');
-
-    // 5. 执行登录（自动尝试 ACID）
-    LoginResult loginResult;
-
-    try {
-      if (autoAcid) {
-        // 自动模式：先检测 ACID，如果检测失败则使用配置的 ACID
-        LogUtil.info('使用自动 ACID 模式，开始检测 ACID...');
-        final detector = _getDetector();
-        // ACID 与 enc 检测是独立网络操作，并行跑能省一个 RTT 的 wall-clock；
-        // 文档 §"ACID 自动探测策略" 没规定顺序
-        final results = await Future.wait([
-          _detectAcid(detector),
-          detector.detectEnc(),
-        ]);
-        final detectedAcid = results[0];
-        final detectedEnc = results[1];
-        if (detectedAcid != null) {
-          _currentAcid = detectedAcid;
-          acid = detectedAcid;
-          LogUtil.info('使用检测到的 ACID: $acid');
-        } else {
-          LogUtil.warning('ACID 检测失败，使用配置的 ACID: $acid');
-        }
-        if (detectedEnc != null && detectedEnc.isNotEmpty) {
-          _currentEnc = detectedEnc;
-          LogUtil.info('使用检测到的 enc: $_currentEnc');
-        } else {
-          LogUtil.warning('enc 检测失败，使用默认值: $_currentEnc');
-        }
-
-        setState(() {
-          _statusMessage = '正在使用 ACID: $acid 登录...';
-        });
-        loginResult = await SrunLogin.srucPortalLogin(
-          username,
-          password,
-          acid,
-          token,
-          ip,
-          encVer: _currentEnc,
-        );
-      } else {
-        // 手动模式：使用配置的 ACID
-        _currentAcid = acid;
-        LogUtil.info('使用手动 ACID 模式: acid=$acid');
-        setState(() {
-          _statusMessage = '正在使用 ACID: $acid 登录...';
-        });
-        loginResult = await SrunLogin.srucPortalLogin(
-          username,
-          password,
-          acid,
-          token,
-          ip,
-          encVer: _currentEnc,
-        );
-      }
-    } catch (e) {
-      LogUtil.error('登录请求失败', e);
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '登录请求失败: $e';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    // 6. 检查登录结果
-    if (!loginResult.success) {
-      LogUtil.warning(
-        '登录失败: ${loginResult.message}, 错误类型: ${loginResult.errorType}',
-      );
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '登录失败: ${loginResult.message}';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    // 7. 登录成功，刷新用户信息并验证在线状态
-    // srun_portal 返回 error: "ok" 不代表真正在线，必须再次调用 rad_user_info 确认
-    LogUtil.info('登录成功，正在验证在线状态...');
-    final newInfo = await client.getUserInfo();
-
-    if (!newInfo.isOnline) {
-      // srun_portal 返回成功但 rad_user_info 显示不在线 — 服务器端可能未真正授权
-      LogUtil.warning('登录后验证失败：rad_user_info 返回不在线，srun_portal 结果不可靠');
-      setState(() {
-        _isOnline = false;
-        _statusMessage = '登录验证失败，将自动重试';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _isOnline = true;
-      _userInfo = newInfo;
-      // 同步刷新 _userInfoAt 时间戳，确保 5s staleness 校验对最新 userInfo 有效
-      _userInfoAt = DateTime.now();
-      _statusMessage = '登录成功';
-      _isLoading = false;
-    });
-    LogUtil.info('登录流程完成，用户已在线，IP: ${newInfo.onlineIp ?? "unknown"}');
-
-    // 显示成功提示
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('校园网已连接'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-    LogUtil.info('========== 登录流程结束 ==========');
-  }
-
-  // 使用 AcidDetector 自动检测 ACID（使用缓存的 detector）
-  Future<String?> _detectAcid(AcidDetector detector) async {
-    LogUtil.info('[MainNavigation] 开始自动检测 ACID...');
-
-    setState(() {
-      _statusMessage = '正在自动检测网络接入点...';
-    });
-
-    try {
-      final acid = await detector.detectAcid();
-      
-      if (acid != null && acid.isNotEmpty) {
-        LogUtil.info('[MainNavigation] 自动检测 ACID 成功: $acid');
-        
-        // 保存检测到的 ACID 到配置
-        final updated = await ConfigUtil.updateConfig(ConfigUpdate(acid: acid));
-        if (updated) {
-          LogUtil.info('[MainNavigation] 已保存检测到的 ACID: $acid');
-        }
-        
-        return acid;
-      } else {
-        LogUtil.warning('[MainNavigation] 自动检测 ACID 失败，将使用配置的 ACID');
-        return null;
-      }
-    } catch (e, stackTrace) {
-      LogUtil.error('[MainNavigation] 检测 ACID 过程出错', e, stackTrace);
-      return null;
-    }
+  Future<void> _runCoordinatorCheck({bool? manual}) async {
+    await _coordinator.authenticate(manual: manual);
   }
 
   Widget _buildNavItem({
@@ -655,6 +226,14 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   // 注销 — 使用 DM API (/cgi-bin/rad_user_dm)，与登录加密链无关
   Future<void> _handleLogout() async {
+    if (_userOperationInProgress) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('正在处理中，请稍候再试')));
+      }
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -673,93 +252,40 @@ class _MainNavigatorState extends State<MainNavigator> {
         ],
       ),
     );
+    if (confirmed != true || !mounted) return;
 
-    if (confirmed != true) return;
-
-    // 与 _manualLogin 互斥：用专用 _userOperationInProgress 锁（不用 _isLoading
-    // 因为 _isLoading 是 UI 标志，且 monitor tick 中也会被反复翻转）
-    if (_userOperationInProgress) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('正在处理中，请稍候再试')),
-        );
-      }
-      return;
-    }
     _userOperationInProgress = true;
-
     _monitorTimer?.cancel();
     setState(() {
       _isLoading = true;
       _statusMessage = '正在注销...';
     });
 
-    // 显式重建控制：成功 / 失败 / 异常路径都重建 monitor；config==null 早退不重建
-    // （避免每 3s 死循环调 _doLogin → '未找到配置信息'）。把 restart 调用从 finally
-    // 移出来，避免与 try 块共享一个 shouldRestartMonitor flag
     try {
-      final config = await ConfigUtil.loadConfig();
-      if (config == null) {
-        // 配置丢失：清掉 loading 状态，UI 不能卡在 spinner；不 restart monitor
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _statusMessage = '未找到配置，无法注销';
-          });
-        }
-        return;
-      }
-
-      final username = config.authenticatedUsername;
-
-      // 获取当前 IP
-      final info = await client.getUserInfo();
-      final ip = (info.clientIp?.isNotEmpty == true ? info.clientIp : info.onlineIp) ?? '';
-
-      // DM 注销：只需要 username + ip + 时间戳签名，不需要 token/加密
-      final success = await SrunLogin.dmLogout(username: username, ip: ip);
-
-      if (mounted) {
-        setState(() {
-          _isOnline = false;
-          _userInfo = null;
-          _userInfoAt = null;
-          _isLoading = false;
-          _statusMessage = success ? '已注销' : '注销失败';
-          _consecutiveFailures = 0;
-        });
-        // 清掉 AcidDetector 缓存的 portal HTML 和 URL，避免下次登录复用
-        // 跨 portal session / 跨校区的旧 _cachedPage / _cachedPageUrl
-        // 设为 null 而非仅 reset：让下次 _getDetector() 重建新实例，
-        // 避免旧 in-flight reality() 完成时通过旧 ref 写脏新 cache
-        _detector?.reset();
-        _detector = null;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(success ? '已成功注销' : '注销失败，请重试'),
-            backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
-          ),
-        );
-      }
-      // 成功路径：重建 monitor
-      if (mounted) {
-        await _restartMonitor();
-      }
-    } catch (e, stackTrace) {
-      LogUtil.error('注销异常', e, stackTrace);
+      final success = await _coordinator.logout();
+      if (!mounted) return;
+      setState(() {
+        _isOnline = false;
+        _userInfo = null;
+        _isLoading = false;
+        _statusMessage = success ? '已注销' : '注销失败';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? '已成功注销' : '注销失败，请重试'),
+          backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
+        ),
+      );
+      if (success) await _restartMonitor();
+    } catch (error, stackTrace) {
+      LogUtil.error('注销异常', error, stackTrace);
       if (mounted) {
         setState(() {
           _isLoading = false;
           _statusMessage = '注销异常';
         });
-        // 异常路径不 restart monitor：
-        // 配置文件损坏（loadConfig 抛 FileSystemException）时，restart monitor
-        // 会让 monitor tick 立即重试 _doLogin → loadConfig 再抛 → 死循环 + 日志刷屏
-        // 让用户主动冷启动 app 或修好配置后重启 monitor 即可
       }
     } finally {
-      // 释放 user-action 锁（无论成功 / 失败 / 早退），让 _manualLogin 后续可执行
       _userOperationInProgress = false;
     }
   }
@@ -767,52 +293,22 @@ class _MainNavigatorState extends State<MainNavigator> {
   // 踢设备下线 — 通过 DM 接口强制解绑账号下的指定 IP
   Future<bool> _kickDevice(String targetIp) async {
     try {
-      final config = await ConfigUtil.loadConfig();
-      if (config == null) {
-        LogUtil.error('踢设备失败: 配置不存在 (targetIp=$targetIp)');
-        return false;
-      }
-      final username = config.authenticatedUsername;
-
-      final success = await SrunLogin.client.dmLogout(
-        username: username,
-        ip: targetIp,
-      );
-
+      final success = await _coordinator.kickDevice(targetIp);
       if (!mounted) return success;
 
-      if (success) {
-        LogUtil.info('踢设备成功: $targetIp');
-        final newInfo = await client.getUserInfo();
-        if (mounted && newInfo.isOnline) {
-          setState(() {
-            _userInfo = newInfo;
-            _userInfoAt = DateTime.now();
-          });
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已踢 $targetIp'),
-            backgroundColor: MyApp.iosGreen,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      } else {
-        LogUtil.error('踢设备失败: $targetIp (服务端返回非 ok)');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('踢人失败：服务器返回错误'),
-            backgroundColor: MyApp.iosRed,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? '已踢 $targetIp' : '踢人失败：服务器返回错误'),
+          backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
+        ),
+      );
       return success;
-    } catch (e, stackTrace) {
-      LogUtil.error('踢设备异常: $targetIp', e, stackTrace);
+    } catch (error, stackTrace) {
+      LogUtil.error('踢设备异常', error, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('踢人失败：$e'),
+          const SnackBar(
+            content: Text('踢人失败，请重试'),
             backgroundColor: MyApp.iosRed,
           ),
         );
@@ -823,21 +319,15 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   // 手动触发登录（下拉刷新）
   Future<void> _manualLogin() async {
-    LogUtil.info('用户手动触发登录（下拉刷新）');
-    // 与 _handleLogout 互斥：用专用 _userOperationInProgress 锁
-    if (_userOperationInProgress) {
-      LogUtil.info('已有登录/注销流程在进行，跳过本次手动登录');
-      return;
-    }
+    if (_userOperationInProgress) return;
     _userOperationInProgress = true;
-    _consecutiveFailures = 0;
     _monitorTimer?.cancel();
-    await _safeLogin();
-    // 走 _restartMonitor 同步 host，避免用户改了 auth_server 后新 timer 用旧 host
-    await _restartMonitor();
-    // 释放 user-action 锁
-    _userOperationInProgress = false;
-    LogUtil.info('手动登录完成，监控已恢复');
+    try {
+      await _runCoordinatorCheck();
+    } finally {
+      _userOperationInProgress = false;
+      await _restartMonitor();
+    }
   }
 
   @override
@@ -892,8 +382,10 @@ class _MainNavigatorState extends State<MainNavigator> {
             child: SafeArea(
               top: false,
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 40,
+                  vertical: 8,
+                ),
                 child: LiquidGlass.withOwnLayer(
                   settings: const LiquidGlassSettings(
                     blur: 18,
@@ -903,8 +395,10 @@ class _MainNavigatorState extends State<MainNavigator> {
                   ),
                   shape: LiquidRoundedSuperellipse(borderRadius: 28),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 4,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
