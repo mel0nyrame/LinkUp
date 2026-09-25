@@ -138,7 +138,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     try {
       final config = await ConfigUtil.loadConfig();
       if (config == null) return;
-      final authServer = config['auth_server'] as String? ?? '10.129.1.1';
+      final authServer = config.authServer;
       if (client.host != authServer) {
         client.setHost(authServer);
         SrunLogin.client.setHost(authServer);
@@ -229,14 +229,10 @@ class _MainNavigatorState extends State<MainNavigator> {
       if (isOnline && detectedAcid != null && detectedAcid.isNotEmpty) {
         _currentAcid = detectedAcid;
         // 保存到配置
-        final config = await ConfigUtil.loadConfig();
-        if (config != null) {
-          await ConfigUtil.saveConfig(
-            username: config['username'] ?? '',
-            password: config['password'] ?? '',
-            acid: detectedAcid,
-            autoAcid: config['auto_acid'] ?? true,
-          );
+        final updated = await ConfigUtil.updateConfig(
+          ConfigUpdate(acid: detectedAcid),
+        );
+        if (updated) {
           LogUtil.info('Reality 模式保存 ACID: $detectedAcid');
         }
       } else if (detectedAcid != null && detectedAcid.isNotEmpty) {
@@ -291,11 +287,19 @@ class _MainNavigatorState extends State<MainNavigator> {
       LogUtil.info('开始安全登录流程');
       await _doLogin();
       LogUtil.info('安全登录流程结束');
+    } on ConfigStorageException catch (error, stackTrace) {
+      LogUtil.error('认证配置不可用', error, stackTrace);
+      if (mounted) {
+        setState(() {
+          _statusMessage = '认证配置不可用，请在设置中重试';
+          _isLoading = false;
+        });
+      }
     } catch (e, stackTrace) {
       LogUtil.error('登录逻辑异常', e, stackTrace);
       if (mounted) {
         setState(() {
-          _statusMessage = '登录异常: $e';
+          _statusMessage = '登录异常，请重试';
           _isLoading = false;
         });
       }
@@ -354,16 +358,12 @@ class _MainNavigatorState extends State<MainNavigator> {
       return;
     }
 
-    final String rawUsername = config['username'] ?? '';
-    final String password = config['password'] ?? '';
-    final String userType = config['user_type'] ?? '';
-    String acid = config['acid'] ?? '1';
+    final String password = config.password;
+    String acid = config.acid;
     _currentAcid = acid;
-    final bool autoAcid = config['auto_acid'] ?? true;
-    final String authServer = config['auth_server'] ?? '10.129.1.1';
-
-    // 拼接用户名和运营商后缀
-    final String username = userType.isNotEmpty ? '$rawUsername@$userType' : rawUsername;
+    final bool autoAcid = config.autoAcid;
+    final String authServer = config.authServer;
+    final String username = config.authenticatedUsername;
 
     // 设置认证服务器地址（MainNavigator 实例 + SrunLogin 静态实例同步更新，
     // 避免 srucPortalLogin 内部使用 SrunLogin.client 时仍指向默认 host）
@@ -373,9 +373,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       LogUtil.info('认证服务器地址已设置为: $authServer');
     }
 
-    LogUtil.info(
-      '配置信息: username=$username, acid=$acid, autoAcid=$autoAcid, server=$authServer',
-    );
+    LogUtil.info('认证配置已加载');
 
     if (username.isEmpty || password.isEmpty) {
       LogUtil.warning('账号或密码为空，终止登录');
@@ -592,14 +590,8 @@ class _MainNavigatorState extends State<MainNavigator> {
         LogUtil.info('[MainNavigation] 自动检测 ACID 成功: $acid');
         
         // 保存检测到的 ACID 到配置
-        final config = await ConfigUtil.loadConfig();
-        if (config != null) {
-          await ConfigUtil.saveConfig(
-            username: config['username'] ?? '',
-            password: config['password'] ?? '',
-            acid: acid,
-            autoAcid: config['auto_acid'] ?? true,
-          );
+        final updated = await ConfigUtil.updateConfig(ConfigUpdate(acid: acid));
+        if (updated) {
           LogUtil.info('[MainNavigation] 已保存检测到的 ACID: $acid');
         }
         
@@ -718,9 +710,7 @@ class _MainNavigatorState extends State<MainNavigator> {
         return;
       }
 
-      final rawUsername = config['username'] ?? '';
-      final userType = config['user_type'] ?? '';
-      final username = userType.isNotEmpty ? '$rawUsername@$userType' : rawUsername;
+      final username = config.authenticatedUsername;
 
       // 获取当前 IP
       final info = await client.getUserInfo();
@@ -782,10 +772,7 @@ class _MainNavigatorState extends State<MainNavigator> {
         LogUtil.error('踢设备失败: 配置不存在 (targetIp=$targetIp)');
         return false;
       }
-      final rawUsername = config['username'] ?? '';
-      final userType = config['user_type'] ?? '';
-      final username =
-          userType.isNotEmpty ? '$rawUsername@$userType' : rawUsername;
+      final username = config.authenticatedUsername;
 
       final success = await SrunLogin.client.dmLogout(
         username: username,

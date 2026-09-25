@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="sharedpref" path="linkup_auth" />
+        <exclude domain="sharedpref" path="FlutterSecureKeyStorage:linkup_auth" />
+        <exclude domain="sharedpref" path="FlutterSecureStorageConfiguration:linkup_auth" />
+        <exclude domain="root" path="app_flutter/linkup_config.json" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="linkup_auth" />
+        <exclude domain="sharedpref" path="FlutterSecureKeyStorage:linkup_auth" />
+        <exclude domain="sharedpref" path="FlutterSecureStorageConfiguration:linkup_auth" />
+        <exclude domain="root" path="app_flutter/linkup_config.json" />
+    </device-transfer>
+</data-extraction-rules>
