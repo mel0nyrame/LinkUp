@@ -5,7 +5,9 @@ import 'package:LinkUp/components/SystemSettingsCard.dart';
 import 'package:LinkUp/components/LogViewerCard.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.onConfigChanged});
+
+  final ValueChanged<bool>? onConfigChanged;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -14,8 +16,9 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   Key _refreshKey = UniqueKey();
 
-  void _onConfigChanged() {
+  void _onConfigChanged(bool hasConfig) {
     setState(() => _refreshKey = UniqueKey());
+    widget.onConfigChanged?.call(hasConfig);
   }
 
   @override
@@ -57,7 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 16),
               const SystemSettingsCard(),
               const SizedBox(height: 16),
-              const NetworkConfigCard(),
+              NetworkConfigCard(onConfigChanged: () => _onConfigChanged(true)),
               const SizedBox(height: 16),
               const LogViewerCard(),
               const SizedBox(height: 32),

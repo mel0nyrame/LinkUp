@@ -35,12 +35,14 @@ class RealityProbeResult {
 }
 
 enum AuthenticationStatus {
+  stopped,
   idle,
   checking,
   authenticating,
   online,
   alreadyOnline,
   offline,
+  backingOff,
   failed,
   cancelled,
   stale,
@@ -52,12 +54,14 @@ class AuthenticationState {
     this.message,
     this.userInfo,
     this.parameters,
+    this.retryAfter,
   });
 
   final AuthenticationStatus status;
   final String? message;
   final RadUserInfo? userInfo;
   final AuthParameters? parameters;
+  final Duration? retryAfter;
 
   bool get isOnline =>
       status == AuthenticationStatus.online ||
@@ -179,28 +183,80 @@ abstract class AuthenticationProtocol {
   void dispose() {}
 }
 
+/// 认证监控的可替换调度边界。
+abstract class AuthenticationScheduler {
+  void schedule(Duration delay, FutureOr<void> Function() callback);
+
+  void cancel();
+}
+
+class TimerAuthenticationScheduler implements AuthenticationScheduler {
+  Timer? _timer;
+
+  @override
+  void schedule(Duration delay, FutureOr<void> Function() callback) {
+    cancel();
+    _timer = Timer(delay, () {
+      _timer = null;
+      callback();
+    });
+  }
+
+  @override
+  void cancel() {
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
 /// 统一编排一次检查、候选选择、登录和在线确认。
+///
+/// [protocolFactory] 用于停止或注销释放旧协议后重建新的 HTTP 资源。
 class AuthenticationCoordinator {
   AuthenticationCoordinator({
     required this.configSource,
-    required this.protocol,
+    required AuthenticationProtocol protocol,
     required this.networkState,
-  });
+    AuthenticationProtocol Function()? protocolFactory,
+    AuthenticationScheduler? scheduler,
+  }) : _protocolInstance = protocol,
+       // ignore: prefer_initializing_formals
+       _protocolFactory = protocolFactory,
+       _scheduler = scheduler ?? TimerAuthenticationScheduler();
 
   static const String supportedEnc = AuthParameters.supportedEnc;
 
   final AuthenticationConfigSource configSource;
-  final AuthenticationProtocol protocol;
   final AuthenticationNetworkState networkState;
+  final AuthenticationProtocol Function()? _protocolFactory;
+  final AuthenticationScheduler _scheduler;
+  AuthenticationProtocol? _protocolInstance;
+
+  bool get _canRun => _protocolInstance != null || _protocolFactory != null;
+
+  AuthenticationProtocol get protocol {
+    final current = _protocolInstance;
+    if (current != null) return current;
+    final factory = _protocolFactory;
+    if (factory == null) {
+      throw StateError('认证协议已释放且没有可用的重建工厂');
+    }
+    return _protocolInstance = factory();
+  }
 
   final StreamController<AuthenticationState> _stateController =
       StreamController<AuthenticationState>.broadcast(sync: true);
   Future<AuthenticationResult>? _inFlight;
   bool _checkAgainAfterInFlight = false;
+  bool _pendingManualCheck = false;
   String? _activeServer;
+  bool _monitoring = false;
+  int _consecutiveFailures = 0;
+  int _scheduleGeneration = 0;
+  bool _stopping = false;
   bool _disposed = false;
   AuthenticationState _state = const AuthenticationState(
-    status: AuthenticationStatus.idle,
+    status: AuthenticationStatus.stopped,
   );
 
   Stream<AuthenticationState> get states => _stateController.stream;
@@ -209,25 +265,53 @@ class AuthenticationCoordinator {
 
   bool get isRunning => _inFlight != null;
 
+  Future<AuthenticationResult> start({
+    bool manual = false,
+    AuthenticationCancellationToken? cancellation,
+  }) {
+    if (_disposed || _stopping || !_canRun) {
+      return Future.value(_stoppedResult());
+    }
+    _monitoring = true;
+    return check(manual: manual, cancellation: cancellation);
+  }
+
   Future<AuthenticationResult> check({
     bool? manual,
     AuthenticationCancellationToken? cancellation,
   }) {
+    if (_disposed || _stopping || !_canRun) {
+      return Future.value(_stoppedResult());
+    }
     final active = _inFlight;
-    if (active != null) return active;
+    if (active != null) {
+      if (manual == true) {
+        _checkAgainAfterInFlight = true;
+        _pendingManualCheck = true;
+      }
+      return active;
+    }
 
+    AuthenticationResult? completedResult;
     late final Future<AuthenticationResult> operation;
-    operation = _run(manual: manual, cancellation: cancellation).whenComplete(
-      () {
-        if (identical(_inFlight, operation)) {
-          _inFlight = null;
-          if (_checkAgainAfterInFlight && !_disposed) {
-            _checkAgainAfterInFlight = false;
-            unawaited(check());
+    operation = _run(manual: manual, cancellation: cancellation)
+        .then((result) {
+          completedResult = result;
+          return result;
+        })
+        .whenComplete(() {
+          if (identical(_inFlight, operation)) {
+            _inFlight = null;
+            if (_checkAgainAfterInFlight && !_disposed) {
+              _checkAgainAfterInFlight = false;
+              final manual = _pendingManualCheck;
+              _pendingManualCheck = false;
+              unawaited(check(manual: manual ? true : null));
+            } else if (completedResult != null) {
+              _scheduleNext(completedResult!);
+            }
           }
-        }
-      },
-    );
+        });
     _inFlight = operation;
     return operation;
   }
@@ -242,44 +326,79 @@ class AuthenticationCoordinator {
   Future<AuthenticationResult> manualCheck({
     AuthenticationCancellationToken? cancellation,
   }) {
-    return check(cancellation: cancellation);
+    if (!_monitoring) return start(manual: true, cancellation: cancellation);
+    if (_inFlight != null) {
+      return check(manual: true, cancellation: cancellation);
+    }
+    _cancelSchedule();
+    return check(manual: true, cancellation: cancellation);
   }
 
   void invalidateNetwork() {
     networkState.invalidate();
-    protocol.reset();
+    _protocolInstance?.reset();
+  }
+
+  Future<AuthenticationResult> networkChanged() {
+    invalidateNetwork();
+    if (!_monitoring) return start();
+    final active = _inFlight;
+    if (active != null) {
+      _checkAgainAfterInFlight = true;
+      return active;
+    }
+    _cancelSchedule();
+    return check();
   }
 
   void requestCheck() {
-    if (_disposed) return;
+    if (_disposed || _stopping) return;
     if (_inFlight != null) {
       _checkAgainAfterInFlight = true;
       return;
     }
+    _cancelSchedule();
     unawaited(check());
   }
 
+  Future<AuthenticationResult> configurationChanged({
+    required bool hasConfig,
+  }) async {
+    await stop();
+    if (!hasConfig || _disposed) return _stoppedResult();
+    return start();
+  }
+
   Future<bool> logout() async {
-    final active = _inFlight;
-    if (active != null) await active;
-    invalidateNetwork();
-    final config = await configSource.load();
-    if (config == null) return false;
+    if (_disposed || _stopping) return false;
+    _beginStop();
 
-    final server = normalizeAuthServer(config.authServer);
-    final info = await protocol.getUserInfo(server);
-    final ip = _ipFrom(info);
-    if (ip.isEmpty) return false;
+    try {
+      await _quiesce();
+      if (!_canRun) return false;
+      _protocolInstance?.reset();
 
-    final success = await protocol.logout(
-      server: server,
-      username: config.authenticatedUsername,
-      ip: ip,
-    );
-    return success;
+      final config = await configSource.load();
+      if (config == null) return false;
+
+      final server = normalizeAuthServer(config.authServer);
+      final currentProtocol = protocol;
+      final info = await currentProtocol.getUserInfo(server);
+      final ip = _ipFrom(info);
+      if (ip.isEmpty) return false;
+
+      return await currentProtocol.logout(
+        server: server,
+        username: config.authenticatedUsername,
+        ip: ip,
+      );
+    } finally {
+      _finishStop();
+    }
   }
 
   Future<bool> kickDevice(String targetIp) async {
+    if (!_canRun) return false;
     final active = _inFlight;
     if (active != null) await active;
     final config = await configSource.load();
@@ -292,11 +411,89 @@ class AuthenticationCoordinator {
     );
   }
 
+  Future<void> stop() async {
+    if (_disposed || _stopping) return;
+    _beginStop();
+    try {
+      await _quiesce();
+    } finally {
+      _finishStop();
+    }
+  }
+
+  void _beginStop() {
+    _stopping = true;
+    _monitoring = false;
+    _checkAgainAfterInFlight = false;
+    _pendingManualCheck = false;
+    _cancelSchedule();
+    networkState.invalidate();
+  }
+
+  Future<void> _quiesce() async {
+    final active = _inFlight;
+    if (active == null) return;
+    try {
+      await active;
+    } catch (_) {
+      // 生命周期仍需在异常后释放调度与协议资源。
+    }
+  }
+
+  void _finishStop() {
+    _releaseProtocol();
+    _activeServer = null;
+    _emit(const AuthenticationState(status: AuthenticationStatus.stopped));
+    _stopping = false;
+  }
+
   Future<void> dispose() async {
     if (_disposed) return;
+    await stop();
     _disposed = true;
-    protocol.dispose();
     await _stateController.close();
+  }
+
+  void _releaseProtocol() {
+    final current = _protocolInstance;
+    _protocolInstance = null;
+    if (current == null) return;
+    current.reset();
+    current.dispose();
+  }
+
+  void _scheduleNext(AuthenticationResult result) {
+    if (!_monitoring || _disposed) return;
+    final Duration delay;
+    if (result.isOnline) {
+      _consecutiveFailures = 0;
+      delay = const Duration(seconds: 30);
+    } else {
+      final failureIndex = _consecutiveFailures;
+      _consecutiveFailures++;
+      final seconds = failureIndex >= 5 ? 60 : 3 * (1 << failureIndex);
+      delay = Duration(seconds: seconds);
+      _emit(
+        AuthenticationState(
+          status: AuthenticationStatus.backingOff,
+          message: result.message,
+          retryAfter: delay,
+        ),
+      );
+    }
+    _cancelSchedule();
+    final generation = _scheduleGeneration;
+    _scheduler.schedule(delay, () async {
+      if (generation != _scheduleGeneration || !_monitoring || _disposed) {
+        return;
+      }
+      await check();
+    });
+  }
+
+  void _cancelSchedule() {
+    _scheduleGeneration++;
+    _scheduler.cancel();
   }
 
   Future<AuthenticationResult> _run({
@@ -321,7 +518,7 @@ class AuthenticationCoordinator {
       final useManualAcid = manual ?? !config.autoAcid;
 
       if (!await networkState.isConnected()) {
-        return _failed('WiFi 未连接');
+        return _offline('WiFi 未连接');
       }
       if (_cancelled(cancellation)) return _cancelledResult();
       if (!_isCurrent(server, generation)) return _staleResult();
@@ -506,6 +703,22 @@ class AuthenticationCoordinator {
     final clientIp = info.clientIp;
     if (clientIp != null && clientIp.isNotEmpty) return clientIp;
     return info.onlineIp ?? '';
+  }
+
+  AuthenticationResult _stoppedResult() {
+    return const AuthenticationResult(
+      status: AuthenticationStatus.stopped,
+      message: '认证监控已停止',
+    );
+  }
+
+  AuthenticationResult _offline(String message) {
+    final result = AuthenticationResult(
+      status: AuthenticationStatus.offline,
+      message: message,
+    );
+    _emit(result.state);
+    return result;
   }
 
   AuthenticationResult _failed(String message) {
