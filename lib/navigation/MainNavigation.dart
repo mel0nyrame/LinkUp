@@ -62,7 +62,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     _authStateSubscription = _coordinator.states.listen(_onAuthenticationState);
     _networkSubscription = NetworkUtil.onConnectivityChanged.listen((_) {
       _coordinator.invalidateNetwork();
-      unawaited(_coordinator.check());
+      _coordinator.requestCheck();
     });
 
     // 页面加载后检查更新

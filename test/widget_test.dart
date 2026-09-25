@@ -23,6 +23,11 @@ void main() {
     expect(result, equals('fd07c716fa2b6a86413916082c8bfdc3'));
   });
 
+  test('SrunEncrypt Latin-1 HMAC-MD5', () {
+    final result = SrunEnrypt.Hmd5('msg-é', 'key-ã');
+    expect(result, '714cb342247086430bd85f1807319cea');
+  });
+
   test('SrunEncrypt SHA1', () {
     final result = SrunEnrypt.Sha1('test');
     expect(result.length, equals(40));

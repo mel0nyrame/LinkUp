@@ -100,7 +100,7 @@ class AuthenticationResult {
 abstract class AuthenticationConfigSource {
   Future<AuthConfig?> load();
 
-  Future<bool> update(ConfigUpdate update);
+  Future<bool> update(ConfigUpdate update, {bool Function()? canPersist});
 }
 
 class ConfigUtilSource implements AuthenticationConfigSource {
@@ -108,7 +108,10 @@ class ConfigUtilSource implements AuthenticationConfigSource {
   Future<AuthConfig?> load() => ConfigUtil.loadConfig();
 
   @override
-  Future<bool> update(ConfigUpdate update) => ConfigUtil.updateConfig(update);
+  Future<bool> update(ConfigUpdate update, {bool Function()? canPersist}) {
+    if (canPersist == null) return ConfigUtil.updateConfig(update);
+    return ConfigUtil.updateConfig(update, canPersist: canPersist);
+  }
 }
 
 abstract class AuthenticationNetworkState {
@@ -193,6 +196,7 @@ class AuthenticationCoordinator {
   final StreamController<AuthenticationState> _stateController =
       StreamController<AuthenticationState>.broadcast(sync: true);
   Future<AuthenticationResult>? _inFlight;
+  bool _checkAgainAfterInFlight = false;
   String? _activeServer;
   bool _disposed = false;
   AuthenticationState _state = const AuthenticationState(
@@ -215,7 +219,13 @@ class AuthenticationCoordinator {
     late final Future<AuthenticationResult> operation;
     operation = _run(manual: manual, cancellation: cancellation).whenComplete(
       () {
-        if (identical(_inFlight, operation)) _inFlight = null;
+        if (identical(_inFlight, operation)) {
+          _inFlight = null;
+          if (_checkAgainAfterInFlight && !_disposed) {
+            _checkAgainAfterInFlight = false;
+            unawaited(check());
+          }
+        }
       },
     );
     _inFlight = operation;
@@ -238,6 +248,15 @@ class AuthenticationCoordinator {
   void invalidateNetwork() {
     networkState.invalidate();
     protocol.reset();
+  }
+
+  void requestCheck() {
+    if (_disposed) return;
+    if (_inFlight != null) {
+      _checkAgainAfterInFlight = true;
+      return;
+    }
+    unawaited(check());
   }
 
   Future<bool> logout() async {
@@ -394,6 +413,8 @@ class AuthenticationCoordinator {
         try {
           persistenceFailed = !await configSource.update(
             ConfigUpdate(acid: candidate.value),
+            canPersist: () =>
+                !_cancelled(cancellation) && _isCurrent(server, generation),
           );
         } catch (_) {
           await LogUtil.warning('ACID 持久化失败，可重试');
@@ -452,7 +473,7 @@ class AuthenticationCoordinator {
       return _candidate(reality.acid!, AcidCandidateSource.reality, generation);
     }
 
-    if (config.acid.trim().isNotEmpty) {
+    if (config.hasExplicitAcid && config.acid.trim().isNotEmpty) {
       return _candidate(config.acid, AcidCandidateSource.saved, generation);
     }
 

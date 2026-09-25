@@ -21,6 +21,7 @@ class AuthConfig {
     required this.autoAcid,
     required this.authServer,
     required this.userType,
+    this.hasExplicitAcid = true,
     this.createdAt,
   });
 
@@ -30,6 +31,9 @@ class AuthConfig {
   final bool autoAcid;
   final String authServer;
   final String userType;
+
+  /// 运行时 [acid] 会使用默认值，但该标记保留空值是否明确可用。
+  final bool hasExplicitAcid;
   final String? createdAt;
 
   String get authenticatedUsername =>
@@ -42,6 +46,7 @@ class AuthConfig {
     bool? autoAcid,
     String? authServer,
     String? userType,
+    bool? hasExplicitAcid,
     String? createdAt,
   }) {
     return AuthConfig(
@@ -51,6 +56,7 @@ class AuthConfig {
       autoAcid: autoAcid ?? this.autoAcid,
       authServer: authServer ?? this.authServer,
       userType: userType ?? this.userType,
+      hasExplicitAcid: hasExplicitAcid ?? this.hasExplicitAcid,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -59,7 +65,7 @@ class AuthConfig {
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'username': username,
-      'acid': acid,
+      'acid': hasExplicitAcid ? acid : '',
       'auto_acid': autoAcid,
       'auth_server': authServer,
       'user_type': userType,
@@ -71,10 +77,12 @@ class AuthConfig {
     Map<String, dynamic> json, {
     required String password,
   }) {
+    final rawAcid = _stringValue(json['acid'], '');
     return AuthConfig(
       username: _stringValue(json['username']),
       password: password,
-      acid: normalizeAcid(_stringValue(json['acid'], defaultAcid)),
+      acid: normalizeAcid(rawAcid),
+      hasExplicitAcid: rawAcid.trim().isNotEmpty,
       autoAcid: _boolValue(json['auto_acid'], true),
       authServer: normalizeAuthServer(_stringValue(json['auth_server'])),
       userType: _stringValue(json['user_type']),
@@ -367,7 +375,13 @@ class ConfigRepository {
   });
 
   /// 只更新传入的目标字段；未传入的字段保持原值。
-  Future<bool> update(ConfigUpdate update) => _enqueue(() async {
+  ///
+  /// [canPersist] 在仓库操作队列内、实际写入前检查世代条件；认证流程用它
+  /// 阻止网络环境变化后的旧 ACID 落盘。
+  Future<bool> update(
+    ConfigUpdate update, {
+    bool Function()? canPersist,
+  }) => _enqueue(() async {
     if (!update.hasChanges) return true;
 
     try {
@@ -387,6 +401,7 @@ class ConfigRepository {
       if (update.password != null && update.password!.isEmpty) {
         return false;
       }
+      if (canPersist != null && !canPersist()) return false;
 
       if (update.password != null) {
         await _writeSecretUnlocked(update.password!);
@@ -403,12 +418,14 @@ class ConfigRepository {
       final updated = current.copyWith(
         username: update.username?.trim(),
         acid: update.acid == null ? null : normalizeAcid(update.acid!),
+        hasExplicitAcid: update.acid?.trim().isNotEmpty,
         autoAcid: update.autoAcid,
         authServer: update.authServer == null
             ? null
             : normalizeAuthServer(update.authServer),
         userType: update.userType?.trim(),
       );
+      if (canPersist != null && !canPersist()) return false;
       await _writeJsonUnlocked(updated.toJson());
       return true;
     } on ConfigMigrationException {
@@ -469,8 +486,10 @@ class ConfigUtil {
 
   static Future<bool> saveConfig(AuthConfig config) => _repository.save(config);
 
-  static Future<bool> updateConfig(ConfigUpdate update) =>
-      _repository.update(update);
+  static Future<bool> updateConfig(
+    ConfigUpdate update, {
+    bool Function()? canPersist,
+  }) => _repository.update(update, canPersist: canPersist);
 
   static Future<bool> deleteConfig() => _repository.delete();
 

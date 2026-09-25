@@ -125,6 +125,7 @@ void main() {
         username: _fixtureUsername,
         password: _fixturePassword,
         acid: '',
+        hasExplicitAcid: false,
         autoAcid: true,
         authServer: '10.129.1.1',
         userType: '',
@@ -254,6 +255,39 @@ void main() {
 
     expect(result.status, AuthenticationStatus.online);
     expect(protocol.realityCalls, 1);
+  });
+
+  test('网络事件在单飞期间排队一次新的检查', () async {
+    final gate = Completer<void>();
+    final secondLogin = Completer<void>();
+    var loginCount = 0;
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(acid: '143'),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+      realityGate: gate,
+      afterLogin: () {
+        loginCount++;
+        if (loginCount == 2) secondLogin.complete();
+      },
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+    );
+
+    final first = coordinator.check();
+    coordinator.requestCheck();
+    gate.complete();
+    await first;
+    await secondLogin.future;
+
+    expect(protocol.realityCalls, 2);
   });
 
   test('网络世代变化时旧候选不会落盘', () async {
@@ -394,6 +428,7 @@ AuthConfig _config({String acid = '1', bool autoAcid = true}) {
     username: _fixtureUsername,
     password: _fixturePassword,
     acid: acid,
+    hasExplicitAcid: acid.trim().isNotEmpty,
     autoAcid: autoAcid,
     authServer: '10.129.1.1',
     userType: '',
@@ -411,7 +446,11 @@ class _FakeConfigSource implements AuthenticationConfigSource {
   Future<AuthConfig?> load() async => config;
 
   @override
-  Future<bool> update(ConfigUpdate update) async {
+  Future<bool> update(
+    ConfigUpdate update, {
+    bool Function()? canPersist,
+  }) async {
+    if (canPersist != null && !canPersist()) return false;
     updates.add(update);
     return updateSucceeds;
   }

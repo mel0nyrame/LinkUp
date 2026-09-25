@@ -145,6 +145,28 @@ void main() {
     expect(loaded?.userType, 'cmcc');
   });
 
+  test('空 ACID 保留为不可用状态而不伪造成已保存候选', () async {
+    await repository.save(
+      AuthConfig(
+        username: 'fixture-user',
+        password: _fixtureValue('empty-acid'),
+        acid: '',
+        hasExplicitAcid: false,
+        autoAcid: true,
+        authServer: '10.129.1.1',
+        userType: '',
+      ),
+    );
+
+    final loaded = await repository.load();
+    final raw =
+        jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
+
+    expect(loaded?.acid, defaultAcid);
+    expect(loaded?.hasExplicitAcid, isFalse);
+    expect(raw['acid'], isEmpty);
+  });
+
   test('并发的目标字段更新不会互相覆盖', () async {
     final password = _fixtureValue('concurrent');
     await repository.save(
