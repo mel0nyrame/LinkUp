@@ -20,6 +20,7 @@ class AuthRuntimeClient {
   final StreamController<AuthRuntimeState> _states =
       StreamController<AuthRuntimeState>.broadcast();
   bool _attached = false;
+  bool _receivedState = false;
 
   Stream<AuthRuntimeState> get states => _states.stream;
 
@@ -29,7 +30,9 @@ class AuthRuntimeClient {
     _channel.setMethodCallHandler(_handleHostCall);
     _attached = true;
     final latest = await _invoke('attach');
-    if (latest is Map) _addState(latest);
+    // 宿主先推送再回包，因此回包只用于补上尚未收到过的首个状态，避免旧值
+    // 覆盖已经到达的更新。
+    if (latest is Map && !_receivedState) _addState(latest);
   }
 
   /// 取消订阅。Activity 销毁后运行时继续工作，重新进入时再次 [attach]。
@@ -87,6 +90,7 @@ class AuthRuntimeClient {
 
   void _addState(Map<dynamic, dynamic> payload) {
     if (_states.isClosed) return;
+    _receivedState = true;
     _states.add(AuthRuntimeState.fromMap(payload));
   }
 
