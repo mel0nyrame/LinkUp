@@ -10,6 +10,9 @@ abstract interface class SecretStore {
   Future<void> write(String key, String value);
 
   Future<void> delete(String key);
+
+  /// 清除当前命名空间中的全部秘密，包括插件迁移留下的备份密文。
+  Future<void> deleteAll();
 }
 
 /// LinkUp 的 Android 秘密存储实现。
@@ -35,4 +38,7 @@ class FlutterSecureStorageSecretStore implements SecretStore {
 
   @override
   Future<void> delete(String key) => _storage.delete(key: key);
+
+  @override
+  Future<void> deleteAll() => _storage.deleteAll();
 }

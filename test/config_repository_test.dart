@@ -9,9 +9,11 @@ String _fixtureValue(String label) => 'fixture-$label-value';
 
 class _FakeSecretStore implements SecretStore {
   final Map<String, String> values = <String, String>{};
+  final Map<String, String> backupValues = <String, String>{};
   Object? readError;
   Object? writeError;
   Object? deleteError;
+  Object? deleteAllError;
 
   @override
   Future<String?> read(String key) async {
@@ -29,6 +31,13 @@ class _FakeSecretStore implements SecretStore {
   Future<void> delete(String key) async {
     if (deleteError != null) throw deleteError!;
     values.remove(key);
+  }
+
+  @override
+  Future<void> deleteAll() async {
+    if (deleteAllError != null) throw deleteAllError!;
+    values.clear();
+    backupValues.clear();
   }
 }
 
@@ -214,6 +223,37 @@ void main() {
     expect(await configFile.exists(), isTrue);
   });
 
+  test('迁移清理 JSON 写入失败时保留旧文件并可重试', () async {
+    final password = _fixtureValue('json-write-failure');
+    await configFile.writeAsString(
+      jsonEncode(<String, dynamic>{
+        'username': 'fixture-user',
+        'password': password,
+        'acid': '1',
+        'auto_acid': true,
+        'auth_server': '10.129.1.1',
+        'user_type': '',
+      }),
+    );
+    final temporaryPath = '${configFile.path}.tmp';
+    await Directory(temporaryPath).create();
+
+    await expectLater(
+      repository.load(),
+      throwsA(isA<ConfigMigrationException>()),
+    );
+
+    var raw =
+        jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
+    expect(raw['password'], isNotNull);
+    expect(await configFile.exists(), isTrue);
+
+    await Directory(temporaryPath).delete();
+    expect(await repository.load(), isNotNull);
+    raw = jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
+    expect(raw.containsKey('password'), isFalse);
+  });
+
   test('迁移验证失败时保留旧配置，恢复后仍可重试', () async {
     final password = _fixtureValue('verification-failure');
     await configFile.writeAsString(
@@ -310,16 +350,20 @@ void main() {
       ),
     );
 
-    secretStore.deleteError = StateError('secret delete unavailable');
+    secretStore.backupValues['${ConfigRepository.passwordSecretKey}_BACKUP'] =
+        _fixtureValue('delete-backup');
+    secretStore.deleteAllError = StateError('secret delete unavailable');
     expect(await repository.delete(), isFalse);
     expect(
       await secretStore.read(ConfigRepository.passwordSecretKey),
       isNotNull,
     );
+    expect(secretStore.backupValues, isNotEmpty);
 
-    secretStore.deleteError = null;
+    secretStore.deleteAllError = null;
     expect(await repository.delete(), isTrue);
     expect(await configFile.exists(), isFalse);
     expect(await secretStore.read(ConfigRepository.passwordSecretKey), isNull);
+    expect(secretStore.backupValues, isEmpty);
   });
 }

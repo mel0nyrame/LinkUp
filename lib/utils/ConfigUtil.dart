@@ -139,16 +139,89 @@ class ConfigSecretException extends ConfigStorageException {
 
 typedef ConfigPathProvider = Future<String> Function();
 
+/// 普通配置文件的最小存储接口，便于验证写入失败和恢复语义。
+abstract interface class ConfigFileStore {
+  Future<String?> read();
+
+  Future<void> write(String content);
+
+  Future<void> delete();
+
+  Future<bool> exists();
+}
+
+/// 使用同目录临时文件替换目标文件，避免写入中断破坏旧配置。
+class FileConfigFileStore implements ConfigFileStore {
+  FileConfigFileStore(this.pathProvider);
+
+  final ConfigPathProvider pathProvider;
+
+  Future<File> _file() async => File(await pathProvider());
+
+  @override
+  Future<String?> read() async {
+    final file = await _file();
+    if (!await file.exists()) return null;
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> write(String content) async {
+    final file = await _file();
+    final parent = file.parent;
+    if (!await parent.exists()) {
+      await parent.create(recursive: true);
+    }
+
+    final temporaryFile = File('${file.path}.tmp');
+    try {
+      await temporaryFile.writeAsString(content, flush: true);
+      if (!await temporaryFile.exists() ||
+          await temporaryFile.readAsString() != content) {
+        throw const ConfigStorageException('配置文件写入验证失败');
+      }
+
+      await temporaryFile.rename(file.path);
+      if (!await file.exists() || await file.readAsString() != content) {
+        throw const ConfigStorageException('配置文件写入验证失败');
+      }
+    } finally {
+      try {
+        if (await temporaryFile.exists()) {
+          await temporaryFile.delete();
+        }
+      } catch (_) {
+        // 清理失败不能覆盖原始写入结果。
+      }
+    }
+  }
+
+  @override
+  Future<void> delete() async {
+    final file = await _file();
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  @override
+  Future<bool> exists() async => (await _file()).exists();
+}
+
 /// 普通配置和密码秘密的唯一仓库入口。
 ///
-/// 文件路径和 [SecretStore] 都可注入，因此迁移、更新和失败恢复可以在
+/// 文件存储和 [SecretStore] 都可注入，因此迁移、更新和失败恢复可以在
 /// 不依赖 Android 插件的单元测试中验证。
 class ConfigRepository {
-  ConfigRepository({required this.pathProvider, required this.secretStore});
+  ConfigRepository({
+    required ConfigPathProvider pathProvider,
+    required this.secretStore,
+    ConfigFileStore? fileStore,
+  }) : fileStore = fileStore ?? FileConfigFileStore(pathProvider);
 
   static const String passwordSecretKey = 'campus_password';
 
-  final ConfigPathProvider pathProvider;
+  final ConfigFileStore fileStore;
   final SecretStore secretStore;
 
   Future<void> _operationQueue = Future<void>.value();
@@ -165,16 +238,10 @@ class ConfigRepository {
     return completer.future;
   }
 
-  Future<File> _file() async {
-    final path = await pathProvider();
-    return File(path);
-  }
-
   Future<Map<String, dynamic>?> _readRawUnlocked() async {
-    final file = await _file();
-    if (!await file.exists()) return null;
+    final content = await fileStore.read();
+    if (content == null) return null;
 
-    final content = await file.readAsString();
     try {
       final decoded = jsonDecode(content);
       if (decoded is! Map) {
@@ -191,17 +258,7 @@ class ConfigRepository {
   }
 
   Future<void> _writeJsonUnlocked(Map<String, dynamic> value) async {
-    final file = await _file();
-    final parent = file.parent;
-    if (!await parent.exists()) {
-      await parent.create(recursive: true);
-    }
-
-    final content = jsonEncode(value);
-    await file.writeAsString(content, flush: true);
-    if (!await file.exists() || await file.readAsString() != content) {
-      throw const ConfigStorageException('配置文件写入验证失败');
-    }
+    await fileStore.write(jsonEncode(value));
   }
 
   Future<void> _writeSecretUnlocked(String password) async {
@@ -367,16 +424,16 @@ class ConfigRepository {
     var succeeded = true;
 
     try {
-      final file = await _file();
-      if (await file.exists()) {
-        await file.delete();
-      }
+      await fileStore.delete();
     } catch (_) {
       succeeded = false;
     }
 
     try {
-      await secretStore.delete(passwordSecretKey);
+      await secretStore.deleteAll();
+      if (await secretStore.read(passwordSecretKey) != null) {
+        succeeded = false;
+      }
     } catch (_) {
       succeeded = false;
     }
@@ -391,7 +448,7 @@ class ConfigRepository {
 
   Future<bool> exists() => _enqueue(() async {
     try {
-      return await (await _file()).exists();
+      return await fileStore.exists();
     } catch (_) {
       await LogUtil.warning('检查配置文件失败');
       return false;

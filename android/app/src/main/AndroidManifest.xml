@@ -23,7 +23,6 @@
         android:label="LinkUp"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
-        android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules">
         

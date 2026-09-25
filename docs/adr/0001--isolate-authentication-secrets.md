@@ -14,9 +14,9 @@
 
 校园网密码通过 `SecretStore` 保存。生产实现使用 `flutter_secure_storage` 的 Android Keystore 支持，并使用独立的 `linkup_auth` 命名空间。普通 JSON 只保存非敏感字段，密码不会进入其序列化结果、日志或异常文本。
 
-升级迁移遵循固定顺序：先把旧 JSON 中的密码写入 `SecretStore`，再读回并校验；只有两步都成功后才移除普通 JSON 中的密码字段。任一步失败都保留旧文件并返回可重试错误。密码更新只写秘密存储；删除操作分别尝试删除普通配置和秘密，任一失败都返回失败，后续调用可以重试。
+升级迁移遵循固定顺序：先把旧 JSON 中的密码写入 `SecretStore`，再读回并校验；只有两步都成功后才移除普通 JSON 中的密码字段。普通文件通过同目录临时文件校验后替换，迁移清理失败时保留旧文件并返回可重试错误。密码更新只写秘密存储；删除操作分别尝试删除普通配置和秘密，并读回确认秘密已清除，任一失败都返回失败，后续调用可以重试。
 
-Android 禁用应用备份，并在 Android 12 及更早版本的备份规则中排除 `linkup_auth` 秘密存储命名空间和迁移期间的 `app_flutter/linkup_config.json`，避免恢复当前设备 Keystore 无法解密的密文或尚未迁移的明文凭据。
+Android 11 及更早版本使用 `full-backup-content`，Android 12 及更高版本使用 `data-extraction-rules`；两者都排除 `linkup_auth` 秘密存储命名空间和迁移期间的 `app_flutter/linkup_config.json`，避免恢复当前设备 Keystore 无法解密的密文或尚未迁移的明文凭据，同时保留其他非敏感应用数据的备份能力。
 
 ## Alternatives considered
 
