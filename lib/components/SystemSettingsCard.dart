@@ -205,7 +205,7 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
             contentPadding: EdgeInsets.zero,
             title: const Text('开机自启动'),
             subtitle: Text(
-              _autoStart ? '设备启动时自动运行本应用' : '需要手动打开应用',
+              _autoStart ? '重启后自动恢复认证（需同时开启“保留后台运行”并已保存账号）' : '需要手动打开应用',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
             value: _autoStart,
