@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:json_annotation/json_annotation.dart';
 
 part 'RadUserInfo.g.dart';
@@ -166,11 +167,13 @@ class RadUserInfo {
   int get getWalletBalance => walletBalance ?? 0;
 
   Map<String, OnlineDevice>? get onlineDeviceDetail {
-    if (onlineDeviceDetailRaw == null || onlineDeviceDetailRaw!.isEmpty) return null;
+    if (onlineDeviceDetailRaw == null || onlineDeviceDetailRaw!.isEmpty)
+      return null;
     try {
       final Map<String, dynamic> json = jsonDecode(onlineDeviceDetailRaw!);
-      return json.map((key, value) => 
-        MapEntry(key, OnlineDevice.fromJson(value)));
+      return json.map(
+        (key, value) => MapEntry(key, OnlineDevice.fromJson(value)),
+      );
     } catch (e) {
       return null;
     }
@@ -180,7 +183,7 @@ class RadUserInfo {
   double get remainBytesGB => (remainBytes ?? 0) / (1024 * 1024 * 1024);
   double get sumBytesGB => (sumBytes ?? 0) / (1024 * 1024 * 1024);
 
-  factory RadUserInfo.fromJson(Map<String, dynamic> json) => 
+  factory RadUserInfo.fromJson(Map<String, dynamic> json) =>
       _$RadUserInfoFromJson(json);
 
   Map<String, dynamic> toJson() => _$RadUserInfoToJson(this);
@@ -217,7 +220,7 @@ class OnlineDevice {
   String get getOsName => osName ?? '';
   String get getRadOnlineId => radOnlineId ?? '';
 
-  factory OnlineDevice.fromJson(Map<String, dynamic> json) => 
+  factory OnlineDevice.fromJson(Map<String, dynamic> json) =>
       _$OnlineDeviceFromJson(json);
 
   Map<String, dynamic> toJson() => _$OnlineDeviceToJson(this);

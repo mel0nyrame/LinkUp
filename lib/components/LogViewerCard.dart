@@ -31,8 +31,11 @@ class _LogViewerCardState extends State<LogViewerCard> {
                   color: MyApp.iosBlue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.article_outlined,
-                    color: MyApp.iosBlue, size: 18),
+                child: const Icon(
+                  Icons.article_outlined,
+                  color: MyApp.iosBlue,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
               const Text(
@@ -46,30 +49,27 @@ class _LogViewerCardState extends State<LogViewerCard> {
             ],
           ),
           const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                Icons.visibility_outlined,
-                color: colorScheme.primary,
-              ),
-              title: const Text('查看日志文件'),
-              subtitle: Text(
-                '查看应用运行日志和错误记录',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              trailing: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.chevron_right),
-              onTap: _isLoading ? null : _showLogViewer,
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              Icons.visibility_outlined,
+              color: colorScheme.primary,
             ),
-          ],
+            title: const Text('查看日志文件'),
+            subtitle: Text(
+              '查看应用运行日志和错误记录',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            trailing: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isLoading ? null : _showLogViewer,
+          ),
+        ],
       ),
     );
   }
@@ -104,7 +104,7 @@ class LogViewerDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: BoxDecoration(
@@ -118,7 +118,9 @@ class LogViewerDrawer extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.05),
@@ -148,9 +150,8 @@ class LogViewerDrawer extends StatelessWidget {
                       Expanded(
                         child: Text(
                           '应用日志',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
                       // 复制按钮
@@ -166,7 +167,10 @@ class LogViewerDrawer extends StatelessWidget {
                       ),
                       // 清空按钮
                       IconButton(
-                        icon: Icon(Icons.delete_outline, color: Colors.red.shade400),
+                        icon: Icon(
+                          Icons.delete_outline,
+                          color: Colors.red.shade400,
+                        ),
                         tooltip: '清空日志',
                         onPressed: () => _showClearConfirmDialog(context),
                       ),
@@ -182,7 +186,7 @@ class LogViewerDrawer extends StatelessWidget {
               ),
             ),
           ),
-          
+
           // 日志内容区域
           Expanded(
             child: Container(
@@ -230,15 +234,13 @@ class LogViewerDrawer extends StatelessWidget {
                     ),
             ),
           ),
-          
+
           // 底部状态栏
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: colorScheme.surface,
-              border: Border(
-                top: BorderSide(color: Colors.grey.shade200),
-              ),
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
             ),
             child: SafeArea(
               top: false,
@@ -252,8 +254,8 @@ class LogViewerDrawer extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      logContent.isEmpty 
-                          ? '日志文件为空' 
+                      logContent.isEmpty
+                          ? '日志文件为空'
                           : '共 ${logContent.split('\n').length} 行',
                       style: TextStyle(
                         fontSize: 13,
@@ -286,9 +288,7 @@ class LogViewerDrawer extends StatelessWidget {
             Text('确认清空'),
           ],
         ),
-        content: const Text(
-          '确定要清空所有日志记录吗？\n此操作不可恢复。',
-        ),
+        content: const Text('确定要清空所有日志记录吗？\n此操作不可恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -310,9 +310,8 @@ class LogViewerDrawer extends StatelessWidget {
       await LogUtil.clear();
       if (context.mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('日志已清空')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('日志已清空')));
       }
     }
   }

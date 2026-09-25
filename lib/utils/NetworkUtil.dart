@@ -9,8 +9,9 @@ class NetworkUtil {
   /// 返回 true 表示 WiFi 已连接，false 表示未连接 WiFi
   static Future<bool> isWifiConnected() async {
     try {
-      final List<ConnectivityResult> results = await _connectivity.checkConnectivity();
-      
+      final List<ConnectivityResult> results = await _connectivity
+          .checkConnectivity();
+
       // 检查是否有 WiFi 连接
       // 注意：connectivity_plus 3.x+ 返回的是 List<ConnectivityResult>
       for (final result in results) {
@@ -28,12 +29,13 @@ class NetworkUtil {
   /// 获取当前网络连接类型
   static Future<String> getConnectionType() async {
     try {
-      final List<ConnectivityResult> results = await _connectivity.checkConnectivity();
-      
+      final List<ConnectivityResult> results = await _connectivity
+          .checkConnectivity();
+
       if (results.isEmpty) {
         return '无网络连接';
       }
-      
+
       final result = results.first;
       switch (result) {
         case ConnectivityResult.wifi:

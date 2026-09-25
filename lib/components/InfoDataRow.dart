@@ -25,10 +25,7 @@ class InfoDataRow extends StatelessWidget {
           const SizedBox(width: 10),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 15,
-              color: Color(0xFF8E8E93),
-            ),
+            style: const TextStyle(fontSize: 15, color: Color(0xFF8E8E93)),
           ),
           const Spacer(),
           Text(

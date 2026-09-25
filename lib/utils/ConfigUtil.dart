@@ -378,63 +378,61 @@ class ConfigRepository {
   ///
   /// [canPersist] 在仓库操作队列内、实际写入前检查世代条件；认证流程用它
   /// 阻止网络环境变化后的旧 ACID 落盘。
-  Future<bool> update(
-    ConfigUpdate update, {
-    bool Function()? canPersist,
-  }) => _enqueue(() async {
-    if (!update.hasChanges) return true;
+  Future<bool> update(ConfigUpdate update, {bool Function()? canPersist}) =>
+      _enqueue(() async {
+        if (!update.hasChanges) return true;
 
-    try {
-      AuthConfig? current;
-      try {
-        current = await _loadUnlocked();
-      } on ConfigSecretException {
-        current = await _recoverWithPasswordUnlocked(update.password ?? '');
-      } on ConfigMigrationException {
-        current = await _recoverWithPasswordUnlocked(update.password ?? '');
-      }
-      if (current == null) return false;
+        try {
+          AuthConfig? current;
+          try {
+            current = await _loadUnlocked();
+          } on ConfigSecretException {
+            current = await _recoverWithPasswordUnlocked(update.password ?? '');
+          } on ConfigMigrationException {
+            current = await _recoverWithPasswordUnlocked(update.password ?? '');
+          }
+          if (current == null) return false;
 
-      if (update.username != null && update.username!.trim().isEmpty) {
-        return false;
-      }
-      if (update.password != null && update.password!.isEmpty) {
-        return false;
-      }
-      if (canPersist != null && !canPersist()) return false;
+          if (update.username != null && update.username!.trim().isEmpty) {
+            return false;
+          }
+          if (update.password != null && update.password!.isEmpty) {
+            return false;
+          }
+          if (canPersist != null && !canPersist()) return false;
 
-      if (update.password != null) {
-        await _writeSecretUnlocked(update.password!);
-      }
+          if (update.password != null) {
+            await _writeSecretUnlocked(update.password!);
+          }
 
-      final hasFileChange =
-          update.username != null ||
-          update.acid != null ||
-          update.autoAcid != null ||
-          update.authServer != null ||
-          update.userType != null;
-      if (!hasFileChange) return true;
+          final hasFileChange =
+              update.username != null ||
+              update.acid != null ||
+              update.autoAcid != null ||
+              update.authServer != null ||
+              update.userType != null;
+          if (!hasFileChange) return true;
 
-      final updated = current.copyWith(
-        username: update.username?.trim(),
-        acid: update.acid == null ? null : normalizeAcid(update.acid!),
-        hasExplicitAcid: update.acid?.trim().isNotEmpty,
-        autoAcid: update.autoAcid,
-        authServer: update.authServer == null
-            ? null
-            : normalizeAuthServer(update.authServer),
-        userType: update.userType?.trim(),
-      );
-      if (canPersist != null && !canPersist()) return false;
-      await _writeJsonUnlocked(updated.toJson());
-      return true;
-    } on ConfigMigrationException {
-      rethrow;
-    } catch (_) {
-      await LogUtil.warning('认证配置更新失败');
-      return false;
-    }
-  });
+          final updated = current.copyWith(
+            username: update.username?.trim(),
+            acid: update.acid == null ? null : normalizeAcid(update.acid!),
+            hasExplicitAcid: update.acid?.trim().isNotEmpty,
+            autoAcid: update.autoAcid,
+            authServer: update.authServer == null
+                ? null
+                : normalizeAuthServer(update.authServer),
+            userType: update.userType?.trim(),
+          );
+          if (canPersist != null && !canPersist()) return false;
+          await _writeJsonUnlocked(updated.toJson());
+          return true;
+        } on ConfigMigrationException {
+          rethrow;
+        } catch (_) {
+          await LogUtil.warning('认证配置更新失败');
+          return false;
+        }
+      });
 
   /// 删除普通配置和密码秘密；任一操作失败都返回 false，允许再次调用。
   Future<bool> delete() => _enqueue(() async {

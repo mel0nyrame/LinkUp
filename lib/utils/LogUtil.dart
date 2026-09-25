@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -11,12 +12,12 @@ class LogUtil {
   /// 初始化日志文件
   static Future<void> init() async {
     if (_initialized) return;
-    
+
     try {
       final directory = await getApplicationDocumentsDirectory();
       final logPath = '${directory.path}/error.log';
       _logFile = File(logPath);
-      
+
       // 如果日志文件不存在，创建并写入头部
       if (!await _logFile!.exists()) {
         await _logFile!.create(recursive: true);
@@ -27,7 +28,7 @@ class LogUtil {
         // 追加新会话标记
         await _writeToFile('\n====== 新会话 ${DateTime.now()} ======\n');
       }
-      
+
       _initialized = true;
     } catch (e) {
       // 初始化失败时回退到 print
@@ -51,25 +52,29 @@ class LogUtil {
   }
 
   /// 记录错误日志
-  static Future<void> error(String message, [dynamic error, StackTrace? stackTrace]) async {
+  static Future<void> error(
+    String message, [
+    dynamic error,
+    StackTrace? stackTrace,
+  ]) async {
     await init();
-    
+
     final buffer = StringBuffer();
     buffer.writeln('[ERROR] ${DateTime.now()}');
     buffer.writeln(message);
-    
+
     if (error != null) {
       buffer.writeln('异常: $error');
     }
-    
+
     if (stackTrace != null) {
       buffer.writeln('堆栈:\n$stackTrace');
     }
-    
+
     buffer.writeln('');
-    
+
     await _writeToFile(buffer.toString());
-    
+
     // 同时输出到控制台（调试用）
     print('[ERROR] $message${error != null ? ': $error' : ''}');
   }
@@ -77,20 +82,20 @@ class LogUtil {
   /// 记录信息日志
   static Future<void> info(String message) async {
     await init();
-    
+
     final log = '[INFO] ${DateTime.now()} - $message\n';
     await _writeToFile(log);
-    
+
     print('[INFO] $message');
   }
 
   /// 记录警告日志
   static Future<void> warning(String message) async {
     await init();
-    
+
     final log = '[WARN] ${DateTime.now()} - $message\n';
     await _writeToFile(log);
-    
+
     print('[WARN] $message');
   }
 

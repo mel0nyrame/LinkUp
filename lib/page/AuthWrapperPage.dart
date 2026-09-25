@@ -5,10 +5,7 @@ import 'package:LinkUp/utils/ConfigUtil.dart';
 class AuthWrapperPage extends StatefulWidget {
   final Widget child;
 
-  const AuthWrapperPage({
-    super.key,
-    required this.child,
-  });
+  const AuthWrapperPage({super.key, required this.child});
 
   @override
   State<AuthWrapperPage> createState() => _AuthWrapperState();
@@ -54,9 +51,7 @@ class _AuthWrapperState extends State<AuthWrapperPage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (!_hasConfig) {
@@ -66,7 +61,11 @@ class _AuthWrapperState extends State<AuthWrapperPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.wifi, size: 64, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                Icons.wifi,
+                size: 64,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(height: 16),
               Text('LinkUp', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 8),

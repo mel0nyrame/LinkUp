@@ -3,6 +3,7 @@ import 'package:LinkUp/navigation/MainNavigation.dart';
 import 'package:LinkUp/page/AuthWrapperPage.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await LogUtil.init();
@@ -64,20 +65,33 @@ class MyApp extends StatelessWidget {
 
         switchTheme: SwitchThemeData(
           thumbColor: WidgetStateProperty.resolveWith(
-              (s) => s.contains(WidgetState.selected) ? Colors.white : Colors.white),
-          trackColor: WidgetStateProperty.resolveWith((s) =>
-              s.contains(WidgetState.selected) ? iosGreen : Colors.grey.shade300),
-          trackOutlineColor: WidgetStateProperty.resolveWith((s) =>
-              s.contains(WidgetState.selected) ? iosGreen : Colors.grey.shade300),
+            (s) =>
+                s.contains(WidgetState.selected) ? Colors.white : Colors.white,
+          ),
+          trackColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected)
+                ? iosGreen
+                : Colors.grey.shade300,
+          ),
+          trackOutlineColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected)
+                ? iosGreen
+                : Colors.grey.shade300,
+          ),
         ),
 
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             backgroundColor: iosBlue,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             minimumSize: const Size(double.infinity, 50),
-            textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            textStyle: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
 
@@ -89,18 +103,27 @@ class MyApp extends StatelessWidget {
 
         listTileTheme: const ListTileThemeData(
           contentPadding: EdgeInsets.zero,
-          titleTextStyle: TextStyle(fontSize: 17, fontWeight: FontWeight.w400, color: Colors.black),
+          titleTextStyle: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w400,
+            color: Colors.black,
+          ),
           subtitleTextStyle: TextStyle(fontSize: 13, color: Color(0xFF8E8E93)),
         ),
 
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
             foregroundColor: iosBlue,
-            textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
+            textStyle: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w400,
+            ),
           ),
         ),
       ),
-      home: const LiquidGlassScaffold(child: AuthWrapperPage(child: MainNavigator())),
+      home: const LiquidGlassScaffold(
+        child: AuthWrapperPage(child: MainNavigator()),
+      ),
     );
   }
 }
