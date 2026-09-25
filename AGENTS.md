@@ -37,3 +37,17 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 5. **验证 Android**：涉及依赖、Gradle、插件、Manifest 或 Kotlin 时运行 `flutter build apk --debug`；涉及发布配置或原生行为时再运行 `flutter build apk --release`。完成标准：对应 APK 成功生成。
 
 最终运行 `git diff --check`，并用 `rg` 确认文档和配置没有残留的旧命令、旧渠道或已删除文件引用。
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues through `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Issues use one `bug` or `enhancement` category and one canonical state label. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses single-context domain docs. See `docs/agents/domain.md`.
