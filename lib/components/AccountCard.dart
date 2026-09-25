@@ -169,9 +169,7 @@ class _AccountcartState extends State<AccountCard> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const GlassCard(
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const GlassCard(child: Center(child: CircularProgressIndicator()));
     }
 
     return GlassCard(
@@ -224,9 +222,11 @@ class _AccountcartState extends State<AccountCard> {
                 borderRadius: BorderRadius.all(Radius.circular(12)),
               ),
               suffixIcon: IconButton(
-                icon: Icon(_obscurePassword
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined),
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
                 onPressed: () =>
                     setState(() => _obscurePassword = !_obscurePassword),
               ),
@@ -259,10 +259,15 @@ class _AccountcartState extends State<AccountCard> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _deleteConfig,
-                  icon: const Icon(Icons.delete_outline,
-                      color: MyApp.iosRed, size: 18),
-                  label: const Text('删除',
-                      style: TextStyle(color: MyApp.iosRed)),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: MyApp.iosRed,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    '删除',
+                    style: TextStyle(color: MyApp.iosRed),
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: MyApp.iosRed),
                     shape: RoundedRectangleBorder(

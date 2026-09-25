@@ -81,9 +81,8 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
         ConfigUpdate(authServer: _authServerCtrl.text),
       );
       if (!mounted || !success) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('认证服务器已更新，下次登录生效')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('认证服务器已更新，下次登录生效')));
       widget.onConfigChanged?.call();
     } on ConfigStorageException {
       // 认证流程会显示配置读取失败，不把秘密或底层异常展示给用户。
@@ -107,8 +106,11 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                   color: MyApp.iosBlue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.settings_ethernet,
-                    color: MyApp.iosBlue, size: 18),
+                child: const Icon(
+                  Icons.settings_ethernet,
+                  color: MyApp.iosBlue,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
               const Text(
@@ -123,54 +125,49 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           ),
           const SizedBox(height: 12),
 
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('自动获取 ACID'),
-              subtitle: Text(
-                _autoAcid 
-                    ? '系统将自动尝试可用接入点' 
-                    : '手动指定接入点 ID',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              value: _autoAcid,
-              onChanged: (value) {
-                setState(() {
-                  _autoAcid = value;
-                });
-                _saveAutoAcid();
-              },
-              secondary: Icon(
-                _autoAcid ? Icons.auto_fix_high : Icons.edit,
-                color: colorScheme.primary,
-              ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('自动获取 ACID'),
+            subtitle: Text(
+              _autoAcid ? '系统将自动尝试可用接入点' : '手动指定接入点 ID',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
-
-            const Divider(height: 8),
-
-            AnimatedCrossFade(
-              duration: const Duration(milliseconds: 200),
-              crossFadeState: _autoAcid 
-                  ? CrossFadeState.showFirst 
-                  : CrossFadeState.showSecond,
-              firstChild: _buildAutoModeView(context),
-              secondChild: _buildManualInputView(context),
+            value: _autoAcid,
+            onChanged: (value) {
+              setState(() {
+                _autoAcid = value;
+              });
+              _saveAutoAcid();
+            },
+            secondary: Icon(
+              _autoAcid ? Icons.auto_fix_high : Icons.edit,
+              color: colorScheme.primary,
             ),
-            
-            const Divider(height: 24),
+          ),
 
-            // 认证服务器设置
-            _buildAuthServerInput(context),
-          ],
+          const Divider(height: 8),
+
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: _autoAcid
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: _buildAutoModeView(context),
+            secondChild: _buildManualInputView(context),
+          ),
+
+          const Divider(height: 24),
+
+          // 认证服务器设置
+          _buildAuthServerInput(context),
+        ],
       ),
     );
   }
 
   Widget _buildAutoModeView(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(
@@ -187,10 +184,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
               children: [
                 Text(
                   '当前接入点',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -205,7 +199,12 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.only(top: 2, bottom: 2, left: 6, right: 6),
+                      padding: const EdgeInsets.only(
+                        top: 2,
+                        bottom: 2,
+                        left: 6,
+                        right: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.green.shade100,
                         borderRadius: BorderRadius.circular(4),
@@ -264,10 +263,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           hintText: '如: 1, 2, 5, 11, 15',
           prefixIcon: const Icon(Icons.place_outlined),
           border: const OutlineInputBorder(),
-          helperStyle: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 12,
-          ),
+          helperStyle: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           suffixIcon: IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: '重置为默认值',
@@ -281,9 +277,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           ),
         ),
         keyboardType: TextInputType.number,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-        ],
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       ),
     );
   }
@@ -300,9 +294,8 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
             const SizedBox(width: 8),
             Text(
               '认证服务器',
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              style: Theme.of(context).textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),

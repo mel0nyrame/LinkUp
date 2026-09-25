@@ -4,11 +4,7 @@ class DeviceInfoRow extends StatelessWidget {
   final String label;
   final String? value;
 
-  const DeviceInfoRow({
-    super.key,
-    required this.label,
-    this.value,
-  });
+  const DeviceInfoRow({super.key, required this.label, this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -18,10 +14,7 @@ class DeviceInfoRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade500,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
           ),
           const SizedBox(width: 4),
           Expanded(

@@ -77,9 +77,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
             children: [
               Text(
                 '更新内容：',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
@@ -101,17 +100,17 @@ class _UpdateDialogState extends State<UpdateDialog> {
       ),
       actions: [
         if (!widget.updateInfo.isForceUpdate && !_isDownloading)
-          TextButton(
-            onPressed: widget.onDismiss,
-            child: const Text('稍后'),
-          ),
+          TextButton(onPressed: widget.onDismiss, child: const Text('稍后')),
         FilledButton.icon(
           onPressed: _isDownloading ? null : _handleUpdate,
-          icon: _isDownloading 
+          icon: _isDownloading
               ? const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Icon(Icons.download),
           label: Text(_isDownloading ? '下载中...' : '立即更新'),

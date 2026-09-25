@@ -5,10 +5,7 @@ import 'package:LinkUp/utils/ConfigUtil.dart';
 class FirstSetupDialog extends StatefulWidget {
   final VoidCallback onSetupComplete;
 
-  const FirstSetupDialog({
-    super.key,
-    required this.onSetupComplete,
-  });
+  const FirstSetupDialog({super.key, required this.onSetupComplete});
 
   @override
   State<FirstSetupDialog> createState() => _FirstSetupDialogState();
@@ -93,7 +90,11 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
     return WillPopScope(
       onWillPop: () async => false,
       child: AlertDialog(
-        icon: const Icon(Icons.account_circle, size: 48, color: Color(0xFF1565C0)),
+        icon: const Icon(
+          Icons.account_circle,
+          size: 48,
+          color: Color(0xFF1565C0),
+        ),
         title: const Text('首次配置'),
         content: SizedBox(
           width: double.maxFinite,
@@ -109,7 +110,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // 错误提示
                   if (_errorMessage != null)
                     Container(
@@ -122,18 +123,25 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                          Icon(
+                            Icons.error_outline,
+                            color: Colors.red.shade700,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _errorMessage!,
-                              style: TextStyle(color: Colors.red.shade700, fontSize: 13),
+                              style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  
+
                   TextFormField(
                     controller: _usernameCtrl,
                     decoration: const InputDecoration(
@@ -145,7 +153,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
                     validator: (v) => v?.isEmpty == true ? '请输入用户名' : null,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   TextFormField(
                     controller: _passwordCtrl,
                     obscureText: _obscurePassword,
@@ -155,16 +163,20 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
                       prefixIcon: const Icon(Icons.lock_outline),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword 
-                            ? Icons.visibility_outlined 
-                            : Icons.visibility_off_outlined),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                     ),
                     validator: (v) => v?.isEmpty == true ? '请输入密码' : null,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   TextFormField(
                     controller: _acidCtrl,
                     decoration: const InputDecoration(
@@ -221,8 +233,12 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: _isSaving ? null : _saveConfig,
-              icon: _isSaving 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.save),
               label: Text(_isSaving ? '保存中...' : '保存并进入'),
             ),

@@ -23,9 +23,8 @@ class _OnlinedevicesState extends State<Onlinedevices> {
                 const SizedBox(width: 8),
                 Text(
                   '在线设备详情',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
                 Container(

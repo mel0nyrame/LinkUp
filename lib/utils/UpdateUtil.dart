@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -89,9 +90,9 @@ class UpdateUtil {
         final assets = data['assets'] as List?;
         if (assets != null && assets.isNotEmpty) {
           final apkAsset = assets.cast<Map<String, dynamic>>().firstWhere(
-                (a) => (a['name'] as String?)?.endsWith('.apk') == true,
-                orElse: () => <String, dynamic>{},
-              );
+            (a) => (a['name'] as String?)?.endsWith('.apk') == true,
+            orElse: () => <String, dynamic>{},
+          );
           downloadUrl = apkAsset['browser_download_url'] as String?;
         }
         // 回退：按已知命名规则构造下载链接
@@ -140,7 +141,9 @@ class UpdateUtil {
 
   /// 下载并安装 APK（仅 Android）
   static Future<bool> downloadAndInstall(
-      String url, Function(double) onProgress) async {
+    String url,
+    Function(double) onProgress,
+  ) async {
     if (!Platform.isAndroid) {
       await launchUrl(Uri.parse(url));
       return true;

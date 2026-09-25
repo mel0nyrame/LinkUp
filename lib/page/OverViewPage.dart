@@ -206,12 +206,17 @@ class _OverviewPageState extends State<OverviewPage> {
                   ),
 
                 // Error card
-                if (!widget.isLoading && !online && widget.statusMessage != null)
+                if (!widget.isLoading &&
+                    !online &&
+                    widget.statusMessage != null)
                   GlassCard(
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline,
-                            color: MyApp.iosRed, size: 20),
+                        const Icon(
+                          Icons.info_outline,
+                          color: MyApp.iosRed,
+                          size: 20,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -226,7 +231,8 @@ class _OverviewPageState extends State<OverviewPage> {
                     ),
                   ),
 
-                if (widget.isLoading || (!online && widget.statusMessage != null))
+                if (widget.isLoading ||
+                    (!online && widget.statusMessage != null))
                   const SizedBox(height: 16),
 
                 // Device card
@@ -248,25 +254,24 @@ class _OverviewPageState extends State<OverviewPage> {
                     title: '网络信息',
                     children: [
                       InfoDataRow(
-                          label: 'IP 地址',
-                          value: userInfo.onlineIp,
-                          icon: Icons.laptop_mac),
+                        label: 'IP 地址',
+                        value: userInfo.onlineIp,
+                        icon: Icons.laptop_mac,
+                      ),
                       InfoDataRow(
-                          label: 'IPv6',
-                          value: userInfo.onlineIp6,
-                          icon: Icons.lan_outlined),
+                        label: 'IPv6',
+                        value: userInfo.onlineIp6,
+                        icon: Icons.lan_outlined,
+                      ),
                       InfoDataRow(
-                          label: 'MAC',
-                          value: userInfo.userMac,
-                          icon: Icons.fingerprint),
+                        label: 'MAC',
+                        value: userInfo.userMac,
+                        icon: Icons.fingerprint,
+                      ),
                     ],
                   )
                 else
-                  const InfoCard(
-                    icon: Icons.wifi,
-                    title: '网络信息',
-                    children: [],
-                  ),
+                  const InfoCard(icon: Icons.wifi, title: '网络信息', children: []),
 
                 const SizedBox(height: 16),
 
@@ -277,20 +282,23 @@ class _OverviewPageState extends State<OverviewPage> {
                     title: '流量统计',
                     children: [
                       InfoDataRow(
-                          label: '本次会话',
-                          value: _formatBytes(userInfo.allBytes),
-                          icon: Icons.arrow_circle_down,
-                          valueColor: MyApp.iosBlue),
+                        label: '本次会话',
+                        value: _formatBytes(userInfo.allBytes),
+                        icon: Icons.arrow_circle_down,
+                        valueColor: MyApp.iosBlue,
+                      ),
                       InfoDataRow(
-                          label: '累计流量',
-                          value: _formatBytes(userInfo.sumBytes),
-                          icon: Icons.layers,
-                          valueColor: const Color(0xFFAF52DE)),
+                        label: '累计流量',
+                        value: _formatBytes(userInfo.sumBytes),
+                        icon: Icons.layers,
+                        valueColor: const Color(0xFFAF52DE),
+                      ),
                       InfoDataRow(
-                          label: '剩余流量',
-                          value: _formatBytes(userInfo.remainBytes),
-                          icon: Icons.pie_chart,
-                          valueColor: MyApp.iosGreen),
+                        label: '剩余流量',
+                        value: _formatBytes(userInfo.remainBytes),
+                        icon: Icons.pie_chart,
+                        valueColor: MyApp.iosGreen,
+                      ),
                     ],
                   )
                 else
@@ -309,20 +317,24 @@ class _OverviewPageState extends State<OverviewPage> {
                     title: '在线时长',
                     children: [
                       InfoDataRow(
-                          label: '本次登录',
-                          value: _formatTimestamp(userInfo.addTime),
-                          icon: Icons.login),
+                        label: '本次登录',
+                        value: _formatTimestamp(userInfo.addTime),
+                        icon: Icons.login,
+                      ),
                       InfoDataRow(
-                          label: '累计在线',
-                          value: _formatDuration(userInfo.sumSeconds),
-                          icon: Icons.hourglass_bottom),
+                        label: '累计在线',
+                        value: _formatDuration(userInfo.sumSeconds),
+                        icon: Icons.hourglass_bottom,
+                      ),
                       InfoDataRow(
-                          label: '剩余时长',
-                          value: userInfo.remainSeconds == null ||
-                                  userInfo.remainSeconds == 0
-                              ? '无限制'
-                              : _formatDuration(userInfo.remainSeconds),
-                          icon: Icons.timelapse),
+                        label: '剩余时长',
+                        value:
+                            userInfo.remainSeconds == null ||
+                                userInfo.remainSeconds == 0
+                            ? '无限制'
+                            : _formatDuration(userInfo.remainSeconds),
+                        icon: Icons.timelapse,
+                      ),
                     ],
                   )
                 else
@@ -341,18 +353,21 @@ class _OverviewPageState extends State<OverviewPage> {
                     title: '账户',
                     children: [
                       InfoDataRow(
-                          label: '用户名',
-                          value: userInfo.userName,
-                          icon: Icons.person),
+                        label: '用户名',
+                        value: userInfo.userName,
+                        icon: Icons.person,
+                      ),
                       InfoDataRow(
-                          label: '套餐',
-                          value: userInfo.productsName,
-                          icon: Icons.card_giftcard),
+                        label: '套餐',
+                        value: userInfo.productsName,
+                        icon: Icons.card_giftcard,
+                      ),
                       InfoDataRow(
-                          label: '余额',
-                          value: '¥${userInfo.userBalance}',
-                          icon: Icons.credit_card,
-                          valueColor: MyApp.iosGreen),
+                        label: '余额',
+                        value: '¥${userInfo.userBalance}',
+                        icon: Icons.credit_card,
+                        valueColor: MyApp.iosGreen,
+                      ),
                     ],
                   )
                 else
@@ -390,8 +405,11 @@ class _OverviewPageState extends State<OverviewPage> {
                   color: MyApp.iosBlue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child:
-                    const Icon(Icons.devices, color: MyApp.iosBlue, size: 18),
+                child: const Icon(
+                  Icons.devices,
+                  color: MyApp.iosBlue,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
               const Expanded(
@@ -405,8 +423,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: MyApp.iosBlue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
@@ -454,7 +471,9 @@ class _OverviewPageState extends State<OverviewPage> {
                           Text(
                             d.osName ?? 'Unknown',
                             style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w500),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           Text(
                             d.ip ?? '-',
@@ -468,7 +487,9 @@ class _OverviewPageState extends State<OverviewPage> {
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(4),
@@ -492,14 +513,13 @@ class _OverviewPageState extends State<OverviewPage> {
                         ),
                         label: const Text(
                           '踢',
-                          style: TextStyle(
-                            color: MyApp.iosRed,
-                            fontSize: 13,
-                          ),
+                          style: TextStyle(color: MyApp.iosRed, fontSize: 13),
                         ),
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -516,7 +536,8 @@ class _OverviewPageState extends State<OverviewPage> {
 
   /// 返回 (图标, 背景色, 图标色) 三元组
   (IconData, Color, Color) _deviceIconAndColor(String? osName) {
-    if (osName == null) return (Icons.devices_other, Colors.grey.shade200, Colors.grey);
+    if (osName == null)
+      return (Icons.devices_other, Colors.grey.shade200, Colors.grey);
     final os = osName.toLowerCase();
     if (os.contains('iphone') || os.contains('ios ')) {
       return (Icons.phone_iphone, Colors.black.withOpacity(0.8), Colors.white);
@@ -528,10 +549,18 @@ class _OverviewPageState extends State<OverviewPage> {
       return (Icons.laptop_mac, Colors.black.withOpacity(0.8), Colors.white);
     }
     if (os.contains('android')) {
-      return (Icons.phone_android, MyApp.iosGreen.withOpacity(0.15), MyApp.iosGreen);
+      return (
+        Icons.phone_android,
+        MyApp.iosGreen.withOpacity(0.15),
+        MyApp.iosGreen,
+      );
     }
     if (os.contains('windows')) {
-      return (Icons.laptop_windows, const Color(0xFF0078D4).withOpacity(0.15), const Color(0xFF0078D4));
+      return (
+        Icons.laptop_windows,
+        const Color(0xFF0078D4).withOpacity(0.15),
+        const Color(0xFF0078D4),
+      );
     }
     if (os.contains('linux')) {
       return (Icons.terminal, Colors.orange.withOpacity(0.15), Colors.orange);
