@@ -18,7 +18,7 @@ class NetworkConfigCard extends StatefulWidget {
 class _NetworkConfigCardState extends State<NetworkConfigCard> {
   bool _autoAcid = true;
   final _acidCtrl = TextEditingController(text: defaultAcid);
-  final _authServerCtrl = TextEditingController(text: '10.129.1.1');
+  final _authServerCtrl = TextEditingController(text: defaultAuthServer);
   String _displayAcid = defaultAcid;
 
   @override
@@ -310,10 +310,10 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           onSubmitted: (_) => _saveAuthServer(),
           decoration: InputDecoration(
             labelText: '服务器地址',
-            hintText: '如: 10.129.1.1',
+            hintText: '如: $defaultAuthServer',
             prefixIcon: const Icon(Icons.dns_outlined),
             border: const OutlineInputBorder(),
-            helperText: '默认: 10.129.1.1,按回车保存',
+            helperText: '默认: $defaultAuthServer,按回车保存',
             helperStyle: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
@@ -328,7 +328,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                   tooltip: '恢复默认',
                   onPressed: () {
                     setState(() {
-                      _authServerCtrl.text = '10.129.1.1';
+                      _authServerCtrl.text = defaultAuthServer;
                     });
                     _saveAuthServer();
                   },

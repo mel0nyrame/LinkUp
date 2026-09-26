@@ -9,6 +9,7 @@ import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
 import 'package:LinkUp/page/OverViewPage.dart';
 import 'package:LinkUp/page/SettingsPage.dart';
@@ -37,7 +38,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   String? _statusMessage;
   bool _isOnline = false;
   RadUserInfo? _userInfo;
-  String _currentAcid = '1';
+  String _currentAcid = defaultAcid;
 
   late final AuthRuntimeClient _client;
   StreamSubscription<AuthRuntimeState>? _authStateSubscription;
