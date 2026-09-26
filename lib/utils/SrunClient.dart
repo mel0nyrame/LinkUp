@@ -1,4 +1,6 @@
 // Powered by Kimi
+import 'dart:async';
+
 import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
@@ -25,9 +27,13 @@ class SrunClient {
   String get enc => "srun_bx1";
 
   final http.Client _client;
+  final Duration requestTimeout;
 
-  SrunClient({http.Client? client, this.host = "10.129.1.1"})
-    : _client = client ?? http.Client();
+  SrunClient({
+    http.Client? client,
+    this.host = "10.129.1.1",
+    this.requestTimeout = const Duration(seconds: 10),
+  }) : _client = client ?? http.Client();
 
   /// 更新认证服务器地址
   void setHost(String newHost) {
@@ -51,6 +57,24 @@ class SrunClient {
     throw const FormatException('Invalid JSONP format');
   }
 
+  Future<http.Response> _get(Uri uri, Map<String, String> headers) async {
+    final abort = Completer<void>();
+    final request = http.AbortableRequest(
+      'GET',
+      uri,
+      abortTrigger: abort.future,
+    )..headers.addAll(headers);
+    try {
+      return await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(requestTimeout);
+    } on TimeoutException {
+      abort.complete();
+      rethrow;
+    }
+  }
+
   // 获取 IP 和在线状态
   Future<RadUserInfo> getUserInfo() async {
     final params = {
@@ -63,13 +87,10 @@ class SrunClient {
     LogUtil.info('[SrunClient] 请求用户信息: $urlUserInfo');
 
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'User-Agent': userAgent,
-          'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
-        },
-      );
+      final response = await _get(uri, {
+        'User-Agent': userAgent,
+        'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
+      });
 
       LogUtil.info('[SrunClient] 用户信息响应状态码: ${response.statusCode}');
 
@@ -112,13 +133,10 @@ class SrunClient {
     LogUtil.info('[SrunClient] 请求 Challenge');
 
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'User-Agent': userAgent,
-          'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
-        },
-      );
+      final response = await _get(uri, {
+        'User-Agent': userAgent,
+        'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
+      });
 
       LogUtil.info('[SrunClient] Challenge 响应状态码: ${response.statusCode}');
 
@@ -194,13 +212,10 @@ class SrunClient {
     LogUtil.info('[SrunClient] HTTP GET: $displayUri');
 
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'User-Agent': userAgent,
-          'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
-        },
-      );
+      final response = await _get(uri, {
+        'User-Agent': userAgent,
+        'Accept': 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
+      });
       if (response.statusCode != 200) {
         throw Exception('HTTP error: ${response.statusCode}');
       }
@@ -243,10 +258,7 @@ class SrunClient {
     LogUtil.info('[SrunClient] DM 注销请求');
 
     try {
-      final response = await _client.get(
-        uri,
-        headers: {'User-Agent': userAgent},
-      );
+      final response = await _get(uri, {'User-Agent': userAgent});
       if (response.statusCode != 200) {
         throw Exception('HTTP error: ${response.statusCode}');
       }

@@ -38,4 +38,33 @@ void main() {
     expect(challenge.challenge == _fixtureChallenge, isTrue);
     expect(challenge.isSuccess, isTrue);
   });
+
+  test('认证服务器无响应时在期限内结束检查', () async {
+    var aborted = false;
+    final client = SrunClient(
+      host: '10.0.0.1',
+      requestTimeout: const Duration(milliseconds: 20),
+      client: MockClient.streaming((request, _) async {
+        if (request is http.AbortableRequest) {
+          request.abortTrigger!.then((_) => aborted = true);
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        return http.StreamedResponse(Stream.value(<int>[]), 200);
+      }),
+    );
+
+    final finished = client.getUserInfo().then(
+      (_) => true,
+      onError: (_) => true,
+    );
+    expect(
+      await finished.timeout(
+        const Duration(milliseconds: 50),
+        onTimeout: () => false,
+      ),
+      isTrue,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(aborted, isTrue);
+  });
 }
