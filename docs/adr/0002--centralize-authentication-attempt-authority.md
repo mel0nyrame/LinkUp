@@ -12,7 +12,7 @@
 
 `AuthenticationCoordinator` 是单次认证尝试的唯一编排入口，并依赖可替换的配置、协议、网络世代和持久化边界。UI、自动监控和手动刷新只调用协调器；`SrunClient`、`SrunLogin` 和 `AcidDetector` 通过实例注入，不再依赖静态认证客户端。
 
-每轮尝试创建不可变 `AuthParameters`。它携带认证服务器、最终用户名、IP、ACID、`n`、`type`、callback 和受支持的 Enc；密码与 Challenge 作为瞬时秘密传递，不进入可观察参数。Info、Chkstr、checksum、Portal 的认证相关字段和协议前缀均从该对象生成。当前唯一传播的 Enc 是 `srun_bx1`，其他探测值只能作为脱敏诊断信息。
+每轮尝试创建不可变 `AuthParameters`。它携带认证服务器、最终用户名、IP、ACID、`n`、`type`、callback 和受支持的 Enc；密码与 Challenge 作为瞬时秘密传递，不进入可观察参数。Info、Chkstr、checksum、Portal 的认证相关字段和协议前缀均从该对象生成。Chkstr 在 `n` 后使用 `type`，Enc 进入 Info 的 `enc_ver`。当前唯一传播的 Enc 是 `srun_bx1`，其他探测值只能作为脱敏诊断信息。
 
 自动模式的 ACID 选择顺序固定为 Reality 捕获、已保存值、认证服务器根目录探测；手动模式只使用已保存值。候选携带来源和网络世代。登录失败、异常、取消、已经在线、网络世代变化或 `rad_user_info` 未确认在线时，候选失效且不写入配置。只有 Portal 成功后再次确认在线，协调器才通过带世代条件的局部 `ConfigUpdate(acid: ...)` 保存本轮实际使用的 ACID；条件在配置仓库真正写入前再次检查。
 

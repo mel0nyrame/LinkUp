@@ -50,8 +50,21 @@ void main() {
     expect(query['ip'], '10.0.0.8');
     expect(query['n'], '201');
     expect(query['type'], '7');
+    expect(query['os'], 'Windows 10');
+    expect(query['name'], 'windows');
+    expect(query['double_stack'], '0');
     expect(query['password']?.startsWith('{MD5}'), isTrue);
     expect(query['info']?.startsWith('{SRBX1}'), isTrue);
+    final expectedChecksum = SrunEnrypt.Sha1(
+      '$_fixtureChallenge$_fixtureUsername'
+      '$_fixtureChallenge${SrunEnrypt.Hmd5(_fixturePassword, _fixtureChallenge)}'
+      '$_fixtureChallenge${query['ac_id']}'
+      '$_fixtureChallenge${query['ip']}'
+      '$_fixtureChallenge${query['n']}'
+      '$_fixtureChallenge${query['type']}'
+      '$_fixtureChallenge${query['info']}',
+    );
+    expect(query['chksum'], expectedChecksum);
 
     expect(
       SrunInfo(

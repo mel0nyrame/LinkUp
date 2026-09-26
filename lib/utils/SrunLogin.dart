@@ -261,7 +261,7 @@ class SrunLogin {
         parameters.acid,
         parameters.ip,
         parameters.n,
-        parameters.enc,
+        parameters.type,
         info,
       );
 
@@ -275,7 +275,7 @@ class SrunLogin {
         // 仅支持 MD5 密码方案；OTP 短信验证码登录暂未实现。
         'password': '{MD5}$hmd5Password',
         'os': 'Windows 10',
-        'name': 'Windows',
+        'name': 'windows',
         'double_stack': '0',
         'chksum': chkSum,
         'info': info,
