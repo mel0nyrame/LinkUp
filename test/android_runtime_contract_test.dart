@@ -41,6 +41,18 @@ void main() {
   final controller = _read('lib/utils/AuthRuntimeController.dart');
   final dartSettings = _read('lib/utils/SystemSettingsUtil.dart');
   final config = _read('lib/utils/ConfigUtil.dart');
+  final backupRules = _read('android/app/src/main/res/xml/backup_rules.xml');
+  final extractionRules = _read(
+    'android/app/src/main/res/xml/data_extraction_rules.xml',
+  );
+
+  test('诊断日志不进入 Android 云备份或设备迁移', () {
+    expect(backupRules, contains('path="app_flutter/error.log"'));
+    expect(
+      RegExp('path="app_flutter/error.log"').allMatches(extractionRules),
+      hasLength(2),
+    );
+  });
 
   group('通道与命令名跨语言一致', () {
     test('Dart 侧声明的通道名在 Kotlin 侧逐字出现', () {
