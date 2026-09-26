@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:LinkUp/utils/AuthRuntimeController.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
 /// UI 侧对后台认证运行时的窄客户端。
 ///
@@ -14,7 +15,7 @@ class AuthRuntimeClient {
     : _channel = channel ?? const MethodChannel(uiChannelName);
 
   /// 必须与 Kotlin 侧 `MainActivity.UI_CHANNEL` 一致。
-  static const String uiChannelName = 'com.mel0ny.linkup/authUi';
+  static const String uiChannelName = RuntimeContract.uiChannel;
 
   final MethodChannel _channel;
   final StreamController<AuthRuntimeState> _states =
@@ -29,7 +30,7 @@ class AuthRuntimeClient {
     if (_attached) return;
     _channel.setMethodCallHandler(_handleHostCall);
     _attached = true;
-    final latest = await _invoke('attach');
+    final latest = await _invoke(RuntimeContract.methodAttach);
     // 宿主先推送再回包，因此回包只用于补上尚未收到过的首个状态，避免旧值
     // 覆盖已经到达的更新。
     if (latest is Map && !_receivedState) _addState(latest);
@@ -39,7 +40,7 @@ class AuthRuntimeClient {
   Future<void> detach() async {
     if (!_attached) return;
     _attached = false;
-    await _invoke('detach');
+    await _invoke(RuntimeContract.methodDetach);
     _channel.setMethodCallHandler(null);
   }
 
@@ -61,7 +62,7 @@ class AuthRuntimeClient {
   /// 踢设备结果决定 UI 提示，因此需要命令回传值。
   Future<bool> kickDevice(String ip) async =>
       await _command(AuthRuntimeController.commandKickDevice, <String, Object?>{
-        'ip': ip,
+        RuntimeContract.keyIp: ip,
       }) ==
       true;
 
@@ -70,7 +71,10 @@ class AuthRuntimeClient {
   }
 
   Future<Object?> _command(String name, [Map<String, Object?>? args]) {
-    return _invoke('command', <String, Object?>{'name': name, 'args': args});
+    return _invoke(RuntimeContract.methodCommand, <String, Object?>{
+      RuntimeContract.keyName: name,
+      RuntimeContract.keyArgs: args,
+    });
   }
 
   Future<Object?> _invoke(String method, [Object? arguments]) async {
@@ -83,7 +87,7 @@ class AuthRuntimeClient {
   }
 
   Future<Object?> _handleHostCall(MethodCall call) async {
-    if (call.method == 'onState') {
+    if (call.method == RuntimeContract.methodOnState) {
       final payload = call.arguments;
       if (payload is Map) _addState(payload);
     }

@@ -18,8 +18,8 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.mel0ny.linkup/system"
-    private val UI_CHANNEL = "com.mel0ny.linkup/authUi"
+    private val CHANNEL = AuthRuntimeBridge.SYSTEM_CHANNEL
+    private val UI_CHANNEL = AuthRuntimeBridge.UI_CHANNEL
 
     private var uiChannel: MethodChannel? = null
     private var authRuntime: AuthRuntimeService.LocalBinder? = null
@@ -58,29 +58,29 @@ class MainActivity : FlutterActivity() {
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
-                "isAutoStartSupported" -> {
+                AuthRuntimeBridge.SYSTEM_IS_AUTO_START_SUPPORTED -> {
                     result.success(true)
                 }
-                "checkAutoStartPermission" -> {
+                AuthRuntimeBridge.SYSTEM_CHECK_AUTO_START_PERMISSION -> {
                     result.success(checkAutoStartPermission())
                 }
-                "requestAutoStartPermission" -> {
+                AuthRuntimeBridge.SYSTEM_REQUEST_AUTO_START_PERMISSION -> {
                     requestAutoStartPermission()
                     result.success(null)
                 }
-                "openBatteryOptimizationSettings" -> {
+                AuthRuntimeBridge.SYSTEM_OPEN_BATTERY_OPTIMIZATION_SETTINGS -> {
                     openBatteryOptimizationSettings()
                     result.success(null)
                 }
-                "startAuthRuntime" -> {
+                AuthRuntimeBridge.SYSTEM_START_AUTH_RUNTIME -> {
                     startAuthRuntime()
                     result.success(null)
                 }
-                "stopAuthRuntime" -> {
+                AuthRuntimeBridge.SYSTEM_STOP_AUTH_RUNTIME -> {
                     stopAuthRuntime()
                     result.success(null)
                 }
-                "requestNotificationPermission" -> {
+                AuthRuntimeBridge.SYSTEM_REQUEST_NOTIFICATION_PERMISSION -> {
                     requestNotificationPermission()
                     result.success(null)
                 }
@@ -98,23 +98,23 @@ class MainActivity : FlutterActivity() {
      */
     private fun handleRuntimeCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "attach" -> {
+            AuthRuntimeBridge.METHOD_ATTACH -> {
                 uiChannel?.let { AuthRuntimeBridge.registerClient(it) }
                 result.success(AuthRuntimeBridge.latestState)
             }
 
-            "detach" -> {
+            AuthRuntimeBridge.METHOD_DETACH -> {
                 uiChannel?.let { AuthRuntimeBridge.unregisterClient(it) }
                 result.success(null)
             }
 
-            "command" -> {
-                val name = call.argument<String>("name")
+            AuthRuntimeBridge.METHOD_COMMAND -> {
+                val name = call.argument<String>(AuthRuntimeBridge.KEY_NAME)
                 if (name == null) {
                     result.error("invalid_command", "认证运行时命令缺少名称", null)
                     return
                 }
-                AuthRuntimeBridge.dispatch(name, call.argument<Map<String, Any?>>("args"), result)
+                AuthRuntimeBridge.dispatch(name, call.argument<Map<String, Any?>>(AuthRuntimeBridge.KEY_ARGS), result)
             }
 
             else -> result.notImplemented()

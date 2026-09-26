@@ -44,6 +44,11 @@ jobs:
       - name: Verify generated JSON code is current
         run: git diff --exit-code -- lib/utils/RadUserInfo.g.dart
 
+      - name: Verify Dart runtime contract matches Kotlin
+        run: |
+          dart run tool/generate_runtime_contract.dart
+          git diff --exit-code -- lib/utils/RuntimeContract.g.dart
+
       - name: Detect changed areas
         id: changes
         env:

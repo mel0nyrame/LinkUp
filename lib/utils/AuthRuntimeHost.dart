@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
 /// 后台认证运行时向 Android 前台服务发布状态的窄桥。
 ///
@@ -19,18 +20,18 @@ class MethodChannelAuthRuntimeHost implements AuthRuntimeHost {
     : _channel = channel ?? const MethodChannel(hostChannelName);
 
   /// 必须与 Kotlin 侧 `AuthRuntimeBridge.HOST_CHANNEL` 一致。
-  static const String hostChannelName = 'com.mel0ny.linkup/authRuntime';
+  static const String hostChannelName = RuntimeContract.hostChannel;
 
   final MethodChannel _channel;
 
   @override
   Future<void> publishReady() async {
-    await _invoke('ready', <String, Object?>{});
+    await _invoke(RuntimeContract.methodReady, <String, Object?>{});
   }
 
   @override
   Future<void> publishState(AuthRuntimeState state) async {
-    await _invoke('state', state.toMap());
+    await _invoke(RuntimeContract.methodState, state.toMap());
   }
 
   Future<void> _invoke(String method, Map<String, Object?> arguments) async {

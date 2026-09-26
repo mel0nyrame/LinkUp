@@ -4,6 +4,7 @@ import 'package:LinkUp/utils/AuthRuntimeHost.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
 /// 后台认证运行时在 Dart 侧的唯一 owner。
 ///
@@ -16,13 +17,15 @@ import 'package:LinkUp/utils/LogUtil.dart';
 class AuthRuntimeController {
   AuthRuntimeController({required this.coordinator, required this.host});
 
-  static const String commandStart = 'start';
-  static const String commandStop = 'stop';
-  static const String commandManualCheck = 'manualCheck';
-  static const String commandLogout = 'logout';
-  static const String commandKickDevice = 'kickDevice';
-  static const String commandConfigurationChanged = 'configurationChanged';
-  static const String commandNetworkChanged = 'networkChanged';
+  static const String commandStart = RuntimeContract.commandStart;
+  static const String commandStop = RuntimeContract.commandStop;
+  static const String commandManualCheck = RuntimeContract.commandManualCheck;
+  static const String commandLogout = RuntimeContract.commandLogout;
+  static const String commandKickDevice = RuntimeContract.commandKickDevice;
+  static const String commandConfigurationChanged =
+      RuntimeContract.commandConfigurationChanged;
+  static const String commandNetworkChanged =
+      RuntimeContract.commandNetworkChanged;
 
   /// 本运行时接受的全部命令。宿主下发的名字必须在此集合内。
   static const Set<String> declaredCommands = <String>{
@@ -67,7 +70,7 @@ class AuthRuntimeController {
       case commandLogout:
         return coordinator.logout();
       case commandKickDevice:
-        final ip = args?['ip'];
+        final ip = args?[RuntimeContract.keyIp];
         if (ip is! String || ip.isEmpty) return false;
         return coordinator.kickDevice(ip);
       case commandConfigurationChanged:
@@ -75,7 +78,9 @@ class AuthRuntimeController {
         return null;
       case commandNetworkChanged:
         // 平台的 Wi-Fi 可用性事件，只描述网络条件，不携带认证决策。
-        await coordinator.networkChanged(connected: args?['connected'] == true);
+        await coordinator.networkChanged(
+          connected: args?[RuntimeContract.keyConnected] == true,
+        );
         return null;
       default:
         await LogUtil.warning('收到未知的认证运行时命令');

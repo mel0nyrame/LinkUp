@@ -3,14 +3,16 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
 /// 系统设置工具类
 class SystemSettingsUtil {
-  static const String _keepAliveKey = 'keep_alive';
-  static const String _autoStartKey = 'auto_start';
-  static const String _accountConfiguredKey = 'account_configured';
+  static const String _keepAliveKey = RuntimeContract.preferenceKeepAlive;
+  static const String _autoStartKey = RuntimeContract.preferenceAutoStart;
+  static const String _accountConfiguredKey =
+      RuntimeContract.preferenceAccountConfigured;
   static const MethodChannel _systemChannel = MethodChannel(
-    'com.mel0ny.linkup/system',
+    RuntimeContract.systemChannel,
   );
 
   static SharedPreferences? _prefs;
@@ -47,7 +49,7 @@ class SystemSettingsUtil {
 
   /// 获取保留后台设置
   static bool getKeepAlive() {
-    return _prefs?.getBool(_keepAliveKey) ?? true;
+    return _prefs?.getBool(_keepAliveKey) ?? RuntimeContract.defaultKeepAlive;
   }
 
   /// 设置保留后台
@@ -59,7 +61,7 @@ class SystemSettingsUtil {
 
   /// 获取开机自启设置
   static bool getAutoStart() {
-    return _prefs?.getBool(_autoStartKey) ?? false;
+    return _prefs?.getBool(_autoStartKey) ?? RuntimeContract.defaultAutoStart;
   }
 
   /// 设置开机自启
@@ -87,13 +89,17 @@ class SystemSettingsUtil {
 
     try {
       if (getKeepAlive()) {
-        await _systemChannel.invokeMethod<void>('startAuthRuntime');
+        await _systemChannel.invokeMethod<void>(
+          RuntimeContract.systemStartAuthRuntime,
+        );
         // “保留后台运行”默认为开启，新装用户不会主动触发设置项，因此在前台服务
         // 真正开始常驻时申请通知权限。Android 拒绝多次后不再弹窗，用户拒绝也
         // 不会中断认证。
         await requestNotificationPermission();
       } else {
-        await _systemChannel.invokeMethod<void>('stopAuthRuntime');
+        await _systemChannel.invokeMethod<void>(
+          RuntimeContract.systemStopAuthRuntime,
+        );
       }
     } catch (e, stackTrace) {
       await LogUtil.error('切换后台认证运行时失败', e, stackTrace);
@@ -108,7 +114,9 @@ class SystemSettingsUtil {
     if (!Platform.isAndroid) return;
 
     try {
-      await _systemChannel.invokeMethod<void>('requestNotificationPermission');
+      await _systemChannel.invokeMethod<void>(
+        RuntimeContract.systemRequestNotificationPermission,
+      );
     } catch (e, stackTrace) {
       await LogUtil.error('请求通知权限失败', e, stackTrace);
     }
@@ -120,7 +128,7 @@ class SystemSettingsUtil {
 
     try {
       final bool result = await _systemChannel.invokeMethod(
-        'isAutoStartSupported',
+        RuntimeContract.systemIsAutoStartSupported,
       );
       return result;
     } catch (e, stackTrace) {
@@ -135,7 +143,7 @@ class SystemSettingsUtil {
 
     try {
       final bool result = await _systemChannel.invokeMethod(
-        'checkAutoStartPermission',
+        RuntimeContract.systemCheckAutoStartPermission,
       );
       return result;
     } catch (e, stackTrace) {
@@ -149,7 +157,9 @@ class SystemSettingsUtil {
     if (!Platform.isAndroid) return;
 
     try {
-      await _systemChannel.invokeMethod('requestAutoStartPermission');
+      await _systemChannel.invokeMethod(
+        RuntimeContract.systemRequestAutoStartPermission,
+      );
     } catch (e, stackTrace) {
       await LogUtil.error('请求开机自启权限失败', e, stackTrace);
     }
@@ -160,7 +170,9 @@ class SystemSettingsUtil {
     if (!Platform.isAndroid) return;
 
     try {
-      await _systemChannel.invokeMethod('openBatteryOptimizationSettings');
+      await _systemChannel.invokeMethod(
+        RuntimeContract.systemOpenBatteryOptimizationSettings,
+      );
     } catch (e, stackTrace) {
       await LogUtil.error('打开电池优化设置失败', e, stackTrace);
     }

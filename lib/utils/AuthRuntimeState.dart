@@ -1,5 +1,6 @@
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
 /// 认证运行时跨平台边界发布的状态快照。
 ///
@@ -45,32 +46,33 @@ class AuthRuntimeState {
   Map<String, Object?> toMap() {
     final content = notificationContentFor(this);
     return <String, Object?>{
-      'status': status.name,
-      'isOnline': isOnline,
-      if (message != null) 'message': message,
-      if (acid != null) 'acid': acid,
-      if (retryAfterSeconds != null) 'retryAfterSeconds': retryAfterSeconds,
-      if (userInfo != null) 'userInfo': userInfo!.toJson(),
-      'notification': <String, Object?>{
-        'title': content.title,
-        'text': content.text,
+      RuntimeContract.keyStatus: status.name,
+      RuntimeContract.keyIsOnline: isOnline,
+      if (message != null) RuntimeContract.keyMessage: message,
+      if (acid != null) RuntimeContract.keyAcid: acid,
+      if (retryAfterSeconds != null)
+        RuntimeContract.keyRetryAfterSeconds: retryAfterSeconds,
+      if (userInfo != null) RuntimeContract.keyUserInfo: userInfo!.toJson(),
+      RuntimeContract.keyNotification: <String, Object?>{
+        RuntimeContract.keyTitle: content.title,
+        RuntimeContract.keyText: content.text,
       },
     };
   }
 
   static AuthRuntimeState fromMap(Map<Object?, Object?> map) {
-    final name = map['status'];
+    final name = map[RuntimeContract.keyStatus];
     final status = AuthenticationStatus.values.firstWhere(
       (value) => value.name == name,
       orElse: () => AuthenticationStatus.stopped,
     );
-    final rawUserInfo = map['userInfo'];
+    final rawUserInfo = map[RuntimeContract.keyUserInfo];
     return AuthRuntimeState(
       status: status,
-      isOnline: map['isOnline'] == true,
-      message: map['message'] as String?,
-      acid: map['acid'] as String?,
-      retryAfterSeconds: map['retryAfterSeconds'] as int?,
+      isOnline: map[RuntimeContract.keyIsOnline] == true,
+      message: map[RuntimeContract.keyMessage] as String?,
+      acid: map[RuntimeContract.keyAcid] as String?,
+      retryAfterSeconds: map[RuntimeContract.keyRetryAfterSeconds] as int?,
       userInfo: rawUserInfo is Map
           ? RadUserInfo.fromJson(Map<String, dynamic>.from(rawUserInfo))
           : null,

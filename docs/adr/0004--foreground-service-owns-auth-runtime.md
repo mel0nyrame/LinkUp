@@ -20,6 +20,8 @@ Dart 入口用 `@pragma('vm:entry-point')` 保留在 AOT 快照中。最初采�
 
 桥只搬运命令和状态。协调器、Srun 协议、退避策略仍只有一份 Dart 实现，Kotlin 不复制任何认证规则。常驻通知文本由 `notificationContentFor(AuthRuntimeState)` 在 Dart 侧从状态枚举和重试间隔派生，不读取用户信息、ACID 或状态 message，因此通知在结构上不可能出现账号、密码、Challenge、HMD5 或签名。
 
+跨语言通道名、命令名、wire 键和原生偏好约定由 `AuthRuntimeBridge.kt` 的契约区块声明；`tool/generate_runtime_contract.dart` 从它生成 Dart 常量。Kotlin 与 Dart 消费者使用各自常量，CI 比对生成结果，源码契约测试核对两侧的值与关键调用路径。
+
 Activity 通过 `bindService` 绑定这一个运行时，用 `com.mel0ny.linkup/authUi` 通道订阅状态并发送命令。Activity 的 FlutterEngine 不创建协调器也不创建认证周期 Timer；`attach` 返回最近一次发布的状态，因此 UI 重建后立即恢复最新视图。`MainNavigator` 在首个 post-frame 回调请求一次 `start`，保留“打开应用立即检查”的既有行为。
 
 关闭“保留后台运行”时宿主下发 `stop`，协调器取消调度并释放 HTTP client 与 Portal 缓存，服务退出前台并 `stopSelf`；仍被 Activity 绑定时服务存活到解绑，`onDestroy` 销毁 `FlutterEngine`，后台 isolate 随之终止。开启时服务以 `START_STICKY` 运行，系统回收后可重建。`wakelock_plus` 只用于保活，因此连同“屏幕常亮”文案一起移除。
@@ -41,7 +43,7 @@ Activity 通过 `bindService` 绑定这一个运行时，用 `com.mel0ny.linkup/
 - 同一进程内存在两个 Dart isolate：Activity 的 UI isolate 和服务的认证 isolate。跨 isolate 状态通过宿主转发，代价是状态更新多一跳。
 - `AuthRuntimeBridge` 是进程级单例，其生命周期由服务拥有。服务销毁时必须 `detachEngine()` 并让在途命令失败，否则 UI 的 `invokeMethod` 会悬挂。
 - `linkupAuthRuntimeDispatcher` 依赖 `@pragma('vm:entry-point')` 才能在 AOT 中保留。移除该注解会让 release 构建静默失去后台入口，因此 release 构建是必要验证项。
-- `BackgroundRuntimeSettings` 直接读取 `FlutterSharedPreferences` 的 `flutter.` 前缀键。该约定由 `shared_preferences` 插件决定，插件升级改变前缀或桶名时原生读取会静默失效。
+- `BackgroundRuntimeSettings` 直接读取 `FlutterSharedPreferences` 的 `flutter.` 前缀键。项目内的键、桶名和默认值已有统一契约与测试；插件升级若改变实际存储约定，仍需核对插件实现及真机读取行为。
 - 开机自启广播接收器的行为已由 [ADR-0005](0005--event-driven-network-and-boot-recovery.md) 决定：三条件门启动服务且不拉起 Activity。
 - 平台契约测试通过两个 seam 覆盖：`test/auth_runtime_test.dart` 用假的宿主桥驱动 Dart 侧的运行时、状态发布和 UI 命令；`test/android_runtime_contract_test.dart` 直接断言两侧源码的通道名、命令名、wire 键、Manifest 声明和服务提升路径。后者存在的理由是这些约束没有其他机制能守住——`flutter analyze` 与 Kotlin 编译都发现不了跨语言漂移，服务是否被提升为 started 状态在纯 Dart 测试里也观察不到。Android 服务的实际生命周期、厂商 ROM 限制和开机场景由 issue #20 在真机上验收。
 

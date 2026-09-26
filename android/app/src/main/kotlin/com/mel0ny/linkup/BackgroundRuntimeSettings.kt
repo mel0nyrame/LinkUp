@@ -9,23 +9,23 @@ import android.content.Context
  * `FlutterSharedPreferences`，必须与 Dart 侧一致才能读到。
  */
 object BackgroundRuntimeSettings {
-    private const val PREFERENCES = "FlutterSharedPreferences"
-    private const val KEY_KEEP_ALIVE = "flutter.keep_alive"
-    private const val KEY_AUTO_START = "flutter.auto_start"
-    private const val KEY_ACCOUNT_CONFIGURED = "flutter.account_configured"
+    private const val PREFERENCES = AuthRuntimeBridge.PREFERENCES_NAME
+    private const val KEY_KEEP_ALIVE = AuthRuntimeBridge.PREFERENCE_PREFIX + AuthRuntimeBridge.PREFERENCE_KEEP_ALIVE
+    private const val KEY_AUTO_START = AuthRuntimeBridge.PREFERENCE_PREFIX + AuthRuntimeBridge.PREFERENCE_AUTO_START
+    private const val KEY_ACCOUNT_CONFIGURED = AuthRuntimeBridge.PREFERENCE_PREFIX + AuthRuntimeBridge.PREFERENCE_ACCOUNT_CONFIGURED
 
     /** 与 [com.mel0ny.linkup.utils.SystemSettingsUtil.getKeepAlive] 的默认值一致。 */
     fun isKeepAliveEnabled(context: Context): Boolean {
         return context
             .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getBoolean(KEY_KEEP_ALIVE, true)
+            .getBoolean(KEY_KEEP_ALIVE, AuthRuntimeBridge.DEFAULT_KEEP_ALIVE)
     }
 
     /** 与 [com.mel0ny.linkup.utils.SystemSettingsUtil.getAutoStart] 的默认值一致。 */
     fun isAutoStartEnabled(context: Context): Boolean {
         return context
             .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getBoolean(KEY_AUTO_START, false)
+            .getBoolean(KEY_AUTO_START, AuthRuntimeBridge.DEFAULT_AUTO_START)
     }
 
     /**
@@ -38,6 +38,6 @@ object BackgroundRuntimeSettings {
     fun isAccountConfigured(context: Context): Boolean {
         return context
             .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getBoolean(KEY_ACCOUNT_CONFIGURED, false)
+            .getBoolean(KEY_ACCOUNT_CONFIGURED, AuthRuntimeBridge.DEFAULT_ACCOUNT_CONFIGURED)
     }
 }
