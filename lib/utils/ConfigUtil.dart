@@ -11,6 +11,37 @@ import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 const String defaultAuthServer = '10.129.1.1';
 const String defaultAcid = '143';
 
+/// 可供界面和调度判断使用的普通配置事实，不携带认证凭据。
+class AuthConfigFacts {
+  const AuthConfigFacts({
+    required this.username,
+    required this.acid,
+    required this.autoAcid,
+    required this.authServer,
+    required this.userType,
+    required this.hasExplicitAcid,
+  });
+
+  final String username;
+  final String acid;
+  final bool autoAcid;
+  final String authServer;
+  final String userType;
+  final bool hasExplicitAcid;
+
+  factory AuthConfigFacts.fromJson(Map<String, dynamic> json) {
+    final rawAcid = _stringValue(json['acid'], '');
+    return AuthConfigFacts(
+      username: _stringValue(json['username']),
+      acid: normalizeAcid(rawAcid),
+      autoAcid: _boolValue(json['auto_acid'], true),
+      authServer: normalizeAuthServer(_stringValue(json['auth_server'])),
+      userType: _stringValue(json['user_type']),
+      hasExplicitAcid: rawAcid.trim().isNotEmpty,
+    );
+  }
+}
+
 /// 认证配置的不可变内存表示。
 ///
 /// 密码只在授权的运行时对象中存在，不会被 [toJson] 写入普通配置文件。
@@ -359,6 +390,18 @@ class ConfigRepository {
     }
   });
 
+  /// 读取普通配置，不访问秘密存储。
+  Future<AuthConfigFacts?> loadFacts() => _enqueue(() async {
+    try {
+      final raw = await _readRawUnlocked();
+      return raw == null ? null : AuthConfigFacts.fromJson(raw);
+    } on ConfigStorageException {
+      rethrow;
+    } catch (_) {
+      throw const ConfigStorageException('读取配置失败，请重试');
+    }
+  });
+
   /// 保存一份完整的初始配置。密码先写入秘密存储，普通 JSON 永远不含密码。
   Future<bool> save(AuthConfig config) => _enqueue(() async {
     final normalized = _normalize(config);
@@ -482,6 +525,8 @@ class ConfigUtil {
   );
 
   static Future<AuthConfig?> loadConfig() => _repository.load();
+
+  static Future<AuthConfigFacts?> loadConfigFacts() => _repository.loadFacts();
 
   static Future<bool> saveConfig(AuthConfig config) async {
     final saved = await _repository.save(config);

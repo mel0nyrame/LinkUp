@@ -98,6 +98,28 @@ void main() {
     expect(loaded?.authenticatedUsername, 'fixture-user');
   });
 
+  test('普通配置事实不访问秘密存储，也不暴露密码', () async {
+    await configFile.writeAsString(
+      jsonEncode(<String, Object?>{
+        'username': 'fixture-user',
+        'password': _fixtureValue('legacy'),
+        'acid': '5',
+        'auto_acid': false,
+        'auth_server': '10.0.0.1',
+        'user_type': 'cmcc',
+      }),
+    );
+    secretStore.readError = StateError('秘密存储不可用');
+
+    final facts = await repository.loadFacts();
+    expect(facts?.username, 'fixture-user');
+    expect(facts?.acid, '5');
+    expect(facts?.authServer, '10.0.0.1');
+    expect(facts?.userType, 'cmcc');
+    expect(facts is AuthConfig, isFalse);
+    expect(facts.toString(), isNot(contains(_fixtureValue('legacy'))));
+  });
+
   test('user_type 的空字符串明确清空并影响认证用户名', () async {
     final password = _fixtureValue('user-type');
     await repository.save(

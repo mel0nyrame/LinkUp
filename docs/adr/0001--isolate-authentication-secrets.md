@@ -14,6 +14,8 @@
 
 校园网密码通过 `SecretStore` 保存。生产实现使用 `flutter_secure_storage` 的 Android Keystore 支持，并使用独立的 `linkup_auth` 命名空间。普通 JSON 只保存非敏感字段，密码不会进入其序列化结果、日志或异常文本。
 
+只需要普通配置字段的调用方使用 `AuthConfigFacts`。`ConfigRepository.loadFacts` 直接读取普通 JSON，不访问 `SecretStore`，返回类型没有密码字段；账号编辑与执行登录的路径仍使用包含凭据的 `AuthConfig`。这样配置展示与认证服务器变更检查不必持有明文密码。
+
 升级迁移遵循固定顺序：先把旧 JSON 中的密码写入 `SecretStore`，再读回并校验；只有两步都成功后才移除普通 JSON 中的密码字段。普通文件通过同目录临时文件校验后替换，迁移清理失败时保留旧文件并返回可重试错误。密码更新只写秘密存储；删除操作分别尝试删除普通配置和秘密，并读回确认秘密已清除，任一失败都返回失败，后续调用可以重试。
 
 Android 11 及更早版本使用 `full-backup-content`，Android 12 及更高版本使用 `data-extraction-rules`；两者都排除 `linkup_auth` 秘密存储命名空间和迁移期间的 `app_flutter/linkup_config.json`，避免恢复当前设备 Keystore 无法解密的密文或尚未迁移的明文凭据，同时保留其他非敏感应用数据的备份能力。
@@ -28,6 +30,7 @@ Android 11 及更早版本使用 `full-backup-content`，Android 12 及更高版
 ## Consequences / Risks
 
 - 普通配置和秘密存储是两个独立的故障域。仓库通过写入顺序、读回校验和双删除结果避免静默丢失；跨存储操作本身仍不能提供事务回滚。
+- 普通配置事实可以在秘密存储不可用时读取，但不能据此判定凭据可用于登录；登录仍须读取并验证完整配置。
 - Android Keystore 密钥丢失、卸载重装或恢复到无法使用原密钥的设备后，用户需要重新输入凭据。备份规则不能恢复不可解密的秘密，这是有意的安全边界。
 - `flutter_secure_storage` 是新增依赖；当前项目只承诺 Android 行为，其他平台模板不作为本决策的验证范围。
 - 仓库测试通过注入文件和 `SecretStore` 验证首次保存、局部更新、迁移、密码变更和删除重试；Android 备份安全性由 Manifest 与 XML 规则验证。

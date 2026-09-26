@@ -1136,7 +1136,7 @@ List<RadUserInfo> _notAuthenticatedResponses(int attempts) {
   );
 }
 
-class _FakeConfigSource implements AuthenticationConfigSource {
+class _FakeConfigSource extends AuthenticationConfigSource {
   _FakeConfigSource(this.config, {this.updateSucceeds = true});
 
   AuthConfig config;

@@ -104,12 +104,29 @@ class AuthenticationResult {
 abstract class AuthenticationConfigSource {
   Future<AuthConfig?> load();
 
+  Future<AuthConfigFacts?> loadFacts() async {
+    final config = await load();
+    return config == null
+        ? null
+        : AuthConfigFacts(
+            username: config.username,
+            acid: config.acid,
+            autoAcid: config.autoAcid,
+            authServer: config.authServer,
+            userType: config.userType,
+            hasExplicitAcid: config.hasExplicitAcid,
+          );
+  }
+
   Future<bool> update(ConfigUpdate update, {bool Function()? canPersist});
 }
 
 class ConfigUtilSource implements AuthenticationConfigSource {
   @override
   Future<AuthConfig?> load() => ConfigUtil.loadConfig();
+
+  @override
+  Future<AuthConfigFacts?> loadFacts() => ConfigUtil.loadConfigFacts();
 
   @override
   Future<bool> update(ConfigUpdate update, {bool Function()? canPersist}) {
@@ -676,7 +693,7 @@ class AuthenticationCoordinator {
 
   Future<bool> _serverStillCurrent(String server) async {
     try {
-      final current = await configSource.load();
+      final current = await configSource.loadFacts();
       return current != null &&
           normalizeAuthServer(current.authServer) == server;
     } catch (_) {

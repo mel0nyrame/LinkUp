@@ -587,7 +587,7 @@ class _FakePlatformBridge {
   }
 }
 
-class _FakeConfigSource implements AuthenticationConfigSource {
+class _FakeConfigSource extends AuthenticationConfigSource {
   AuthConfig? config = AuthConfig(
     username: _fixtureUsername,
     password: _fixturePassword,

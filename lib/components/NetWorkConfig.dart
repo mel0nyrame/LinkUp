@@ -37,7 +37,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   // 加载配置
   Future<void> _loadConfig() async {
     try {
-      final config = await ConfigUtil.loadConfig();
+      final config = await ConfigUtil.loadConfigFacts();
       if (!mounted) return;
       if (config != null) {
         setState(() {
