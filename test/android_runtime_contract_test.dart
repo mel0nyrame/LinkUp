@@ -461,6 +461,58 @@ void main() {
     });
   });
 
+  group('启动时序', () {
+    // 首帧等待的判定依赖源码结构而不是运行时行为：main() 会构建整个应用，
+    // 真实日志初始化要建文件、真实配置检查要读文件，都得在 fake-async 之外
+    // 的真实事件循环里推进，测试里无法稳定驱动；通知权限那一侧的副作用在
+    // 非 Android 宿主上根本不会发生。结构断言能钉住真正的回归形态。
+    test('日志初始化与后台运行时都推迟到首帧之后', () {
+      final mainBody = _methodBody(mainDart, 'void main(List<String> args)');
+      expect(mainBody, contains('runApp('));
+      expect(
+        mainBody,
+        contains('addPostFrameCallback'),
+        reason: '不参与首屏内容的初始化必须挂在首帧之后',
+      );
+      expect(
+        mainBody,
+        isNot(contains('LogUtil.init')),
+        reason: '日志要先走一次 path_provider 往返再建文件，留在 runApp 之前会卡住首帧',
+      );
+      expect(
+        mainBody,
+        isNot(contains('applyKeepAlive')),
+        reason: 'applyKeepAlive 会拉起前台服务并弹通知权限，留在 runApp 之前用户先看到系统弹窗',
+      );
+    });
+
+    test('首屏判定依赖的偏好在 runApp 之前就已加载', () {
+      final mainBody = _methodBody(mainDart, 'void main(List<String> args)');
+      final initIndex = mainBody.indexOf('SystemSettingsUtil.init()');
+      expect(
+        initIndex,
+        greaterThanOrEqualTo(0),
+        reason: '首帧要同步读“配置存在”提示，偏好必须先加载',
+      );
+      expect(
+        initIndex,
+        lessThan(mainBody.indexOf('runApp(')),
+        reason: '提示要在首帧就能同步读到，加载偏好不能推迟',
+      );
+    });
+
+    test('推迟之后副作用一个不少，且日志仍然早于后台运行时', () {
+      final deferred = _methodBody(mainDart, 'Future<void> _prepareRuntime(');
+      expect(deferred, contains('LogUtil.init()'));
+      expect(deferred, contains('applyKeepAlive()'));
+      expect(
+        deferred.indexOf('LogUtil.init()'),
+        lessThan(deferred.indexOf('applyKeepAlive()')),
+        reason: '顺序与推迟前一致：后台运行时出错的日志要落得住',
+      );
+    });
+  });
+
   group('常驻通知', () {
     test('低重要性渠道且持续可见', () {
       expect(notification, contains('NotificationManager.IMPORTANCE_LOW'));
