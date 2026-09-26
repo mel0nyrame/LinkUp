@@ -3,11 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - 'release-v*' # 与历史 tag 命名规则一致：release-v1.0.0、release-v1.0.3
+      - 'release-v*' # 发布 tag 使用 release-v<版本号>，例如 release-v1.10.0
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的 tag（如 release-v1.0.4）'
+        description: '要发布的 tag（如 release-v1.10.0）'
         required: true
         type: string
 
@@ -63,7 +63,7 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          # tag 形如 refs/tags/release-v1.0.3 → version=1.0.3
+          # tag 形如 refs/tags/release-v1.10.0 → version=1.10.0
           TAG="${GITHUB_REF#refs/tags/}"
           if [ -z "$TAG" ] || [ "$TAG" = "$GITHUB_REF" ]; then
             TAG="${{ inputs.tag }}"
@@ -107,11 +107,11 @@ jobs:
             --build-name=${{ steps.version.outputs.version }} \
             --build-number=${{ github.run_number }}
 
-      - name: Rename APK
+      - name: Rename APK to linkup.apk
         id: artifact
         run: |
           SRC=build/app/outputs/flutter-apk/app-release.apk
-          DST=app-release.apk
+          DST=linkup.apk
           cp "$SRC" "$DST"
           SIZE=$(du -h "$DST" | cut -f1)
           echo "apk_path=$DST" >> "$GITHUB_OUTPUT"
@@ -137,7 +137,7 @@ jobs:
             echo ""
             echo "### 安装"
             echo ""
-            echo "- Android: 下载下方 \`app-release.apk\` 直接安装（APK 大小约 ${{ steps.artifact.outputs.apk_size }}）"
+            echo "- Android: 下载下方 \`linkup.apk\` 直接安装（APK 大小约 ${{ steps.artifact.outputs.apk_size }}）"
             echo "- 安装后请在系统设置中授予「自启动」和「忽略电池优化」权限以保证后台保活"
             echo ""
             echo "### SHA-256"
