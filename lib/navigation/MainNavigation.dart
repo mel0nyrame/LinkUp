@@ -9,14 +9,23 @@ import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
-import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
+import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
 import 'package:LinkUp/page/OverViewPage.dart';
 import 'package:LinkUp/page/SettingsPage.dart';
 
 class MainNavigator extends StatefulWidget {
-  const MainNavigator({super.key, this.client});
+  const MainNavigator({super.key, this.client}) : _testPages = null;
+
+  @visibleForTesting
+  const MainNavigator.test({
+    super.key,
+    this.client,
+    required List<Widget> pages,
+  }) : assert(pages.length == 2),
+       _testPages = pages;
 
   final AuthRuntimeClient? client;
+  final List<Widget>? _testPages;
 
   @override
   State<MainNavigator> createState() => _MainNavigatorState();
@@ -316,22 +325,26 @@ class _MainNavigatorState extends State<MainNavigator> {
         children: [
           IndexedStack(
             index: _currentIndex,
-            children: [
-              OverviewPage(
-                isLoading: _isLoading,
-                statusMessage: _statusMessage,
-                isOnline: _isOnline,
-                currentAcid: _currentAcid,
-                userInfo: _userInfo,
-                onRefresh: _manualLogin,
-                onKickDevice: _kickDevice,
-              ),
-              SettingsPage(
-                onConfigChanged: (hasConfig) {
-                  unawaited(_client.configurationChanged(hasConfig: hasConfig));
-                },
-              ),
-            ],
+            children:
+                widget._testPages ??
+                [
+                  OverviewPage(
+                    isLoading: _isLoading,
+                    statusMessage: _statusMessage,
+                    isOnline: _isOnline,
+                    currentAcid: _currentAcid,
+                    userInfo: _userInfo,
+                    onRefresh: _manualLogin,
+                    onKickDevice: _kickDevice,
+                  ),
+                  SettingsPage(
+                    onConfigChanged: (hasConfig) {
+                      unawaited(
+                        _client.configurationChanged(hasConfig: hasConfig),
+                      );
+                    },
+                  ),
+                ],
           ),
           // Floating liquid glass pill — transparent background, no Scaffold chrome
           Positioned(
@@ -345,14 +358,14 @@ class _MainNavigatorState extends State<MainNavigator> {
                   horizontal: 40,
                   vertical: 8,
                 ),
-                child: LiquidGlass.withOwnLayer(
-                  settings: const LiquidGlassSettings(
-                    blur: 18,
-                    thickness: 10,
-                    glassColor: Color(0x1AFFFFFF),
-                    saturation: 1.05,
+                child: GlassSurface(
+                  style: const GlassStyle(
+                    blurSigmaX: 6,
+                    blurSigmaY: 6,
+                    tintOpacity: 0.18,
+                    borderRadius: BorderRadius.all(Radius.circular(28)),
+                    shadowOpacity: 0,
                   ),
-                  shape: LiquidRoundedSuperellipse(borderRadius: 28),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 4,
