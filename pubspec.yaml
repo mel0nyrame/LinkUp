@@ -45,6 +45,10 @@ dependencies:
   package_info_plus: ^10.2.1
   open_filex: ^4.7.0
   liquid_glass_renderer: ^0.2.0-dev.4
+  lightweight_liquid_glass:
+    git:
+      url: https://github.com/surface-user/Flutter_liquid_glass.git
+      ref: a0bc51acf22db1b867294f810157cfeba7e951fb
 
 dev_dependencies:
   flutter_test:
