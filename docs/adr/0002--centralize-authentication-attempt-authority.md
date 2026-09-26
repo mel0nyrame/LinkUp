@@ -20,14 +20,14 @@
 
 - **继续由 Widget 编排并共享静态 Srun 客户端**：改动表面较小，但无法隔离并发尝试、HTTP transport 和参数来源，无法可靠阻止旧候选落盘，因此不采用。
 - **在 Reality 或根目录探测成功后立即保存 ACID**：可以减少后续探测，但会把未经验证的值当作事实；Portal 假成功或登录失败时会污染用户配置，因此不采用。
-- **直接传播页面声明的任意 Enc**：能够适配未知部署，但当前协议只验证了 `srun_bx1`，会让 Info、Chkstr 和协议前缀不一致，因此不采用。
+- **直接传播页面声明的任意 Enc**：能够适配未知部署，但当前协议只验证了 `srun_bx1`，会让 Info 与协议前缀不一致，因此不采用。
 - **把密码和 Challenge 放入可观察认证状态**：便于调试，但会扩大秘密暴露面，违反既有秘密存储和日志约束，因此不采用。
 
 ## Consequences / Risks
 
 - 协调器状态流和单飞 Future 是认证运行时的事实来源；监控调度、退避和资源生命周期由 [ADR-0003](0003--coordinator-owns-monitoring-schedule.md) 拥有，Android 后台服务可以复用该边界而不必复制协议流程。
-- 当前 `ConfigRepository` 仍把运行时 ACID 归一化为默认值 `1`，但通过 `hasExplicitAcid` 保留空值不可用状态；协调器据此决定是否进入根目录探测。
-- `connectivity_plus` 的连接类型事件不能区分所有同类型 Wi-Fi 网络；当前世代保证依赖平台事件实际发出，后续若需要同类型网络切换级别的失效，应扩展网络身份来源。
+- 当前 `ConfigRepository` 把运行时 ACID 归一化为默认值 `143`，但通过 `hasExplicitAcid` 保留空值不可用状态；协调器据此决定是否进入根目录探测。
+- `connectivity_plus` 的连接类型事件不能区分同类型 Wi-Fi 网络；Android 前台服务改由原生回调跟踪所选 `Network`，切换 Wi-Fi 时通知协调器失效旧世代。路由绑定及其风险由 [ADR-0007](0007--bind-auth-runtime-to-campus-wifi.md) 记录。
 - 协调器在配置确认后进行 ACID 局部更新；秘密存储或文件写入失败不会回滚已确认的在线状态，但会报告可恢复的持久化错误。
 - 协议回归使用 fake 协议和注入的 `http.Client`，不连接真实校园网；真实网络行为仍需 Android 设备手工验证。
 

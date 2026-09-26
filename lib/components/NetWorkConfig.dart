@@ -17,9 +17,9 @@ class NetworkConfigCard extends StatefulWidget {
 
 class _NetworkConfigCardState extends State<NetworkConfigCard> {
   bool _autoAcid = true;
-  final _acidCtrl = TextEditingController(text: '1');
+  final _acidCtrl = TextEditingController(text: defaultAcid);
   final _authServerCtrl = TextEditingController(text: '10.129.1.1');
-  String _displayAcid = '1';
+  String _displayAcid = defaultAcid;
 
   @override
   void initState() {
@@ -269,8 +269,8 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
             tooltip: '重置为默认值',
             onPressed: () {
               setState(() {
-                _acidCtrl.text = '1';
-                _displayAcid = '1';
+                _acidCtrl.text = defaultAcid;
+                _displayAcid = defaultAcid;
               });
               _saveAcid();
             },
