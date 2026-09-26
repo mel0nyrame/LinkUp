@@ -5,8 +5,6 @@ import 'package:LinkUp/utils/SrunEncrypt.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
-    // 基础 widget 冒烟：不使用 LiquidGlass（liquid_glass_renderer 着色器
-    // 与 Flutter 3.44 Impeller 后端不兼容，导致 shader 编译失败）
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(body: Center(child: Text('LinkUp'))),

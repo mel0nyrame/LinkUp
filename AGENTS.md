@@ -26,7 +26,7 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端。�
 - 认证运行时只有一份 Dart 实现，由后台前台服务独占。Activity 的 FlutterEngine 不得创建协调器或认证周期 Timer，Kotlin 不得复制 Srun 协议逻辑。详见 `docs/adr/0004--foreground-service-owns-auth-runtime.md`。
 - `lib/utils/RadUserInfo.g.dart` 是生成文件；模型注解变化后用 build_runner 重新生成，不手改生成代码。
 - Gradle 与 CI 使用 JDK 21；Android 源码和 Kotlin 字节码目标保持 Java 17，因为当前 Android API 级别只保证到 Java 17 语言特性。
-- `liquid_glass_renderer` 是实验性依赖，当前构建会产生 shader 警告。除非任务明确要求，不替换它或重做液态玻璃 UI。
+- 玻璃表面统一走 `lightweight_liquid_glass` 的 `GlassSurface`（git 依赖，固定在经审查的提交）：导航保留实时模糊，状态卡关闭模糊改用半透明渐变。除非任务明确要求，不替换该依赖或重做玻璃 UI。
 - 保留现有 PascalCase 文件名和信息级 lint 债务；不做与任务无关的全仓重命名、格式化或 lint 清理。
 
 ## 变更流程

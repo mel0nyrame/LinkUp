@@ -142,7 +142,7 @@ class LiquidGlassScaffold extends StatelessWidget {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Gradient background — visible through liquid glass blur
+          // Gradient background — the navigation bar's blur samples this
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(

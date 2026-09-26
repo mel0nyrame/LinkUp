@@ -1,6 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:LinkUp/main.dart';
-import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
+import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
+
+/// 状态卡沿用底部导航的玻璃观感（描边、高光、圆角），但关闭实时背景模糊：
+/// 状态卡随概况页滚动，身后只有静态渐变，采样背景没有视觉收益，持续滑动
+/// 却要反复读取背景。关闭模糊后由 [GlassStyle.backgroundGradient] 提供
+/// 半透明卡面，配套的 `fallbackColor` 必须显式给 `Colors.transparent`，
+/// 否则会回退到上游的不透明底色（上游在高对比度或减少透明度下会去掉渐变、
+/// 只留 `fallbackColor` 与描边；本应用没有安装 `LiquidGlassTheme`，也没有主动
+/// 开启这两个开关，因此不为此另开分支，若真机上这两个开关可达，需要重新
+/// 评估卡面）。
+const GlassStyle _statusCardStyle = GlassStyle(
+  blurEnabled: false,
+  borderRadius: BorderRadius.all(Radius.circular(20)),
+  shadowOpacity: 0,
+  backgroundGradient: LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xE6FFFFFF), Color(0xCCFFFFFF)],
+  ),
+);
 
 class Statuscard extends StatefulWidget {
   final bool isOnline;
@@ -52,52 +71,50 @@ class _StatuscardState extends State<Statuscard>
     final String? subtitle = widget.detailText ?? widget.errorMsg;
 
     return RepaintBoundary(
-      child: LiquidGlass.withOwnLayer(
-        settings: LiquidGlassSettings(
-          blur: 14,
-          thickness: 10,
-          glassColor: const Color(0x1AFFFFFF),
-          saturation: 1.05,
-        ),
-        shape: LiquidRoundedSuperellipse(borderRadius: 20),
+      child: GlassSurface(
+        style: _statusCardStyle,
+        fallbackColor: Colors.transparent,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Pulsing status circle
-              AnimatedBuilder(
-                animation: _pulse,
-                builder: (context, child) {
-                  return Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: statusColor.withOpacity(0.12),
-                    ),
-                    child: Center(
-                      child: Transform.scale(
-                        scale: _pulse.value,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: statusColor,
-                            boxShadow: [
-                              BoxShadow(
-                                color: statusColor.withOpacity(0.35),
-                                blurRadius: 16,
-                                spreadRadius: 2,
-                              ),
-                            ],
+              // 脉冲自带一层 RepaintBoundary：圆点每帧重画时，玻璃表面与
+              // 文字不必跟着重画。
+              RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: _pulse,
+                  builder: (context, child) {
+                    return Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: statusColor.withOpacity(0.12),
+                      ),
+                      child: Center(
+                        child: Transform.scale(
+                          scale: _pulse.value,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: statusColor,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: statusColor.withOpacity(0.35),
+                                  blurRadius: 16,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 20),
               Text(
