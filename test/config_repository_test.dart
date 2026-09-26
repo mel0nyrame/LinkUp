@@ -162,7 +162,7 @@ void main() {
     final raw =
         jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
 
-    expect(loaded?.acid, defaultAcid);
+    expect(loaded?.acid, '143');
     expect(loaded?.hasExplicitAcid, isFalse);
     expect(raw['acid'], isEmpty);
   });

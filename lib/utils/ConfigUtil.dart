@@ -9,7 +9,7 @@ import 'package:LinkUp/utils/SecretStore.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 
 const String defaultAuthServer = '10.129.1.1';
-const String defaultAcid = '1';
+const String defaultAcid = '143';
 
 /// 认证配置的不可变内存表示。
 ///

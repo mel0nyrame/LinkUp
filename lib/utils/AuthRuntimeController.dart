@@ -8,7 +8,7 @@ import 'package:LinkUp/utils/LogUtil.dart';
 /// 后台认证运行时在 Dart 侧的唯一 owner。
 ///
 /// 它持有唯一的 [AuthenticationCoordinator]、订阅状态流并把状态发布给宿主，
-/// 同时执行宿主通过 callback dispatcher 下发的命令。UI、通知和平台入口都路由
+/// 同时执行宿主通过 MethodChannel 下发的命令。UI、通知和平台入口都路由
 /// 到这里，不允许出现第二个协调器。
 ///
 /// 运行时的释放由宿主销毁后台 FlutterEngine 表达：isolate 结束即释放 HTTP

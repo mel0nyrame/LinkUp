@@ -9,6 +9,50 @@ import 'package:LinkUp/utils/AcidDetector.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('Reality 优先使用拦截重定向中的 index ACID', () async {
+    final detector = AcidDetector(
+      baseUrl: 'http://server',
+      client: MockClient((request) async {
+        if (request.url.host != 'server') {
+          return http.Response(
+            '',
+            302,
+            headers: {'location': 'http://server/index_143.html'},
+            request: request,
+          );
+        }
+        if (request.url.path == '/index_143.html') {
+          return http.Response(
+            "<script>top.self.location.href='/srun_portal_pc?ac_id=1'</script>",
+            200,
+            request: request,
+          );
+        }
+        return http.Response('<html>srun_portal</html>', 200, request: request);
+      }),
+    );
+
+    final (acid, _, error) = await detector.reality();
+    expect(error, isNull);
+    expect(acid, '143');
+  });
+
+  test('根目录探测识别 index 页面路径中的 ACID', () async {
+    final detector = AcidDetector(
+      baseUrl: 'http://server',
+      client: MockClient((request) async {
+        return http.Response(
+          '',
+          302,
+          headers: {'location': 'http://server/index_143.html'},
+          request: request,
+        );
+      }),
+    );
+
+    expect(await detector.detectAcid(), '143');
+  });
+
   test('AcidDetector 使用注入 HTTP client，reset 后不复用旧 Portal 页面', () async {
     final requests = <Uri>[];
     final detector = AcidDetector(

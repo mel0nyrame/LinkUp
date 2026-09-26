@@ -211,7 +211,7 @@ class TimerAuthenticationScheduler implements AuthenticationScheduler {
 
 /// 统一编排一次检查、候选选择、登录和在线确认。
 ///
-/// [protocolFactory] 用于停止或注销释放旧协议后重建新的 HTTP 资源。
+/// [protocolFactory] 用于停止、注销或网络变化后重建 HTTP 资源。
 class AuthenticationCoordinator {
   AuthenticationCoordinator({
     required this.configSource,
@@ -255,6 +255,7 @@ class AuthenticationCoordinator {
   int _scheduleGeneration = 0;
   bool _stopping = false;
   bool _disposed = false;
+  bool? _platformWifiConnected;
   AuthenticationState _state = const AuthenticationState(
     status: AuthenticationStatus.stopped,
   );
@@ -336,7 +337,12 @@ class AuthenticationCoordinator {
 
   void invalidateNetwork() {
     networkState.invalidate();
-    _protocolInstance?.reset();
+    if (_protocolFactory != null) {
+      // Android 切换 Wi-Fi 路由后必须丢弃旧 HTTP 连接池。
+      _releaseProtocol();
+    } else {
+      _protocolInstance?.reset();
+    }
   }
 
   /// 响应平台网络可用性变化。
@@ -345,13 +351,18 @@ class AuthenticationCoordinator {
   /// 任何一次事件都使当前网络世代失效：断开时丢弃已缓存的 ACID 与 Portal，
   /// 恢复时立刻通过同一个单飞入口检查，不等在线周期或退避周期。
   Future<AuthenticationResult> networkChanged({required bool connected}) {
+    _platformWifiConnected = connected;
     invalidateNetwork();
     if (!_monitoring) {
       return connected ? start() : Future.value(_stoppedResult());
     }
     final active = _inFlight;
     if (active != null) {
-      if (connected) _checkAgainAfterInFlight = true;
+      if (connected) {
+        _checkAgainAfterInFlight = true;
+      } else {
+        _offline('WiFi 未连接');
+      }
       return active;
     }
     _cancelSchedule();
@@ -432,6 +443,7 @@ class AuthenticationCoordinator {
   void _beginStop() {
     _stopping = true;
     _monitoring = false;
+    _platformWifiConnected = null;
     _checkAgainAfterInFlight = false;
     _pendingManualCheck = false;
     _cancelSchedule();
@@ -449,6 +461,7 @@ class AuthenticationCoordinator {
   }
 
   void _finishStop() {
+    _platformWifiConnected = null;
     _releaseProtocol();
     _activeServer = null;
     _emit(const AuthenticationState(status: AuthenticationStatus.stopped));
@@ -472,6 +485,10 @@ class AuthenticationCoordinator {
 
   void _scheduleNext(AuthenticationResult result) {
     if (!_monitoring || _disposed) return;
+    if (_platformWifiConnected == false) {
+      _offline('WiFi 未连接');
+      return;
+    }
     if (result.status == AuthenticationStatus.offline) {
       // 没有可用网络时重试不会改变结果，改为等平台网络事件唤醒。
       return;
@@ -529,7 +546,7 @@ class AuthenticationCoordinator {
       final generation = networkState.generation;
       final useManualAcid = manual ?? !config.autoAcid;
 
-      if (!await networkState.isConnected()) {
+      if (!(_platformWifiConnected ?? await networkState.isConnected())) {
         return _offline('WiFi 未连接');
       }
       if (_cancelled(cancellation)) return _cancelledResult();

@@ -15,7 +15,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
   final _formKey = GlobalKey<FormState>();
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  final _acidCtrl = TextEditingController(text: '1');
+  final _acidCtrl = TextEditingController(text: defaultAcid);
   final _authServerCtrl = TextEditingController(text: '10.129.1.1');
   final _userTypeCtrl = TextEditingController();
   bool _obscurePassword = true;

@@ -30,7 +30,7 @@ class SrunEnrypt {
     String acId,
     String ip,
     String n,
-    String enc,
+    String type,
     String info,
   ) {
     return token +
@@ -44,7 +44,7 @@ class SrunEnrypt {
         token +
         n +
         token +
-        enc +
+        type +
         token +
         info;
   }

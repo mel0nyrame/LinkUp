@@ -10,13 +10,15 @@
 
 `BootReceiver` 当时直接 `startActivity` 拉起界面，且只看 `auto_start` 一个偏好。这既让“开机自启”绕过“保留后台运行”这个总开关，也让开机认证依赖 Activity 存在，与 [ADR-0004](0004--foreground-service-owns-auth-runtime.md) 的前台服务所有权冲突。
 
+非默认校园 Wi-Fi 的请求路由由 [ADR-0007](0007--bind-auth-runtime-to-campus-wifi.md) 负责；本记录保留事件驱动与开机恢复的决策理由。
+
 开机时通常还没有网络，服务起来后只能靠退避重试，既费电又刷满失败日志。
 
 ## Decision
 
-服务存活期间注册 `ConnectivityManager.registerNetworkCallback`，只跟踪 `TRANSPORT_WIFI`。不跟踪默认网络：未认证的校园网不会成为系统默认网络，跟默认网络会漏掉“Portal 可达但尚未认证”这段最需要自动认证的窗口。回调只维护一个 `reported` 状态，可用性没变就不下发事件。服务在 `ensureMonitoring()` 中注册，在 `stopRuntime()` 和 `onDestroy()` 中注销。
+服务存活期间注册 `ConnectivityManager.registerNetworkCallback`，只跟踪 `TRANSPORT_WIFI`。不跟踪默认网络：未认证的校园网不会成为系统默认网络，跟默认网络会漏掉“Portal 可达但尚未认证”这段最需要自动认证的窗口。回调按可用性和所选 Wi-Fi 网络去重；同一 Wi-Fi 没有变化时不重复下发，切换 Wi-Fi 时即使可用性仍为 true 也会通知协调器。Wi-Fi 路由绑定由 [ADR-0007](0007--bind-auth-runtime-to-campus-wifi.md) 补充。服务在 `ensureMonitoring()` 中注册，在 `stopRuntime()` 和 `onDestroy()` 中注销。
 
-平台回调只发一条 `networkChanged` 命令，负载是 `connected` 布尔值。Srun 协议、网络世代判定和是否立即检查全部由协调器决定：事件使当前网络世代失效并 `protocol.reset()`，断网时直接进入离线状态，恢复时取消待执行的退避并立即通过 `check()` 的单飞入口检查，不新建 Reality 或登录流程。因此同一次网络抖动只会合并成一次补跑。
+平台回调只发一条 `networkChanged` 命令，负载是 `connected` 布尔值。Srun 协议、网络世代判定和是否立即检查全部由协调器决定：事件使当前网络世代失效并释放旧协议实例，断网时直接进入离线状态，恢复时取消待执行的退避并立即通过 `check()` 的单飞入口检查，不新建 Reality 或登录流程。因此同一次网络抖动只会合并成一次补跑。
 
 协调器的离线结果不再进入退避循环。定时轮询无法区分“网络断了”和“网络通着但认证失败”，让离线也退避会让服务在无网络时反复失败重试；现在离线保持静默，等首个有效网络事件唤醒。
 

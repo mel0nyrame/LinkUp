@@ -51,7 +51,7 @@ class AcidDetector {
   /// 从当前服务器或缓存页面检测 ACID；Reality 候选由协调器单独处理。
   Future<String?> detectAcid() async {
     LogUtil.info('[AcidDetector] 开始检测 ACID...');
-    LogUtil.info('[AcidDetector] 认证服务器: $baseUrl');
+    LogUtil.info('[AcidDetector] 已读取认证服务器');
 
     // 如果已经缓存了页面内容，直接从 HTML 查找
     if (_cachedPage != null) {
@@ -154,8 +154,9 @@ class AcidDetector {
         onNextAddr: (addr) {
           // 在重定向过程中捕获 acid
           if (getAcid) {
-            detectedAcid = _extractAcidFromQuery(addr);
-            if (detectedAcid != null) {
+            final acid = _extractAcidFromUrl(addr);
+            if (detectedAcid == null && acid != null) {
+              detectedAcid = acid;
               LogUtil.info(
                 '[AcidDetector] Reality: URL 中捕获 ACID=$detectedAcid',
               );
@@ -242,7 +243,7 @@ class AcidDetector {
       await _followRedirect(
         startUrl,
         onNextAddr: (addr) {
-          final acid = _extractAcidFromQuery(addr);
+          final acid = _extractAcidFromUrl(addr);
           if (acid != null) {
             LogUtil.info('[AcidDetector] URL 中找到 ACID: $acid');
             foundAcid = acid;
@@ -276,7 +277,7 @@ class AcidDetector {
 
     try {
       final pageUrl = _cachedPageUrl ?? '$baseUrl/srun_portal_pc.php';
-      LogUtil.info('[AcidDetector] 请求: $pageUrl');
+      LogUtil.info('[AcidDetector] 请求登录页面');
 
       final response = await _get(Uri.parse(pageUrl))
           .timeout(const Duration(seconds: 5));
@@ -317,7 +318,7 @@ class AcidDetector {
     try {
       while (redirectCount < maxRedirects) {
         final addrStr = currentAddr.toString();
-        LogUtil.info('[AcidDetector] 请求[$redirectCount]: $addrStr');
+        LogUtil.info('[AcidDetector] 请求[$redirectCount]');
 
         if (visitedUris.contains(addrStr)) {
           return (null, null, '循环重定向');
@@ -349,7 +350,7 @@ class AcidDetector {
           if (jsMatch != null) {
             final loc = jsMatch.group(1);
             if (loc != null && loc.isNotEmpty) {
-              LogUtil.info('[AcidDetector] JS 跳转: $loc');
+              LogUtil.info('[AcidDetector] JS 跳转');
               currentAddr = _joinRedirectLocation(currentAddr, loc);
               redirectCount++;
               if (onNextAddr(currentAddr)) return (response, body, null);
@@ -362,7 +363,7 @@ class AcidDetector {
           if (metaMatch != null) {
             final loc = metaMatch.group(1);
             if (loc != null && loc.isNotEmpty) {
-              LogUtil.info('[AcidDetector] Meta 跳转: $loc');
+              LogUtil.info('[AcidDetector] Meta 跳转');
               currentAddr = _joinRedirectLocation(currentAddr, loc);
               redirectCount++;
               if (onNextAddr(currentAddr)) return (response, body, null);
@@ -376,7 +377,7 @@ class AcidDetector {
           // 3xx 重定向
           final location = response.headers['location'];
           if (location != null && location.isNotEmpty) {
-            LogUtil.info('[AcidDetector] ${response.statusCode} 跳转: $location');
+            LogUtil.info('[AcidDetector] ${response.statusCode} 跳转');
             currentAddr = _joinRedirectLocation(currentAddr, location);
             redirectCount++;
             if (onNextAddr(currentAddr)) return (response, null, null);
@@ -432,7 +433,13 @@ class AcidDetector {
     }
   }
 
-  String? _extractAcidFromQuery(Uri uri) {
+  String? _extractAcidFromUrl(Uri uri) {
+    // 部分 Portal 先跳到 index_<ACID>.html，后续通用页面的 ac_id 可能是 1。
+    final indexMatch = RegExp(
+      r'^/index_(\d+)\.html$',
+      caseSensitive: false,
+    ).firstMatch(uri.path);
+    if (indexMatch != null) return indexMatch.group(1);
     final acid = uri.queryParameters['ac_id'];
     if (acid != null && acid.isNotEmpty) return acid;
     return uri.queryParameters['acid'] ?? uri.queryParameters['Acid'];
@@ -476,7 +483,7 @@ class AcidDetector {
       // 确保有登录页内容缓存
       if (_cachedPage == null) {
         final pageUrl = _cachedPageUrl ?? '$baseUrl/srun_portal_pc.php';
-        LogUtil.info('[AcidDetector] 请求登录页: $pageUrl');
+        LogUtil.info('[AcidDetector] 请求登录页');
         final response = await _get(Uri.parse(pageUrl))
             .timeout(const Duration(seconds: 5));
 
@@ -501,7 +508,7 @@ class AcidDetector {
 
       final jsPath = jsMatch.group(1)!;
       final jsUrl = Uri.parse(baseUrl).replace(path: jsPath);
-      LogUtil.info('[AcidDetector] 请求 JS 文件: $jsUrl');
+      LogUtil.info('[AcidDetector] 请求 JS 文件');
 
       final jsResponse = await _get(jsUrl).timeout(const Duration(seconds: 5));
 

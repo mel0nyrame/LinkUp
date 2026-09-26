@@ -444,6 +444,79 @@ void main() {
     expect(config.updates, isEmpty);
   });
 
+  test('平台确认校园 WiFi 可用时不受默认移动网络结果阻断', () async {
+    final network = _FakeNetworkState(connected: false);
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(),
+      userInfo: [
+        RadUserInfo(clientIp: '10.0.0.8', error: ''),
+        RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
+      ],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config(acid: '143', autoAcid: false)),
+      protocol: protocol,
+      networkState: network,
+    );
+
+    final result = await coordinator.networkChanged(connected: true);
+
+    expect(result.status, AuthenticationStatus.online);
+    expect(protocol.realityCalls, 1);
+    expect(protocol.loginParameters?.acid, '143');
+  });
+
+  test('WiFi 网络变化后关闭旧 HTTP 连接并用新协议实例检查', () async {
+    final firstProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(),
+      userInfo: [RadUserInfo(clientIp: '10.0.0.8', error: 'ok')],
+    );
+    final nextProtocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(),
+      userInfo: [RadUserInfo(clientIp: '10.0.0.8', error: 'ok')],
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: firstProtocol,
+      protocolFactory: () => nextProtocol,
+      networkState: _FakeNetworkState(),
+    );
+
+    await coordinator.start();
+    final result = await coordinator.networkChanged(connected: true);
+
+    expect(result.status, AuthenticationStatus.alreadyOnline);
+    expect(firstProtocol.disposeCalls, 1);
+    expect(nextProtocol.realityCalls, 1);
+  });
+
+  test('认证进行中 WiFi 断开后最终保持离线且不安排重试', () async {
+    final gate = Completer<void>();
+    final scheduler = _FakeAuthenticationScheduler();
+    final protocol = _FakeAuthenticationProtocol(
+      realityResult: const RealityProbeResult(),
+      userInfo: const [],
+      realityGate: gate,
+    );
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      protocol: protocol,
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+    );
+
+    final check = coordinator.start();
+    await protocol.realityGateStarted.future;
+    final lost = coordinator.networkChanged(connected: false);
+    expect(coordinator.state.status, AuthenticationStatus.offline);
+    gate.complete();
+    await lost;
+    await check;
+
+    expect(coordinator.state.status, AuthenticationStatus.offline);
+    expect(scheduler.hasPending, isFalse);
+  });
+
   test('认证服务器变化时旧尝试不会落盘', () async {
     final config = _FakeConfigSource(_config());
     final protocol = _FakeAuthenticationProtocol(

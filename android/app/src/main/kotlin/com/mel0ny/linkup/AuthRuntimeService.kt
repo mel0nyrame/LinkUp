@@ -17,7 +17,7 @@ import io.flutter.plugins.GeneratedPluginRegistrant
 /**
  * 承载后台认证运行时的前台服务。
  *
- * 服务创建独立 FlutterEngine，通过 callback dispatcher 驱动 Dart 认证入口。
+ * 服务创建独立 FlutterEngine，通过 MethodChannel 驱动 Dart 认证入口。
  * Srun 协议和协调器逻辑不在 Kotlin 中复制，仍然只有一份 Dart 实现。
  */
 class AuthRuntimeService : Service() {
@@ -170,7 +170,7 @@ class AuthRuntimeService : Service() {
         // 必需插件必须显式注册到后台 engine，Keystore 秘密存储才能在其中使用。
         // 注册与下面的通道注册都在 Dart isolate 真正运行之前完成。
         GeneratedPluginRegistrant.registerWith(created)
-        AuthRuntimeBridge.attachEngine(this, created)
+        AuthRuntimeBridge.attachEngine(created)
         engine = created
     }
 

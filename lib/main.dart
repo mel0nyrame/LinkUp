@@ -3,6 +3,9 @@ import 'package:LinkUp/navigation/MainNavigation.dart';
 import 'package:LinkUp/page/AuthWrapperPage.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
+// 后台 FlutterEngine 从主 APK 的 Dart bundle 加载此独立入口。
+// ignore: unused_import
+import 'package:LinkUp/authRuntimeMain.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
