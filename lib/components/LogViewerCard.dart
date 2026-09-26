@@ -81,11 +81,11 @@ class _LogViewerCardState extends State<LogViewerCard> {
 
     final logContent = await LogUtil.readLog();
 
+    if (!mounted) return;
+
     setState(() {
       _isLoading = false;
     });
-
-    if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
