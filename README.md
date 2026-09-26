@@ -58,6 +58,7 @@ flutter build apk --release
 ```
 
 构建产物位于 `build/app/outputs/flutter-apk/app-release.apk`。
+GitHub Release 提供的安装包文件名为 `linkup.apk`。
 
 ## 工作原理
 
