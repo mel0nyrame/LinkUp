@@ -15,12 +15,22 @@ class SystemSettingsUtil {
 
   static SharedPreferences? _prefs;
 
-  /// 初始化
+  /// 加载偏好。
+  ///
+  /// 这里只读偏好。把开关应用到前台服务是独立的 [applyKeepAlive]，由调用方在
+  /// 真正需要服务启停时显式调用：启动路径上它要走 MethodChannel 并可能弹系统
+  /// 通知权限对话框，混在偏好加载里会让打开应用后的等待串到首屏之前。
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    // 认证运行时由 Android 前台服务承载，这里把已保存的设置应用到服务。
-    await applyKeepAlive();
   }
+
+  /// 读取“是否存在已保存的认证配置”提示。
+  ///
+  /// 这只是首帧就能读到的**提示**，权威事实是 `ConfigUtil.configExists` 对配置
+  /// 文件的真实检查。键不存在时返回 null 而不是 false：没有可信事实时调用方必须
+  /// 当作未知处理，不许当成“未配置”跳过首次配置。
+  static bool? getAccountConfiguredHint() =>
+      _prefs?.getBool(_accountConfiguredKey);
 
   /// 记录是否存在已保存的认证配置。
   ///
