@@ -25,43 +25,4 @@ class NetworkUtil {
       return false;
     }
   }
-
-  /// 获取当前网络连接类型
-  static Future<String> getConnectionType() async {
-    try {
-      final List<ConnectivityResult> results = await _connectivity
-          .checkConnectivity();
-
-      if (results.isEmpty) {
-        return '无网络连接';
-      }
-
-      final result = results.first;
-      switch (result) {
-        case ConnectivityResult.wifi:
-          return 'WiFi';
-        case ConnectivityResult.mobile:
-          return '移动数据';
-        case ConnectivityResult.ethernet:
-          return '以太网';
-        case ConnectivityResult.vpn:
-          return 'VPN';
-        case ConnectivityResult.bluetooth:
-          return '蓝牙';
-        case ConnectivityResult.other:
-          return '其他网络';
-        case ConnectivityResult.none:
-          return '无网络连接';
-        case ConnectivityResult.satellite:
-          return '卫星网络';
-      }
-    } catch (e) {
-      return '未知';
-    }
-  }
-
-  /// 监听网络状态变化
-  static Stream<List<ConnectivityResult>> get onConnectivityChanged {
-    return _connectivity.onConnectivityChanged;
-  }
 }

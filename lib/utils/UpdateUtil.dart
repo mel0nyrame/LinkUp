@@ -14,14 +14,12 @@ class UpdateInfo {
   final String downloadUrl;
   final String changelog;
   final bool isForceUpdate;
-  final int? buildNumber;
 
   UpdateInfo({
     required this.version,
     required this.downloadUrl,
     required this.changelog,
     this.isForceUpdate = false,
-    this.buildNumber,
   });
 }
 

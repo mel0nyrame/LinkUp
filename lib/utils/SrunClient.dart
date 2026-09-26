@@ -15,17 +15,11 @@ class SrunClient {
   String get baseURL => "http://" + host + "/cgi-bin";
   String get urlUserInfo => baseURL + "/rad_user_info";
   String get urlChallenge => baseURL + "/get_challenge";
-  String get urlPortal => urlPortalForHost(host);
-
   String urlPortalForHost(String host) => "http://$host/cgi-bin/srun_portal";
 
   String get callback => "jQueryCallback";
   String get userAgent =>
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36";
-  String get type => "1";
-  String get n => "200";
-  String get enc => "srun_bx1";
-
   final http.Client _client;
   final Duration requestTimeout;
 
@@ -268,20 +262,6 @@ class SrunClient {
       return jsonData['error'] == 'ok';
     } catch (e) {
       LogUtil.error('[SrunClient] DM 注销失败', e);
-      return false;
-    }
-  }
-
-  // 检查是否在线
-  Future<bool> checkOnline() async {
-    try {
-      LogUtil.info('[SrunClient] 检查在线状态...');
-      final info = await getUserInfo();
-      final isOnline = info.isOnline;
-      LogUtil.info('[SrunClient] 在线状态: $isOnline');
-      return isOnline;
-    } catch (e) {
-      LogUtil.warning('[SrunClient] 检查在线状态失败: $e');
       return false;
     }
   }

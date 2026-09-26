@@ -55,7 +55,6 @@ class AuthConfig {
     required this.authServer,
     required this.userType,
     this.hasExplicitAcid = true,
-    this.createdAt,
   });
 
   final String username;
@@ -67,7 +66,6 @@ class AuthConfig {
 
   /// 运行时 [acid] 会使用默认值，但该标记保留空值是否明确可用。
   final bool hasExplicitAcid;
-  final String? createdAt;
 
   String get authenticatedUsername =>
       userType.isEmpty ? username : '$username@$userType';
@@ -80,7 +78,6 @@ class AuthConfig {
     String? authServer,
     String? userType,
     bool? hasExplicitAcid,
-    String? createdAt,
   }) {
     return AuthConfig(
       username: username ?? this.username,
@@ -90,7 +87,6 @@ class AuthConfig {
       authServer: authServer ?? this.authServer,
       userType: userType ?? this.userType,
       hasExplicitAcid: hasExplicitAcid ?? this.hasExplicitAcid,
-      createdAt: createdAt ?? this.createdAt,
     );
   }
 
@@ -102,7 +98,6 @@ class AuthConfig {
       'auto_acid': autoAcid,
       'auth_server': authServer,
       'user_type': userType,
-      'created_at': createdAt ?? DateTime.now().toIso8601String(),
     };
   }
 
@@ -119,7 +114,6 @@ class AuthConfig {
       autoAcid: _boolValue(json['auto_acid'], true),
       authServer: normalizeAuthServer(_stringValue(json['auth_server'])),
       userType: _stringValue(json['user_type']),
-      createdAt: _stringValue(json['created_at'], ''),
     );
   }
 }
