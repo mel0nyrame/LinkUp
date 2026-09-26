@@ -67,7 +67,10 @@ class AuthRuntimeClient {
       true;
 
   Future<void> _fire(String name, [Map<String, Object?>? args]) async {
-    await _command(name, args);
+    await _invoke(RuntimeContract.methodFireCommand, <String, Object?>{
+      RuntimeContract.keyName: name,
+      RuntimeContract.keyArgs: args,
+    });
   }
 
   Future<Object?> _command(String name, [Map<String, Object?>? args]) {

@@ -108,13 +108,18 @@ class MainActivity : FlutterActivity() {
                 result.success(null)
             }
 
-            AuthRuntimeBridge.METHOD_COMMAND -> {
+            AuthRuntimeBridge.METHOD_COMMAND, AuthRuntimeBridge.METHOD_FIRE_COMMAND -> {
                 val name = call.argument<String>(AuthRuntimeBridge.KEY_NAME)
                 if (name == null) {
                     result.error("invalid_command", "认证运行时命令缺少名称", null)
                     return
                 }
-                AuthRuntimeBridge.dispatch(name, call.argument<Map<String, Any?>>(AuthRuntimeBridge.KEY_ARGS), result)
+                AuthRuntimeBridge.dispatch(
+                    name,
+                    call.argument<Map<String, Any?>>(AuthRuntimeBridge.KEY_ARGS),
+                    if (call.method == AuthRuntimeBridge.METHOD_COMMAND) result else null,
+                )
+                if (call.method == AuthRuntimeBridge.METHOD_FIRE_COMMAND) result.success(null)
             }
 
             else -> result.notImplemented()

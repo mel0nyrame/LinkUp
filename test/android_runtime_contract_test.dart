@@ -71,6 +71,7 @@ void main() {
         'METHOD_READY': RuntimeContract.methodReady,
         'METHOD_STATE': RuntimeContract.methodState,
         'METHOD_COMMAND': RuntimeContract.methodCommand,
+        'METHOD_FIRE_COMMAND': RuntimeContract.methodFireCommand,
         'METHOD_ATTACH': RuntimeContract.methodAttach,
         'METHOD_DETACH': RuntimeContract.methodDetach,
         'METHOD_ON_STATE': RuntimeContract.methodOnState,
@@ -127,6 +128,7 @@ void main() {
       expect(mainActivity, contains('AuthRuntimeBridge.SYSTEM_CHANNEL'));
       expect(mainActivity, contains('AuthRuntimeBridge.UI_CHANNEL'));
       expect(mainActivity, contains('AuthRuntimeBridge.METHOD_COMMAND'));
+      expect(mainActivity, contains('AuthRuntimeBridge.METHOD_FIRE_COMMAND'));
       expect(settings, contains('AuthRuntimeBridge.PREFERENCES_NAME'));
       expect(settings, contains('AuthRuntimeBridge.PREFERENCE_PREFIX'));
       expect(
@@ -161,6 +163,16 @@ void main() {
       final ready = entrypoint.indexOf('controller.host.publishReady()');
       expect(registration, greaterThanOrEqualTo(0));
       expect(ready, greaterThan(registration));
+    });
+
+    test('无需回包的命令交给宿主后立即完成 UI 调用', () {
+      final handler = _methodBody(
+        mainActivity,
+        'private fun handleRuntimeCall(',
+      );
+      expect(handler, contains('AuthRuntimeBridge.METHOD_FIRE_COMMAND'));
+      expect(handler, contains('else null'));
+      expect(handler, contains('result.success(null)'));
     });
   });
 

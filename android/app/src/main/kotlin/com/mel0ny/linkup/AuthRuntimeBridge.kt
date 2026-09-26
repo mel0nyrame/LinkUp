@@ -30,6 +30,7 @@ object AuthRuntimeBridge {
     const val METHOD_READY = "ready"
     const val METHOD_STATE = "state"
     const val METHOD_COMMAND = "command"
+    const val METHOD_FIRE_COMMAND = "fireCommand"
     const val METHOD_ATTACH = "attach"
     const val METHOD_DETACH = "detach"
     const val METHOD_ON_STATE = "onState"

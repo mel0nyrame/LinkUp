@@ -317,7 +317,10 @@ void main() {
       expect(kicked, isTrue);
       expect(
         calls
-            .where((call) => call.method == 'command')
+            .where(
+              (call) =>
+                  call.method == 'command' || call.method == 'fireCommand',
+            )
             .map((call) => call.arguments),
         <Object?>[
           <String, Object?>{
@@ -338,6 +341,7 @@ void main() {
           },
         ],
       );
+      expect(calls.where((call) => call.method == 'fireCommand'), hasLength(2));
     });
 
     test('宿主推送的状态进入 UI 状态流', () async {
@@ -536,6 +540,7 @@ class _FakeUiHost {
         clients.remove('ui');
         return null;
       case 'command':
+      case 'fireCommand':
         final args = call.arguments;
         if (args is! Map) return null;
         final name = args['name'];
@@ -571,6 +576,7 @@ class _FakePlatformBridge {
         host.onState = null;
         return null;
       case 'command':
+      case 'fireCommand':
         final args = call.arguments;
         if (args is! Map) return null;
         final name = args['name'];

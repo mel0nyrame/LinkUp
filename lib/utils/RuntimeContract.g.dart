@@ -14,6 +14,7 @@ abstract final class RuntimeContract {
   static const String methodReady = "ready";
   static const String methodState = "state";
   static const String methodCommand = "command";
+  static const String methodFireCommand = "fireCommand";
   static const String methodAttach = "attach";
   static const String methodDetach = "detach";
   static const String methodOnState = "onState";
