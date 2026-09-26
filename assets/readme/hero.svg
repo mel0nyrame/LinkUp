@@ -26,7 +26,7 @@
       <circle cx="22" cy="20" r="6" fill="#37D67A"/>
       <text x="38" y="26" fill="#DDF8E8">已连接</text>
       <rect x="138" width="124" height="40" rx="20" fill="#123957"/>
-      <text x="158" y="26" fill="#B9CAD8">v1.0.7</text>
+      <text x="158" y="26" fill="#B9CAD8">v1.10.0</text>
     </g>
   </g>
 
