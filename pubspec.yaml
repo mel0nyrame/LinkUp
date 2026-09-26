@@ -44,7 +44,6 @@ dependencies:
   url_launcher: ^6.3.2
   package_info_plus: ^10.2.1
   open_filex: ^4.7.0
-  liquid_glass_renderer: ^0.2.0-dev.4
   lightweight_liquid_glass:
     git:
       url: https://github.com/surface-user/Flutter_liquid_glass.git
