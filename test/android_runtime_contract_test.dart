@@ -330,6 +330,36 @@ void main() {
       }
     });
 
+    test('校园 WiFi 非默认网络时认证流量仍走 WiFi，事件在主线程下发', () {
+      expect(manifest, contains('android.permission.CHANGE_NETWORK_STATE'));
+      expect(monitor, contains('bindProcessToNetwork(network)'));
+      expect(_methodBody(monitor, 'fun stop()'), contains('bind(null)'));
+      expect(monitor, contains('Handler(Looper.getMainLooper())'));
+      expect(
+        _methodBody(monitor, 'override fun onAvailable('),
+        contains('mainHandler.post'),
+      );
+      expect(
+        _methodBody(monitor, 'override fun onLost('),
+        contains('mainHandler.post'),
+      );
+    });
+
+    test('WiFi 切换时即使仍可用也通知协调器重建 HTTP 连接', () {
+      expect(
+        _methodBody(monitor, 'override fun onAvailable('),
+        contains('selectedNetwork = network'),
+      );
+      expect(
+        _methodBody(monitor, 'private fun report('),
+        contains('reportedNetwork == selectedNetwork'),
+      );
+      expect(
+        _methodBody(monitor, 'override fun onLost('),
+        contains('selectedNetwork = networks.firstOrNull()'),
+      );
+    });
+
     test('网络事件负载键在两侧拼写一致', () {
       expect(
         _methodBody(service, 'private fun startNetworkMonitor()'),
