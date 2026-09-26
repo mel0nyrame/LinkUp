@@ -31,6 +31,7 @@ void main() {
   final manifest = _read('android/app/src/main/AndroidManifest.xml');
   final state = _read('lib/utils/AuthRuntimeState.dart');
   final entrypoint = _read('lib/authRuntimeMain.dart');
+  final mainDart = _read('lib/main.dart');
   final monitor = _read(
     'android/app/src/main/kotlin/com/mel0ny/linkup/AuthRuntimeNetworkMonitor.kt',
   );
@@ -80,7 +81,7 @@ void main() {
     test('每个声明的命令都被运行时接受', () {
       for (final command in AuthRuntimeController.declaredCommands) {
         expect(
-          _methodBody(entrypoint, 'Future<void> _dispatch('),
+          _methodBody(entrypoint, 'Future<Object?> _dispatch('),
           isNot(contains(command)),
           reason: '入口只按位置解析命令名，不应硬编码 $command',
         );
@@ -93,14 +94,7 @@ void main() {
     });
 
     test('wire 键在两侧拼写一致', () {
-      _expectKeys(bridge, const [
-        'ready',
-        'state',
-        'commandResult',
-        'commandHandle',
-        'id',
-        'value',
-      ]);
+      _expectKeys(bridge, const ['ready', 'state', 'command', 'name', 'args']);
       _expectKeys(mainActivity, const [
         'attach',
         'detach',
@@ -117,7 +111,7 @@ void main() {
         'acid',
         'userInfo',
       ]);
-      _expectKeys(entrypoint, const ['id']);
+      _expectKeys(entrypoint, const ['command', 'name', 'args']);
     });
   });
 
@@ -218,18 +212,27 @@ void main() {
       expect(service, contains('GeneratedPluginRegistrant.registerWith('));
     });
 
-    test('通过 callback dispatcher 下发命令', () {
-      expect(bridge, contains('executeDartCallback'));
-      expect(bridge, contains('DartExecutor.DartCallback'));
+    test('服务启动一次后台入口，随后使用 MethodChannel 下发命令', () {
       expect(
         service,
         contains('linkupAuthRuntimeDispatcher'),
         reason: 'DartEntrypoint 必须指向保留的后台认证入口',
       );
       expect(entrypoint, contains("@pragma('vm:entry-point')"));
+      expect(bridge, isNot(contains('executeDartCallback(')));
+      expect(bridge, contains('invokeMethod("command"'));
+      expect(entrypoint, contains('setMethodCallHandler('));
     });
 
-    test('命令在回调句柄就绪前排队而不是丢弃', () {
+    test('主 Dart bundle 包含后台运行时入口库', () {
+      expect(
+        mainDart,
+        contains("import 'package:LinkUp/authRuntimeMain.dart'"),
+        reason: '后台 Engine 使用主 APK 的 Dart bundle，入口库必须可达',
+      );
+    });
+
+    test('命令在处理器就绪前排队而不是丢弃', () {
       expect(
         _methodBody(bridge, 'private fun send('),
         contains('queuedCommands.add(command)'),

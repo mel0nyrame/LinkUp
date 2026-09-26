@@ -38,16 +38,16 @@ void main() {
         ]),
         reason: '启动前先发布当前状态，启动后发布在线状态',
       );
-      expect(host.commandHandle, isNull, reason: '就绪句柄由入口单独发布');
+      expect(host.ready, isFalse, reason: '就绪通知由入口单独发布');
     });
 
-    test('命令句柄只发布一次并交给宿主用于 callback dispatcher', () async {
+    test('命令处理器注册完成后通知宿主', () async {
       final host = _FakeAuthRuntimeHost();
       final controller = _onlineController(host: host);
 
-      await host.publishCommandHandle(4242);
+      await host.publishReady();
 
-      expect(host.commandHandle, 4242);
+      expect(host.ready, isTrue);
       expect(controller.host, same(host));
     });
 
@@ -501,26 +501,20 @@ AuthRuntimeController _controller({
 
 class _FakeAuthRuntimeHost implements AuthRuntimeHost {
   final List<AuthRuntimeState> states = <AuthRuntimeState>[];
-  int? commandHandle;
-  final List<(int, Object?)> commandResults = <(int, Object?)>[];
+  bool ready = false;
 
   /// 模拟 Kotlin 侧 `AuthRuntimeBridge` 的状态转发：已注册客户端时推送到 UI 通道。
   void Function(AuthRuntimeState state)? onState;
 
   @override
-  Future<void> publishCommandHandle(int handle) async {
-    commandHandle = handle;
+  Future<void> publishReady() async {
+    ready = true;
   }
 
   @override
   Future<void> publishState(AuthRuntimeState state) async {
     states.add(state);
     onState?.call(state);
-  }
-
-  @override
-  Future<void> publishCommandResult(int requestId, Object? value) async {
-    commandResults.add((requestId, value));
   }
 }
 
