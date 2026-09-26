@@ -9,9 +9,21 @@ import 'package:LinkUp/authRuntimeMain.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  await LogUtil.init();
+  // 首屏只需要“配置是否存在”这个提示，它来自已加载的偏好，因此同步读一次就够。
   await SystemSettingsUtil.init();
   runApp(const MyApp());
+  // 日志文件和后台认证运行时都不参与首屏内容：前者要先走一次 path_provider
+  // 往返并创建文件，后者会拉起前台服务并弹系统通知权限对话框。放在 runApp 之前
+  // 会让打开应用先卡在这两件事上，界面连第一帧都画不出来。
+  WidgetsBinding.instance.addPostFrameCallback((_) => _prepareRuntime());
+}
+
+/// 首帧之后补齐不影响首屏内容的初始化。
+///
+/// 顺序与推迟前一致：日志先就绪，后台运行时出错的日志才落得住。
+Future<void> _prepareRuntime() async {
+  await LogUtil.init();
+  await SystemSettingsUtil.applyKeepAlive();
 }
 
 class MyApp extends StatelessWidget {
