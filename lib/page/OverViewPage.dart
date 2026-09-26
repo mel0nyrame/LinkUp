@@ -1,27 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:LinkUp/components/GlassCard.dart';
 import 'package:LinkUp/components/InfoDataRow.dart';
 import 'package:LinkUp/components/InfoCard.dart';
 import 'package:LinkUp/components/StatusCard.dart';
 import 'package:LinkUp/main.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/AuthRuntimeState.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
+
+typedef OverviewOperation = ({bool loading, String? message});
 
 class OverviewPage extends StatefulWidget {
-  final bool isLoading;
-  final String? statusMessage;
-  final bool isOnline;
-  final String? currentAcid;
-  final RadUserInfo? userInfo;
+  final ValueListenable<AuthRuntimeState> status;
+  final ValueListenable<RadUserInfo?> userInfo;
+  final ValueListenable<OverviewOperation> operation;
   final Future<void> Function()? onRefresh;
   final Future<bool> Function(String targetIp)? onKickDevice;
 
   const OverviewPage({
     super.key,
-    this.isLoading = false,
-    this.statusMessage,
-    this.isOnline = false,
-    this.currentAcid,
-    this.userInfo,
+    required this.status,
+    required this.userInfo,
+    required this.operation,
     this.onRefresh,
     this.onKickDevice,
   });
@@ -31,17 +32,6 @@ class OverviewPage extends StatefulWidget {
 }
 
 class _OverviewPageState extends State<OverviewPage> {
-  String? _getStatusText() {
-    if (widget.isOnline) return '已连接';
-    if (widget.statusMessage != null) {
-      if (widget.statusMessage!.contains('WiFi未开启')) return 'WiFi未开启';
-      if (widget.statusMessage!.contains('未找到配置')) return '未配置';
-      if (widget.statusMessage!.contains('账号或密码为空')) return '配置不完整';
-      return '未连接';
-    }
-    return null;
-  }
-
   String _formatBytes(int? bytes) {
     if (bytes == null || bytes <= 0) return '0 B';
     const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -69,10 +59,7 @@ class _OverviewPageState extends State<OverviewPage> {
 
   /// 判断指定设备是否应该显示「踢」按钮
   /// 三个条件全部满足：账号在线、设备总数 >= 2、设备不是当前自己
-  bool _shouldShowKickButton(OnlineDevice device) {
-    final info = widget.userInfo;
-    if (info == null) return false;
-    if (!widget.isOnline) return false;
+  bool _shouldShowKickButton(OnlineDevice device, RadUserInfo info) {
     final total = int.tryParse(info.onlineDeviceTotal ?? '0') ?? 0;
     if (total < 2) return false;
     if (device.ip != null && device.ip == info.clientIp) return false;
@@ -119,28 +106,15 @@ class _OverviewPageState extends State<OverviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    final userInfo = widget.userInfo;
-    final online = widget.isOnline;
-
-    String? detailText;
-    if (widget.isLoading && widget.currentAcid != null) {
-      detailText = '正在尝试 ACID: ${widget.currentAcid}';
-    } else if (widget.statusMessage != null) {
-      detailText = widget.statusMessage;
-    }
-
     return RefreshIndicator(
       color: MyApp.iosBlue,
-      onRefresh: () async {
-        await widget.onRefresh?.call();
-      },
+      onRefresh: () async => widget.onRefresh?.call(),
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // Large title header
-          SliverToBoxAdapter(
+          const SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
               child: Text(
                 'LinkUp',
                 style: TextStyle(
@@ -154,231 +128,270 @@ class _OverviewPageState extends State<OverviewPage> {
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                online ? '网络已连接' : '网络监控中',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: online ? MyApp.iosGreen : MyApp.iosSecondaryText,
+            child: ValueListenableBuilder<AuthRuntimeState>(
+              valueListenable: widget.status,
+              builder: (context, state, child) => Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  state.isOnline ? '网络已连接' : '网络监控中',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: state.isOnline
+                        ? MyApp.iosGreen
+                        : MyApp.iosSecondaryText,
+                  ),
                 ),
               ),
             ),
           ),
-
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // Status card
-                Statuscard(
-                  isOnline: online,
-                  statusText: _getStatusText(),
-                  detailText: detailText,
-                  errorMsg: online ? null : widget.statusMessage,
+                ValueListenableBuilder<AuthRuntimeState>(
+                  valueListenable: widget.status,
+                  builder: (context, state, child) =>
+                      ValueListenableBuilder<OverviewOperation>(
+                        valueListenable: widget.operation,
+                        builder: (context, operation, child) {
+                          final presentation = state.presentation;
+                          final loading =
+                              operation.loading || presentation.loading;
+                          final online = state.isOnline && !operation.loading;
+                          final message =
+                              operation.message ?? presentation.detail;
+                          final detail = operation.loading
+                              ? operation.message
+                              : presentation.loading
+                              ? '正在尝试 ACID: ${state.acid ?? defaultAcid}'
+                              : message;
+                          return Column(
+                            children: [
+                              Statuscard(
+                                isOnline: online,
+                                statusText: operation.loading
+                                    ? '正在注销'
+                                    : presentation.title,
+                                detailText: detail,
+                              ),
+                              const SizedBox(height: 16),
+                              if (loading)
+                                GlassCard(
+                                  child: Row(
+                                    children: [
+                                      const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(message ?? '正在连接...'),
+                                    ],
+                                  ),
+                                ),
+                              if (!loading && !online && message != null)
+                                GlassCard(
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.info_outline,
+                                        color: MyApp.iosRed,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: Text(message)),
+                                    ],
+                                  ),
+                                ),
+                              if (loading || (!online && message != null))
+                                const SizedBox(height: 16),
+                            ],
+                          );
+                        },
+                      ),
                 ),
+                ValueListenableBuilder<AuthRuntimeState>(
+                  valueListenable: widget.status,
+                  builder: (context, state, child) =>
+                      ValueListenableBuilder<OverviewOperation>(
+                        valueListenable: widget.operation,
+                        builder: (context, operation, child) =>
+                            ValueListenableBuilder<RadUserInfo?>(
+                              valueListenable: widget.userInfo,
+                              builder: (context, rawInfo, child) {
+                                final userInfo =
+                                    state.isOnline && !operation.loading
+                                    ? rawInfo
+                                    : null;
+                                return Column(
+                                  children: [
+                                    // Device card
+                                    if (userInfo != null && userInfo.isOnline)
+                                      _buildDeviceCard(userInfo)
+                                    else
+                                      const InfoCard(
+                                        icon: Icons.devices,
+                                        title: '在线设备',
+                                        children: [],
+                                      ),
 
-                const SizedBox(height: 16),
+                                    const SizedBox(height: 16),
 
-                // Loading indicator
-                if (widget.isLoading)
-                  GlassCard(
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: MyApp.iosBlue,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          widget.statusMessage ?? '正在连接...',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Color(0xFF8E8E93),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                                    // Network info
+                                    if (userInfo != null && userInfo.isOnline)
+                                      InfoCard(
+                                        icon: Icons.wifi,
+                                        title: '网络信息',
+                                        children: [
+                                          InfoDataRow(
+                                            label: 'IP 地址',
+                                            value: userInfo.onlineIp,
+                                            icon: Icons.laptop_mac,
+                                          ),
+                                          InfoDataRow(
+                                            label: 'IPv6',
+                                            value: userInfo.onlineIp6,
+                                            icon: Icons.lan_outlined,
+                                          ),
+                                          InfoDataRow(
+                                            label: 'MAC',
+                                            value: userInfo.userMac,
+                                            icon: Icons.fingerprint,
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      const InfoCard(
+                                        icon: Icons.wifi,
+                                        title: '网络信息',
+                                        children: [],
+                                      ),
 
-                // Error card
-                if (!widget.isLoading &&
-                    !online &&
-                    widget.statusMessage != null)
-                  GlassCard(
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline,
-                          color: MyApp.iosRed,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            widget.statusMessage!,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              color: Colors.black,
+                                    const SizedBox(height: 16),
+
+                                    // Traffic
+                                    if (userInfo != null && userInfo.isOnline)
+                                      InfoCard(
+                                        icon: Icons.insert_chart_outlined,
+                                        title: '流量统计',
+                                        children: [
+                                          InfoDataRow(
+                                            label: '本次会话',
+                                            value: _formatBytes(
+                                              userInfo.allBytes,
+                                            ),
+                                            icon: Icons.arrow_circle_down,
+                                            valueColor: MyApp.iosBlue,
+                                          ),
+                                          InfoDataRow(
+                                            label: '累计流量',
+                                            value: _formatBytes(
+                                              userInfo.sumBytes,
+                                            ),
+                                            icon: Icons.layers,
+                                            valueColor: const Color(0xFFAF52DE),
+                                          ),
+                                          InfoDataRow(
+                                            label: '剩余流量',
+                                            value: _formatBytes(
+                                              userInfo.remainBytes,
+                                            ),
+                                            icon: Icons.pie_chart,
+                                            valueColor: MyApp.iosGreen,
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      const InfoCard(
+                                        icon: Icons.insert_chart_outlined,
+                                        title: '流量统计',
+                                        children: [],
+                                      ),
+
+                                    const SizedBox(height: 16),
+
+                                    // Time
+                                    if (userInfo != null && userInfo.isOnline)
+                                      InfoCard(
+                                        icon: Icons.timer,
+                                        title: '在线时长',
+                                        children: [
+                                          InfoDataRow(
+                                            label: '本次登录',
+                                            value: _formatTimestamp(
+                                              userInfo.addTime,
+                                            ),
+                                            icon: Icons.login,
+                                          ),
+                                          InfoDataRow(
+                                            label: '累计在线',
+                                            value: _formatDuration(
+                                              userInfo.sumSeconds,
+                                            ),
+                                            icon: Icons.hourglass_bottom,
+                                          ),
+                                          InfoDataRow(
+                                            label: '剩余时长',
+                                            value:
+                                                userInfo.remainSeconds ==
+                                                        null ||
+                                                    userInfo.remainSeconds == 0
+                                                ? '无限制'
+                                                : _formatDuration(
+                                                    userInfo.remainSeconds,
+                                                  ),
+                                            icon: Icons.timelapse,
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      const InfoCard(
+                                        icon: Icons.timer,
+                                        title: '在线时长',
+                                        children: [],
+                                      ),
+
+                                    const SizedBox(height: 16),
+
+                                    // Account + Finance combined
+                                    if (userInfo != null && userInfo.isOnline)
+                                      InfoCard(
+                                        icon: Icons.account_circle,
+                                        title: '账户',
+                                        children: [
+                                          InfoDataRow(
+                                            label: '用户名',
+                                            value: userInfo.userName,
+                                            icon: Icons.person,
+                                          ),
+                                          InfoDataRow(
+                                            label: '套餐',
+                                            value: userInfo.productsName,
+                                            icon: Icons.card_giftcard,
+                                          ),
+                                          InfoDataRow(
+                                            label: '余额',
+                                            value: '¥${userInfo.userBalance}',
+                                            icon: Icons.credit_card,
+                                            valueColor: MyApp.iosGreen,
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      const InfoCard(
+                                        icon: Icons.account_circle,
+                                        title: '账户',
+                                        children: [],
+                                      ),
+                                  ],
+                                );
+                              },
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                if (widget.isLoading ||
-                    (!online && widget.statusMessage != null))
-                  const SizedBox(height: 16),
-
-                // Device card
-                if (userInfo != null && userInfo.isOnline)
-                  _buildDeviceCard(userInfo)
-                else
-                  const InfoCard(
-                    icon: Icons.devices,
-                    title: '在线设备',
-                    children: [],
-                  ),
-
-                const SizedBox(height: 16),
-
-                // Network info
-                if (userInfo != null && userInfo.isOnline)
-                  InfoCard(
-                    icon: Icons.wifi,
-                    title: '网络信息',
-                    children: [
-                      InfoDataRow(
-                        label: 'IP 地址',
-                        value: userInfo.onlineIp,
-                        icon: Icons.laptop_mac,
                       ),
-                      InfoDataRow(
-                        label: 'IPv6',
-                        value: userInfo.onlineIp6,
-                        icon: Icons.lan_outlined,
-                      ),
-                      InfoDataRow(
-                        label: 'MAC',
-                        value: userInfo.userMac,
-                        icon: Icons.fingerprint,
-                      ),
-                    ],
-                  )
-                else
-                  const InfoCard(icon: Icons.wifi, title: '网络信息', children: []),
-
-                const SizedBox(height: 16),
-
-                // Traffic
-                if (userInfo != null && userInfo.isOnline)
-                  InfoCard(
-                    icon: Icons.insert_chart_outlined,
-                    title: '流量统计',
-                    children: [
-                      InfoDataRow(
-                        label: '本次会话',
-                        value: _formatBytes(userInfo.allBytes),
-                        icon: Icons.arrow_circle_down,
-                        valueColor: MyApp.iosBlue,
-                      ),
-                      InfoDataRow(
-                        label: '累计流量',
-                        value: _formatBytes(userInfo.sumBytes),
-                        icon: Icons.layers,
-                        valueColor: const Color(0xFFAF52DE),
-                      ),
-                      InfoDataRow(
-                        label: '剩余流量',
-                        value: _formatBytes(userInfo.remainBytes),
-                        icon: Icons.pie_chart,
-                        valueColor: MyApp.iosGreen,
-                      ),
-                    ],
-                  )
-                else
-                  const InfoCard(
-                    icon: Icons.insert_chart_outlined,
-                    title: '流量统计',
-                    children: [],
-                  ),
-
-                const SizedBox(height: 16),
-
-                // Time
-                if (userInfo != null && userInfo.isOnline)
-                  InfoCard(
-                    icon: Icons.timer,
-                    title: '在线时长',
-                    children: [
-                      InfoDataRow(
-                        label: '本次登录',
-                        value: _formatTimestamp(userInfo.addTime),
-                        icon: Icons.login,
-                      ),
-                      InfoDataRow(
-                        label: '累计在线',
-                        value: _formatDuration(userInfo.sumSeconds),
-                        icon: Icons.hourglass_bottom,
-                      ),
-                      InfoDataRow(
-                        label: '剩余时长',
-                        value:
-                            userInfo.remainSeconds == null ||
-                                userInfo.remainSeconds == 0
-                            ? '无限制'
-                            : _formatDuration(userInfo.remainSeconds),
-                        icon: Icons.timelapse,
-                      ),
-                    ],
-                  )
-                else
-                  const InfoCard(
-                    icon: Icons.timer,
-                    title: '在线时长',
-                    children: [],
-                  ),
-
-                const SizedBox(height: 16),
-
-                // Account + Finance combined
-                if (userInfo != null && userInfo.isOnline)
-                  InfoCard(
-                    icon: Icons.account_circle,
-                    title: '账户',
-                    children: [
-                      InfoDataRow(
-                        label: '用户名',
-                        value: userInfo.userName,
-                        icon: Icons.person,
-                      ),
-                      InfoDataRow(
-                        label: '套餐',
-                        value: userInfo.productsName,
-                        icon: Icons.card_giftcard,
-                      ),
-                      InfoDataRow(
-                        label: '余额',
-                        value: '¥${userInfo.userBalance}',
-                        icon: Icons.credit_card,
-                        valueColor: MyApp.iosGreen,
-                      ),
-                    ],
-                  )
-                else
-                  const InfoCard(
-                    icon: Icons.account_circle,
-                    title: '账户',
-                    children: [],
-                  ),
-
+                ),
                 const SizedBox(height: 32),
-                // Space for floating pill nav
                 const SizedBox(height: 80),
               ]),
             ),
@@ -503,7 +516,7 @@ class _OverviewPageState extends State<OverviewPage> {
                         ),
                       ),
                     ),
-                    if (_shouldShowKickButton(d))
+                    if (_shouldShowKickButton(d, info))
                       TextButton.icon(
                         onPressed: () => _showKickConfirmDialog(d),
                         icon: const Icon(

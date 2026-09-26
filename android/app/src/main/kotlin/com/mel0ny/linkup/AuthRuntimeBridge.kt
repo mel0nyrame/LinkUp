@@ -40,6 +40,7 @@ object AuthRuntimeBridge {
     const val KEY_STATUS = "status"
     const val KEY_IS_ONLINE = "isOnline"
     const val KEY_MESSAGE = "message"
+    const val KEY_REASON = "reason"
     const val KEY_ACID = "acid"
     const val KEY_RETRY_AFTER_SECONDS = "retryAfterSeconds"
     const val KEY_USER_INFO = "userInfo"

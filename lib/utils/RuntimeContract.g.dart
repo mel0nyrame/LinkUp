@@ -23,6 +23,7 @@ abstract final class RuntimeContract {
   static const String keyStatus = "status";
   static const String keyIsOnline = "isOnline";
   static const String keyMessage = "message";
+  static const String keyReason = "reason";
   static const String keyAcid = "acid";
   static const String keyRetryAfterSeconds = "retryAfterSeconds";
   static const String keyUserInfo = "userInfo";

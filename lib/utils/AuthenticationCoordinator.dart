@@ -36,7 +36,6 @@ class RealityProbeResult {
 
 enum AuthenticationStatus {
   stopped,
-  idle,
   checking,
   authenticating,
   online,
@@ -48,6 +47,38 @@ enum AuthenticationStatus {
   stale,
 }
 
+enum AuthenticationReason {
+  none,
+  wifiUnavailable,
+  missingConfig,
+  invalidCredentials,
+  invalidAcid,
+  networkUnavailable,
+  serverUnavailable,
+  unknown,
+}
+
+AuthenticationReason _loginFailureReason(LoginErrorType errorType) {
+  switch (errorType) {
+    case LoginErrorType.authFailed:
+      return AuthenticationReason.invalidCredentials;
+    case LoginErrorType.acIdError:
+      return AuthenticationReason.invalidAcid;
+    case LoginErrorType.ipNotAllowed:
+    case LoginErrorType.networkError:
+      return AuthenticationReason.networkUnavailable;
+    case LoginErrorType.httpError:
+    case LoginErrorType.serverError:
+    case LoginErrorType.challengeExpired:
+    case LoginErrorType.parseError:
+      return AuthenticationReason.serverUnavailable;
+    case LoginErrorType.success:
+    case LoginErrorType.alreadyOnline:
+    case LoginErrorType.unknown:
+      return AuthenticationReason.unknown;
+  }
+}
+
 class AuthenticationState {
   const AuthenticationState({
     required this.status,
@@ -55,6 +86,7 @@ class AuthenticationState {
     this.userInfo,
     this.parameters,
     this.retryAfter,
+    this.reason = AuthenticationReason.none,
   });
 
   final AuthenticationStatus status;
@@ -62,6 +94,7 @@ class AuthenticationState {
   final RadUserInfo? userInfo;
   final AuthParameters? parameters;
   final Duration? retryAfter;
+  final AuthenticationReason reason;
 
   bool get isOnline =>
       status == AuthenticationStatus.online ||
@@ -77,6 +110,7 @@ class AuthenticationResult {
     this.candidate,
     this.diagnosticEnc,
     this.persistenceFailed = false,
+    this.reason = AuthenticationReason.none,
   });
 
   final AuthenticationStatus status;
@@ -86,6 +120,7 @@ class AuthenticationResult {
   final AcidCandidate? candidate;
   final String? diagnosticEnc;
   final bool persistenceFailed;
+  final AuthenticationReason reason;
 
   bool get isOnline =>
       status == AuthenticationStatus.online ||
@@ -98,6 +133,7 @@ class AuthenticationResult {
     message: message,
     userInfo: userInfo,
     parameters: parameters,
+    reason: reason,
   );
 }
 
@@ -527,6 +563,7 @@ class AuthenticationCoordinator {
           status: AuthenticationStatus.backingOff,
           message: result.message,
           retryAfter: delay,
+          reason: result.reason,
         ),
       );
     }
@@ -555,7 +592,7 @@ class AuthenticationCoordinator {
       if (config == null ||
           config.username.isEmpty ||
           config.password.isEmpty) {
-        return _failed('未找到有效认证配置');
+        return _failed('未找到有效认证配置', reason: AuthenticationReason.missingConfig);
       }
 
       final server = normalizeAuthServer(config.authServer);
@@ -591,7 +628,12 @@ class AuthenticationCoordinator {
       }
 
       final ip = _ipFrom(userInfo);
-      if (ip.isEmpty) return _failed('无法获取本机 IP');
+      if (ip.isEmpty) {
+        return _failed(
+          '无法获取本机 IP',
+          reason: AuthenticationReason.networkUnavailable,
+        );
+      }
 
       final candidate = await _selectCandidate(
         config: config,
@@ -600,7 +642,9 @@ class AuthenticationCoordinator {
         server: server,
         generation: generation,
       );
-      if (candidate == null) return _failed('无法确定 ACID');
+      if (candidate == null) {
+        return _failed('无法确定 ACID', reason: AuthenticationReason.invalidAcid);
+      }
       if (_cancelled(cancellation)) return _cancelledResult();
       if (!_isCurrent(server, generation)) return _staleResult();
 
@@ -628,7 +672,10 @@ class AuthenticationCoordinator {
         ip: parameters.ip,
       );
       if (!challenge.isSuccess || challenge.challenge.isEmpty) {
-        return _failed('获取认证令牌失败');
+        return _failed(
+          '获取认证令牌失败',
+          reason: AuthenticationReason.serverUnavailable,
+        );
       }
       if (_cancelled(cancellation)) return _cancelledResult();
       if (!_isCurrent(server, generation)) return _staleResult();
@@ -642,14 +689,20 @@ class AuthenticationCoordinator {
       if (_cancelled(cancellation)) return _cancelledResult();
       if (!_isCurrent(server, generation)) return _staleResult();
       if (!loginResult.success) {
-        return _failed('登录失败: ${loginResult.message}');
+        return _failed(
+          '登录失败: ${loginResult.message}',
+          reason: _loginFailureReason(loginResult.errorType),
+        );
       }
 
       final confirmed = await protocol.getUserInfo(server);
       if (_cancelled(cancellation)) return _cancelledResult();
       if (!_isCurrent(server, generation)) return _staleResult();
       if (!confirmed.isOnline) {
-        return _failed('登录后在线确认失败');
+        return _failed(
+          '登录后在线确认失败',
+          reason: AuthenticationReason.serverUnavailable,
+        );
       }
 
       if (!await _serverStillCurrent(server)) return _staleResult();
@@ -687,7 +740,7 @@ class AuthenticationCoordinator {
       return result;
     } on ConfigStorageException {
       LogUtil.warning('认证配置不可用');
-      return _failed('认证配置不可用，请重试');
+      return _failed('认证配置不可用，请重试', reason: AuthenticationReason.missingConfig);
     } catch (_, stackTrace) {
       LogUtil.error('认证流程异常', null, stackTrace);
       return _failed('认证流程异常，请重试');
@@ -765,15 +818,20 @@ class AuthenticationCoordinator {
     final result = AuthenticationResult(
       status: AuthenticationStatus.offline,
       message: message,
+      reason: AuthenticationReason.wifiUnavailable,
     );
     _emit(result.state);
     return result;
   }
 
-  AuthenticationResult _failed(String message) {
+  AuthenticationResult _failed(
+    String message, {
+    AuthenticationReason reason = AuthenticationReason.unknown,
+  }) {
     final result = AuthenticationResult(
       status: AuthenticationStatus.failed,
       message: message,
+      reason: reason,
     );
     _emit(result.state);
     return result;

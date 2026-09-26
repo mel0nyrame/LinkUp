@@ -145,6 +145,21 @@ void main() {
   });
 
   group('常驻通知内容', () {
+    test('可操作错误原因在跨语言快照中保持类型', () {
+      const state = AuthRuntimeState(
+        status: AuthenticationStatus.failed,
+        isOnline: false,
+        reason: AuthenticationReason.invalidCredentials,
+        message: '登录失败',
+      );
+      final restored = AuthRuntimeState.fromMap(state.toMap());
+
+      expect(restored.reason, AuthenticationReason.invalidCredentials);
+      expect(restored.presentation.title, '账号验证失败');
+      expect(restored.presentation.needsAction, isTrue);
+      expect(notificationContentFor(restored).text, '认证未完成，将自动重试');
+    });
+
     test('协调器状态变化映射为持续可见的认证状态文案', () {
       expect(
         notificationContentFor(

@@ -80,6 +80,7 @@ void main() {
         'KEY_STATUS': RuntimeContract.keyStatus,
         'KEY_IS_ONLINE': RuntimeContract.keyIsOnline,
         'KEY_MESSAGE': RuntimeContract.keyMessage,
+        'KEY_REASON': RuntimeContract.keyReason,
         'KEY_ACID': RuntimeContract.keyAcid,
         'KEY_RETRY_AFTER_SECONDS': RuntimeContract.keyRetryAfterSeconds,
         'KEY_USER_INFO': RuntimeContract.keyUserInfo,

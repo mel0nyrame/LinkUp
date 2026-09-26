@@ -171,6 +171,7 @@ void main() {
       realityResult: const RealityProbeResult(acid: '143'),
       userInfo: [RadUserInfo(clientIp: '10.0.0.8', error: '')],
       loginSuccess: false,
+      loginErrorType: LoginErrorType.authFailed,
     );
     final config = _FakeConfigSource(_config());
     final coordinator = AuthenticationCoordinator(
@@ -182,6 +183,8 @@ void main() {
     final result = await coordinator.check();
 
     expect(result.status, AuthenticationStatus.failed);
+    expect(result.reason, AuthenticationReason.invalidCredentials);
+    expect(coordinator.state.reason, AuthenticationReason.invalidCredentials);
     expect(config.updates, isEmpty);
   });
 
