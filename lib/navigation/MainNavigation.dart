@@ -244,6 +244,15 @@ class _MainNavigatorState extends State<MainNavigator> {
           backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
         ),
       );
+    } on AuthRuntimeUnavailableException {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _statusMessage = '后台认证运行时不可用';
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('后台认证运行时不可用，请稍后重试')));
+      }
     } catch (error, stackTrace) {
       LogUtil.error('注销异常', error, stackTrace);
       if (mounted) {
@@ -270,6 +279,12 @@ class _MainNavigatorState extends State<MainNavigator> {
         ),
       );
       return success;
+    } on AuthRuntimeUnavailableException {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('后台认证运行时不可用，请稍后重试')));
+      }
+      return false;
     } catch (error, stackTrace) {
       LogUtil.error('踢设备异常', error, stackTrace);
       if (mounted) {

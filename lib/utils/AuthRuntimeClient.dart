@@ -6,6 +6,10 @@ import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
+class AuthRuntimeUnavailableException implements Exception {
+  const AuthRuntimeUnavailableException();
+}
+
 /// UI 侧对后台认证运行时的窄客户端。
 ///
 /// 概况页和设置页只通过它订阅状态、发送命令。Activity 的 FlutterEngine 不创建
@@ -30,7 +34,7 @@ class AuthRuntimeClient {
     if (_attached) return;
     _channel.setMethodCallHandler(_handleHostCall);
     _attached = true;
-    final latest = await _invoke(RuntimeContract.methodAttach);
+    final latest = await _invoke(RuntimeContract.methodAttach, null);
     // 宿主先推送再回包，因此回包只用于补上尚未收到过的首个状态，避免旧值
     // 覆盖已经到达的更新。
     if (latest is Map && !_receivedState) _addState(latest);
@@ -40,7 +44,7 @@ class AuthRuntimeClient {
   Future<void> detach() async {
     if (!_attached) return;
     _attached = false;
-    await _invoke(RuntimeContract.methodDetach);
+    await _invoke(RuntimeContract.methodDetach, null);
     _channel.setMethodCallHandler(null);
   }
 
@@ -77,14 +81,19 @@ class AuthRuntimeClient {
     return _invoke(RuntimeContract.methodCommand, <String, Object?>{
       RuntimeContract.keyName: name,
       RuntimeContract.keyArgs: args,
-    });
+    }, throwOnFailure: true);
   }
 
-  Future<Object?> _invoke(String method, [Object? arguments]) async {
+  Future<Object?> _invoke(
+    String method,
+    Object? arguments, {
+    bool throwOnFailure = false,
+  }) async {
     try {
       return await _channel.invokeMethod<Object?>(method, arguments);
     } catch (error, stackTrace) {
       await LogUtil.error('认证运行时命令失败: $method', error, stackTrace);
+      if (throwOnFailure) throw const AuthRuntimeUnavailableException();
       return null;
     }
   }

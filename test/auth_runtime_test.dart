@@ -344,6 +344,23 @@ void main() {
       expect(calls.where((call) => call.method == 'fireCommand'), hasLength(2));
     });
 
+    test('运行时通道失败与业务失败分别返回', () async {
+      final client = AuthRuntimeClient(channel: uiChannel);
+      addTearDown(client.dispose);
+      await client.attach();
+
+      expect(await client.logout(), isFalse);
+      host.commandError = PlatformException(code: 'runtime_gone');
+      await expectLater(
+        client.logout(),
+        throwsA(isA<AuthRuntimeUnavailableException>()),
+      );
+      await expectLater(
+        client.kickDevice('10.0.0.9'),
+        throwsA(isA<AuthRuntimeUnavailableException>()),
+      );
+    });
+
     test('宿主推送的状态进入 UI 状态流', () async {
       final client = AuthRuntimeClient(channel: uiChannel);
       addTearDown(client.dispose);
@@ -530,6 +547,7 @@ class _FakeUiHost {
   Map<String, Object?>? latest;
   final List<String> clients = <String>[];
   final Map<String, Object?> commandResults = <String, Object?>{};
+  Object? commandError;
 
   Future<Object?> handle(MethodCall call) async {
     switch (call.method) {
@@ -541,6 +559,9 @@ class _FakeUiHost {
         return null;
       case 'command':
       case 'fireCommand':
+        if (call.method == 'command' && commandError != null) {
+          throw commandError!;
+        }
         final args = call.arguments;
         if (args is! Map) return null;
         final name = args['name'];
