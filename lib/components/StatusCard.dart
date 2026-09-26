@@ -6,7 +6,10 @@ import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
 /// 状态卡随概况页滚动，身后只有静态渐变，采样背景没有视觉收益，持续滑动
 /// 却要反复读取背景。关闭模糊后由 [GlassStyle.backgroundGradient] 提供
 /// 半透明卡面，配套的 `fallbackColor` 必须显式给 `Colors.transparent`，
-/// 否则会回退到上游的不透明底色。
+/// 否则会回退到上游的不透明底色（上游在高对比度或减少透明度下会去掉渐变、
+/// 只留 `fallbackColor` 与描边；本应用没有安装 `LiquidGlassTheme`，也没有主动
+/// 开启这两个开关，因此不为此另开分支，若真机上这两个开关可达，需要重新
+/// 评估卡面）。
 const GlassStyle _statusCardStyle = GlassStyle(
   blurEnabled: false,
   borderRadius: BorderRadius.all(Radius.circular(20)),

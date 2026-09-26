@@ -54,16 +54,13 @@ void main() {
     expect(find.textContaining('Portal 返回错误'), findsOneWidget);
   });
 
-  testWidgets('状态卡与底部导航共用玻璃表面', (tester) async {
+  testWidgets('状态卡用共用玻璃表面绘制，且不采样滚动背景', (tester) async {
     await tester.pumpWidget(_host(const Statuscard(isOnline: true)));
 
-    // 观感由同一个组件承载，状态卡与导航的差异只体现在是否采样背景。
+    // 状态卡和底部导航都用 GlassSurface 承载观感，观感本身无法从外部量出；
+    // 两者在实现上唯一的差别是导航保留实时模糊，这一条可以从卡内是否出现
+    // 背景采样看出来。
     expect(find.byType(GlassSurface), findsOneWidget);
-  });
-
-  testWidgets('状态卡不采样滚动背景', (tester) async {
-    await tester.pumpWidget(_host(const Statuscard(isOnline: true)));
-
     // 状态卡随概况页滚动，身后只有静态渐变：采样背景没有视觉收益，
     // 持续滑动却要重复读取背景。导航的实时模糊不应出现在状态卡内。
     expect(
