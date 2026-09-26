@@ -397,11 +397,14 @@ class AuthenticationCoordinator {
     unawaited(check());
   }
 
-  Future<AuthenticationResult> configurationChanged({
-    required bool hasConfig,
-  }) async {
+  Future<AuthenticationResult> configurationChanged() async {
     await stop();
-    if (!hasConfig || _disposed) return _stoppedResult();
+    if (_disposed) return _stoppedResult();
+    try {
+      if (await configSource.loadFacts() == null) return _stoppedResult();
+    } catch (_) {
+      return _stoppedResult();
+    }
     return start();
   }
 

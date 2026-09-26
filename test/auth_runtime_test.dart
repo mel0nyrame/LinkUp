@@ -100,16 +100,18 @@ void main() {
       final host = _FakeAuthRuntimeHost();
       final scheduler = _FakeAuthenticationScheduler();
       final protocol = _FakeProtocol();
+      final config = _FakeConfigSource();
       final controller = _controller(
         host: host,
         scheduler: scheduler,
         protocol: protocol,
+        configSource: config,
       );
 
       await controller.execute(AuthRuntimeController.commandStart);
+      config.config = null;
       await controller.execute(
         AuthRuntimeController.commandConfigurationChanged,
-        <String, Object?>{'hasConfig': false},
       );
 
       expect(scheduler.hasPending, isFalse);
@@ -309,7 +311,7 @@ void main() {
       await client.manualCheck();
       final loggedOut = await client.logout();
       final kicked = await client.kickDevice('10.0.0.9');
-      await client.configurationChanged(hasConfig: false);
+      await client.configurationChanged();
 
       expect(loggedOut, isFalse);
       expect(kicked, isTrue);
@@ -332,7 +334,7 @@ void main() {
           },
           <String, Object?>{
             'name': AuthRuntimeController.commandConfigurationChanged,
-            'args': <String, Object?>{'hasConfig': false},
+            'args': null,
           },
         ],
       );
@@ -486,10 +488,11 @@ AuthRuntimeController _controller({
   required _FakeAuthRuntimeHost host,
   required _FakeAuthenticationScheduler scheduler,
   required _FakeProtocol protocol,
+  _FakeConfigSource? configSource,
 }) {
   return AuthRuntimeController(
     coordinator: AuthenticationCoordinator(
-      configSource: _FakeConfigSource(),
+      configSource: configSource ?? _FakeConfigSource(),
       protocol: protocol,
       protocolFactory: () => protocol,
       networkState: _FakeNetworkState(),

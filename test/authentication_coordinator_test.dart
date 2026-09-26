@@ -1003,15 +1003,17 @@ void main() {
         RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
       ],
     );
+    final config = _FakeConfigSource(_config());
     final coordinator = AuthenticationCoordinator(
-      configSource: _FakeConfigSource(_config()),
+      configSource: config,
       protocol: protocol,
       networkState: _FakeNetworkState(),
       scheduler: scheduler,
     );
 
     await coordinator.start();
-    await coordinator.configurationChanged(hasConfig: false);
+    config.config = null;
+    await coordinator.configurationChanged();
 
     expect(coordinator.state.status, AuthenticationStatus.stopped);
     expect(scheduler.hasPending, isFalse);
@@ -1044,7 +1046,7 @@ void main() {
 
     await coordinator.start();
     config.config = _config().copyWith(authServer: '10.129.1.2');
-    final result = await coordinator.configurationChanged(hasConfig: true);
+    final result = await coordinator.configurationChanged();
 
     expect(result.status, AuthenticationStatus.online);
     expect(firstProtocol.disposeCalls, 1);
@@ -1139,7 +1141,7 @@ List<RadUserInfo> _notAuthenticatedResponses(int attempts) {
 class _FakeConfigSource extends AuthenticationConfigSource {
   _FakeConfigSource(this.config, {this.updateSucceeds = true});
 
-  AuthConfig config;
+  AuthConfig? config;
   final bool updateSucceeds;
   final updates = <ConfigUpdate>[];
 

@@ -120,6 +120,46 @@ void main() {
     expect(facts.toString(), isNot(contains(_fixtureValue('legacy'))));
   });
 
+  test('配置写入统一同步派生标记并通知认证运行时', () async {
+    final configured = <bool>[];
+    var notifications = 0;
+    final manager = ConfigManager(
+      repository: repository,
+      writeConfiguredHint: (value) async => configured.add(value),
+      notifyRuntime: () async => notifications++,
+    );
+    final config = AuthConfig(
+      username: 'fixture-user',
+      password: _fixtureValue('manager'),
+      acid: '143',
+      autoAcid: true,
+      authServer: defaultAuthServer,
+      userType: '',
+    );
+
+    expect(await manager.save(config), isTrue);
+    expect(configured, [true]);
+    expect(notifications, 1);
+
+    expect(await manager.update(const ConfigUpdate(acid: '5')), isTrue);
+    expect(configured, [true, true]);
+    expect(notifications, 2);
+
+    expect(
+      await manager.update(
+        const ConfigUpdate(acid: '6'),
+        canPersist: () => true,
+      ),
+      isTrue,
+    );
+    expect(configured, [true, true]);
+    expect(notifications, 2);
+
+    expect(await manager.delete(), isTrue);
+    expect(configured, [true, true, false]);
+    expect(notifications, 3);
+  });
+
   test('user_type 的空字符串明确清空并影响认证用户名', () async {
     final password = _fixtureValue('user-type');
     await repository.save(

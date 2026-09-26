@@ -71,9 +71,7 @@ class AuthRuntimeController {
         if (ip is! String || ip.isEmpty) return false;
         return coordinator.kickDevice(ip);
       case commandConfigurationChanged:
-        await coordinator.configurationChanged(
-          hasConfig: args?['hasConfig'] == true,
-        );
+        await coordinator.configurationChanged();
         return null;
       case commandNetworkChanged:
         // 平台的 Wi-Fi 可用性事件，只描述网络条件，不携带认证决策。

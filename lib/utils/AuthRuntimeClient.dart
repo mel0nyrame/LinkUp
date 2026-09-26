@@ -50,11 +50,9 @@ class AuthRuntimeClient {
 
   Future<void> manualCheck() => _fire(AuthRuntimeController.commandManualCheck);
 
-  /// 认证配置保存或删除后通知运行时，使其取消旧调度并重新评估监控。
-  Future<void> configurationChanged({required bool hasConfig}) => _fire(
-    AuthRuntimeController.commandConfigurationChanged,
-    <String, Object?>{'hasConfig': hasConfig},
-  );
+  /// 用户修改认证配置后通知运行时，使其取消旧调度并重新评估监控。
+  Future<void> configurationChanged() =>
+      _fire(AuthRuntimeController.commandConfigurationChanged);
 
   /// 注销结果决定 UI 提示，因此需要命令回传值。
   Future<bool> logout() async =>

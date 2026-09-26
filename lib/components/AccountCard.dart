@@ -4,7 +4,7 @@ import 'package:LinkUp/components/GlassCard.dart';
 import 'package:LinkUp/main.dart';
 
 class AccountCard extends StatefulWidget {
-  final ValueChanged<bool>? onConfigChanged;
+  final VoidCallback? onConfigChanged;
 
   const AccountCard({super.key, this.onConfigChanged});
 
@@ -105,7 +105,7 @@ class _AccountcartState extends State<AccountCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('配置已保存'), backgroundColor: Colors.green),
       );
-      widget.onConfigChanged?.call(true);
+      widget.onConfigChanged?.call();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -158,7 +158,7 @@ class _AccountcartState extends State<AccountCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('配置已删除'), backgroundColor: Colors.green),
       );
-      widget.onConfigChanged?.call(false);
+      widget.onConfigChanged?.call();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('删除失败'), backgroundColor: Colors.red),

@@ -338,13 +338,7 @@ class _MainNavigatorState extends State<MainNavigator> {
                     onRefresh: _manualLogin,
                     onKickDevice: _kickDevice,
                   ),
-                  SettingsPage(
-                    onConfigChanged: (hasConfig) {
-                      unawaited(
-                        _client.configurationChanged(hasConfig: hasConfig),
-                      );
-                    },
-                  ),
+                  const SettingsPage(),
                 ],
           ),
           // Floating liquid glass pill — transparent background, no Scaffold chrome

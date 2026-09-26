@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SecretStore.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
+import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 
 const String defaultAuthServer = '10.129.1.1';
 const String defaultAcid = '143';
@@ -515,52 +516,109 @@ class ConfigRepository {
   });
 }
 
-/// 生产环境的 [ConfigRepository] 入口。
+/// 用户配置写入的副作用 owner；认证周期落盘 ACID 时不触发运行时重启。
+class ConfigManager {
+  ConfigManager({
+    required this.repository,
+    required this.writeConfiguredHint,
+    required this.notifyRuntime,
+  });
+
+  final ConfigRepository repository;
+  final Future<void> Function(bool) writeConfiguredHint;
+  final Future<void> Function() notifyRuntime;
+
+  Future<AuthConfig?> load() => repository.load();
+
+  Future<AuthConfigFacts?> loadFacts() => repository.loadFacts();
+
+  Future<bool> save(AuthConfig config) async {
+    final saved = await repository.save(config);
+    await _syncConfiguredHint();
+    if (saved) await _notifyRuntime();
+    return saved;
+  }
+
+  Future<bool> update(
+    ConfigUpdate update, {
+    bool Function()? canPersist,
+  }) async {
+    final updated = await repository.update(update, canPersist: canPersist);
+    if (updated && update.hasChanges && canPersist == null) {
+      await _syncConfiguredHint();
+      await _notifyRuntime();
+    }
+    return updated;
+  }
+
+  Future<bool> delete() async {
+    final deleted = await repository.delete();
+    await _syncConfiguredHint();
+    await _notifyRuntime();
+    return deleted;
+  }
+
+  Future<bool> exists() async {
+    final exists = await repository.exists();
+    await _writeConfiguredHint(exists);
+    return exists;
+  }
+
+  Future<void> _syncConfiguredHint() async {
+    await _writeConfiguredHint(await repository.exists());
+  }
+
+  Future<void> _writeConfiguredHint(bool exists) async {
+    try {
+      await writeConfiguredHint(exists);
+    } catch (_) {
+      await LogUtil.warning('同步开机自启配置标记失败');
+    }
+  }
+
+  Future<void> _notifyRuntime() async {
+    try {
+      await notifyRuntime();
+    } catch (_) {
+      await LogUtil.warning('通知认证运行时配置变更失败');
+    }
+  }
+}
+
+/// 生产环境的配置入口。
 class ConfigUtil {
   ConfigUtil._();
 
-  static final ConfigRepository _repository = ConfigRepository(
-    pathProvider: _defaultPath,
-    secretStore: FlutterSecureStorageSecretStore(),
+  static final ConfigManager _manager = ConfigManager(
+    repository: ConfigRepository(
+      pathProvider: _defaultPath,
+      secretStore: FlutterSecureStorageSecretStore(),
+    ),
+    writeConfiguredHint: SystemSettingsUtil.setAccountConfigured,
+    notifyRuntime: _notifyRuntime,
   );
 
-  static Future<AuthConfig?> loadConfig() => _repository.load();
+  static Future<AuthConfig?> loadConfig() => _manager.load();
 
-  static Future<AuthConfigFacts?> loadConfigFacts() => _repository.loadFacts();
+  static Future<AuthConfigFacts?> loadConfigFacts() => _manager.loadFacts();
 
-  static Future<bool> saveConfig(AuthConfig config) async {
-    final saved = await _repository.save(config);
-    await _syncAccountConfigured();
-    return saved;
-  }
+  static Future<bool> saveConfig(AuthConfig config) => _manager.save(config);
 
   static Future<bool> updateConfig(
     ConfigUpdate update, {
     bool Function()? canPersist,
-  }) => _repository.update(update, canPersist: canPersist);
+  }) => _manager.update(update, canPersist: canPersist);
 
-  static Future<bool> deleteConfig() async {
-    final deleted = await _repository.delete();
-    await _syncAccountConfigured();
-    return deleted;
-  }
+  static Future<bool> deleteConfig() => _manager.delete();
 
-  static Future<bool> configExists() async {
-    final exists = await _repository.exists();
-    await _syncAccountConfigured();
-    return exists;
-  }
+  static Future<bool> configExists() => _manager.exists();
 
-  /// 同步开机自启依赖的“配置存在”标记。
-  ///
-  /// 配置文件在 Dart 的文档目录里，原生 BootReceiver 在 Dart isolate 启动前无法读取；
-  /// 这个偏好标记是唯一跨语言可读的事实。保存、删除和每次启动检查都重新同步，
-  /// 让标记不会和磁盘上的配置脱节。
-  static Future<void> _syncAccountConfigured() async {
+  static Future<void> _notifyRuntime() async {
+    final client = AuthRuntimeClient();
     try {
-      await SystemSettingsUtil.setAccountConfigured(await _repository.exists());
-    } catch (_) {
-      await LogUtil.warning('同步开机自启配置标记失败');
+      await client.configurationChanged();
+    } finally {
+      await client.dispose();
     }
   }
 

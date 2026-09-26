@@ -434,20 +434,12 @@ void main() {
       expect(settings, contains('KEY_ACCOUNT_CONFIGURED, false'));
       expect(dartSettings, contains("'auto_start'"));
       expect(dartSettings, contains("'account_configured'"));
-      // 三个写入口都要同步：少一个，标记就会和磁盘上的配置脱节。
-      for (final entryPoint in const [
-        'static Future<bool> saveConfig(',
-        'static Future<bool> deleteConfig(',
-        'static Future<bool> configExists(',
-      ]) {
-        expect(
-          _methodBody(config, entryPoint),
-          contains('_syncAccountConfigured()'),
-          reason:
-              '$entryPoint 之后必须同步配置存在标记，'
-              '配置文件在 Dart 侧文档目录，原生读不到',
-        );
-      }
+      expect(
+        config,
+        contains(
+          'writeConfiguredHint: SystemSettingsUtil.setAccountConfigured',
+        ),
+      );
     });
 
     test('不用 WorkManager、精确闹钟或后台 Activity 兜底', () {

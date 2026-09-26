@@ -35,8 +35,8 @@ class SystemSettingsUtil {
   /// 记录是否存在已保存的认证配置。
   ///
   /// 开机自启在 Dart isolate 启动前就要判定，配置文件却只有 Dart 侧能读；这个
-  /// 派生标记是唯一跨语言可读的“配置存在”事实，由 [ConfigUtil] 在保存、删除和
-  /// 每次启动检查时同步。
+  /// 派生标记是唯一跨语言可读的“配置存在”事实，由 [ConfigManager] 在用户
+  /// 写入配置时同步，并在每次启动检查时重新同步。
   static Future<void> setAccountConfigured(bool value) async {
     _prefs ??= await SharedPreferences.getInstance();
     final result = await _prefs?.setBool(_accountConfiguredKey, value) ?? false;
