@@ -41,6 +41,9 @@ jobs:
       - name: Generate JSON serializable code
         run: dart run build_runner build
 
+      - name: Verify generated JSON code is current
+        run: git diff --exit-code -- lib/utils/RadUserInfo.g.dart
+
       - name: Detect changed areas
         id: changes
         env:
