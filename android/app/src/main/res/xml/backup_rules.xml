@@ -4,4 +4,5 @@
     <exclude domain="sharedpref" path="FlutterSecureKeyStorage:linkup_auth" />
     <exclude domain="sharedpref" path="FlutterSecureStorageConfiguration:linkup_auth" />
     <exclude domain="root" path="app_flutter/linkup_config.json" />
+    <exclude domain="root" path="app_flutter/error.log" />
 </full-backup-content>

@@ -25,9 +25,6 @@ class ChallengeResponse {
 
   bool get isSuccess => error == 'ok' && ecode == 0;
 
-  // Token 是否过期（根据 expire 时间判断）
-  bool get isExpired => false; // 实际需结合本地时间计算
-
   factory ChallengeResponse.fromJson(Map<String, dynamic> json) {
     return ChallengeResponse(
       challenge: json['challenge'] as String? ?? '',

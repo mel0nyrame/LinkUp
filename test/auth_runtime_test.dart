@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:LinkUp/authRuntimeMain.dart';
 import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 import 'package:LinkUp/utils/AuthRuntimeController.dart';
 import 'package:LinkUp/utils/AuthRuntimeHost.dart';
@@ -12,6 +12,7 @@ import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
@@ -41,14 +42,25 @@ void main() {
       expect(host.ready, isFalse, reason: '就绪通知由入口单独发布');
     });
 
-    test('命令处理器注册完成后通知宿主', () async {
+    test('就绪通知发出时命令处理器已能接收消息', () async {
       final host = _FakeAuthRuntimeHost();
       final controller = _onlineController(host: host);
+      addTearDown(resetAuthRuntimeForTest);
+      ByteData? reply;
+      host.onReady = () async {
+        await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .handlePlatformMessage(
+              MethodChannelAuthRuntimeHost.hostChannelName,
+              const StandardMethodCodec().encodeMethodCall(MethodCall('probe')),
+              (response) => reply = response,
+            );
+      };
 
-      await host.publishReady();
+      await startAuthRuntimeController(controller);
 
       expect(host.ready, isTrue);
-      expect(controller.host, same(host));
+      expect(reply, isNotNull);
+      expect(const StandardMethodCodec().decodeEnvelope(reply!), isNull);
     });
 
     test('停止命令取消调度并释放协议资源', () async {
@@ -100,16 +112,18 @@ void main() {
       final host = _FakeAuthRuntimeHost();
       final scheduler = _FakeAuthenticationScheduler();
       final protocol = _FakeProtocol();
+      final config = _FakeConfigSource();
       final controller = _controller(
         host: host,
         scheduler: scheduler,
         protocol: protocol,
+        configSource: config,
       );
 
       await controller.execute(AuthRuntimeController.commandStart);
+      config.config = null;
       await controller.execute(
         AuthRuntimeController.commandConfigurationChanged,
-        <String, Object?>{'hasConfig': false},
       );
 
       expect(scheduler.hasPending, isFalse);
@@ -143,40 +157,69 @@ void main() {
   });
 
   group('常驻通知内容', () {
+    test('可操作错误原因在跨语言快照中保持类型', () {
+      const state = AuthRuntimeState(
+        status: AuthenticationStatus.failed,
+        reason: AuthenticationReason.invalidCredentials,
+        message: '登录失败',
+      );
+      final restored = AuthRuntimeState.fromMap(state.toMap());
+
+      expect(restored.reason, AuthenticationReason.invalidCredentials);
+      expect(restored.presentation.title, '账号验证失败');
+      expect(restored.presentation.needsAction, isTrue);
+      expect(notificationContentFor(restored).text, '请在设置中检查账号和密码');
+    });
+
+    test('欠费、停用和设备数限制提供对应处理指引', () {
+      for (final (reason, hint) in [
+        (AuthenticationReason.paymentRequired, '请充值或购买流量包后重试'),
+        (AuthenticationReason.accountUnavailable, '请联系校园网络中心'),
+        (AuthenticationReason.deviceLimit, '请先下线其他设备后重试'),
+      ]) {
+        final restored = AuthRuntimeState.fromMap(
+          AuthRuntimeState(
+            status: AuthenticationStatus.failed,
+            reason: reason,
+          ).toMap(),
+        );
+        expect(restored.reason, reason);
+        expect(restored.presentation.actionHint, hint);
+        expect(notificationContentFor(restored).text, hint);
+      }
+    });
+
+    test('跨语言在线布尔值不覆盖状态枚举的判定', () {
+      final snapshot = AuthRuntimeState.fromMap({
+        RuntimeContract.keyStatus: AuthenticationStatus.offline.name,
+        RuntimeContract.keyIsOnline: true,
+      });
+      expect(snapshot.isOnline, isFalse);
+      expect(snapshot.toMap()[RuntimeContract.keyIsOnline], isFalse);
+    });
+
     test('协调器状态变化映射为持续可见的认证状态文案', () {
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.online,
-            isOnline: true,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.online),
         ).text,
         '已连接到校园网',
       );
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.alreadyOnline,
-            isOnline: true,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.alreadyOnline),
         ).text,
         '已连接到校园网',
       );
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.checking,
-            isOnline: false,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.checking),
         ).text,
         '正在检查网络状态…',
       );
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.authenticating,
-            isOnline: false,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.authenticating),
         ).text,
         '正在认证校园网…',
       );
@@ -184,7 +227,6 @@ void main() {
         notificationContentFor(
           const AuthRuntimeState(
             status: AuthenticationStatus.offline,
-            isOnline: false,
             message: 'WiFi 未连接',
           ),
         ).text,
@@ -194,7 +236,6 @@ void main() {
         notificationContentFor(
           const AuthRuntimeState(
             status: AuthenticationStatus.backingOff,
-            isOnline: false,
             retryAfterSeconds: 6,
           ),
         ).text,
@@ -279,7 +320,6 @@ void main() {
     test('attach 取回最近一次发布的状态', () async {
       host.latest = const AuthRuntimeState(
         status: AuthenticationStatus.online,
-        isOnline: true,
         acid: '143',
       ).toMap();
       final client = AuthRuntimeClient(channel: uiChannel);
@@ -309,13 +349,16 @@ void main() {
       await client.manualCheck();
       final loggedOut = await client.logout();
       final kicked = await client.kickDevice('10.0.0.9');
-      await client.configurationChanged(hasConfig: false);
+      await client.configurationChanged();
 
       expect(loggedOut, isFalse);
       expect(kicked, isTrue);
       expect(
         calls
-            .where((call) => call.method == 'command')
+            .where(
+              (call) =>
+                  call.method == 'command' || call.method == 'fireCommand',
+            )
             .map((call) => call.arguments),
         <Object?>[
           <String, Object?>{
@@ -332,9 +375,27 @@ void main() {
           },
           <String, Object?>{
             'name': AuthRuntimeController.commandConfigurationChanged,
-            'args': <String, Object?>{'hasConfig': false},
+            'args': null,
           },
         ],
+      );
+      expect(calls.where((call) => call.method == 'fireCommand'), hasLength(2));
+    });
+
+    test('运行时通道失败与业务失败分别返回', () async {
+      final client = AuthRuntimeClient(channel: uiChannel);
+      addTearDown(client.dispose);
+      await client.attach();
+
+      expect(await client.logout(), isFalse);
+      host.commandError = PlatformException(code: 'runtime_gone');
+      await expectLater(
+        client.logout(),
+        throwsA(isA<AuthRuntimeUnavailableException>()),
+      );
+      await expectLater(
+        client.kickDevice('10.0.0.9'),
+        throwsA(isA<AuthRuntimeUnavailableException>()),
       );
     });
 
@@ -349,7 +410,6 @@ void main() {
         uiChannel,
         const AuthRuntimeState(
           status: AuthenticationStatus.authenticating,
-          isOnline: false,
           message: '正在登录...',
         ).toMap(),
       );
@@ -486,10 +546,11 @@ AuthRuntimeController _controller({
   required _FakeAuthRuntimeHost host,
   required _FakeAuthenticationScheduler scheduler,
   required _FakeProtocol protocol,
+  _FakeConfigSource? configSource,
 }) {
   return AuthRuntimeController(
     coordinator: AuthenticationCoordinator(
-      configSource: _FakeConfigSource(),
+      configSource: configSource ?? _FakeConfigSource(),
       protocol: protocol,
       protocolFactory: () => protocol,
       networkState: _FakeNetworkState(),
@@ -502,6 +563,7 @@ AuthRuntimeController _controller({
 class _FakeAuthRuntimeHost implements AuthRuntimeHost {
   final List<AuthRuntimeState> states = <AuthRuntimeState>[];
   bool ready = false;
+  Future<void> Function()? onReady;
 
   /// 模拟 Kotlin 侧 `AuthRuntimeBridge` 的状态转发：已注册客户端时推送到 UI 通道。
   void Function(AuthRuntimeState state)? onState;
@@ -509,6 +571,7 @@ class _FakeAuthRuntimeHost implements AuthRuntimeHost {
   @override
   Future<void> publishReady() async {
     ready = true;
+    await onReady?.call();
   }
 
   @override
@@ -523,6 +586,7 @@ class _FakeUiHost {
   Map<String, Object?>? latest;
   final List<String> clients = <String>[];
   final Map<String, Object?> commandResults = <String, Object?>{};
+  Object? commandError;
 
   Future<Object?> handle(MethodCall call) async {
     switch (call.method) {
@@ -533,6 +597,10 @@ class _FakeUiHost {
         clients.remove('ui');
         return null;
       case 'command':
+      case 'fireCommand':
+        if (call.method == 'command' && commandError != null) {
+          throw commandError!;
+        }
         final args = call.arguments;
         if (args is! Map) return null;
         final name = args['name'];
@@ -568,6 +636,7 @@ class _FakePlatformBridge {
         host.onState = null;
         return null;
       case 'command':
+      case 'fireCommand':
         final args = call.arguments;
         if (args is! Map) return null;
         final name = args['name'];
@@ -587,7 +656,7 @@ class _FakePlatformBridge {
   }
 }
 
-class _FakeConfigSource implements AuthenticationConfigSource {
+class _FakeConfigSource extends AuthenticationConfigSource {
   AuthConfig? config = AuthConfig(
     username: _fixtureUsername,
     password: _fixturePassword,
@@ -721,9 +790,6 @@ class _FakeProtocol implements AuthenticationProtocol {
 
   @override
   Future<String?> detectAcid(String server) async => null;
-
-  @override
-  Future<String?> detectEnc(String server) async => AuthParameters.supportedEnc;
 
   @override
   Future<bool> logout({

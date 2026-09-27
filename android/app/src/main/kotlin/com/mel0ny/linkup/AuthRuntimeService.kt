@@ -105,7 +105,7 @@ class AuthRuntimeService : Service() {
             ?: AuthRuntimeNetworkMonitor(this) { connected ->
                 AuthRuntimeBridge.dispatch(
                     AuthRuntimeBridge.COMMAND_NETWORK_CHANGED,
-                    mapOf("connected" to connected),
+                    mapOf(AuthRuntimeBridge.KEY_CONNECTED to connected),
                 )
             }.also { networkMonitor = it }
         monitor.start()

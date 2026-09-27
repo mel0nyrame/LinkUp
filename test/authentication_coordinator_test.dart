@@ -13,6 +13,24 @@ final _fixturePassword = List.filled(8, 'p').join();
 final _fixtureChallenge = List.filled(9, 'c').join();
 
 void main() {
+  test('调度器通过单轮接口消费结果，不编排协议步骤', () async {
+    final attempt = _FakeAuthenticationAttempt();
+    final scheduler = _FakeAuthenticationScheduler();
+    final coordinator = AuthenticationCoordinator(
+      configSource: _FakeConfigSource(_config()),
+      networkState: _FakeNetworkState(),
+      scheduler: scheduler,
+      attempt: attempt,
+    );
+
+    final result = await coordinator.start();
+
+    expect(result.status, AuthenticationStatus.online);
+    expect(attempt.calls, 1);
+    expect(scheduler.lastDelay, const Duration(seconds: 30));
+    await coordinator.dispose();
+  });
+
   test('Reality ACID 优先于根目录探测，并在在线确认后保存', () async {
     final protocol = _FakeAuthenticationProtocol(
       realityResult: const RealityProbeResult(acid: '143'),
@@ -166,33 +184,45 @@ void main() {
     expect(config.updates, isEmpty);
   });
 
-  test('登录失败时不保存本轮 ACID', () async {
-    final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(acid: '143'),
-      userInfo: [RadUserInfo(clientIp: '10.0.0.8', error: '')],
-      loginSuccess: false,
-    );
-    final config = _FakeConfigSource(_config());
-    final coordinator = AuthenticationCoordinator(
-      configSource: config,
-      protocol: protocol,
-      networkState: _FakeNetworkState(),
-    );
+  for (final (errorType, reason) in [
+    (LoginErrorType.authFailed, AuthenticationReason.invalidCredentials),
+    (LoginErrorType.paymentRequired, AuthenticationReason.paymentRequired),
+    (
+      LoginErrorType.accountUnavailable,
+      AuthenticationReason.accountUnavailable,
+    ),
+    (LoginErrorType.deviceLimit, AuthenticationReason.deviceLimit),
+  ]) {
+    test('登录失败 $errorType 保留原因且不保存本轮 ACID', () async {
+      final protocol = _FakeAuthenticationProtocol(
+        realityResult: const RealityProbeResult(acid: '143'),
+        userInfo: [RadUserInfo(clientIp: '10.0.0.8', error: '')],
+        loginSuccess: false,
+        loginErrorType: errorType,
+      );
+      final config = _FakeConfigSource(_config());
+      final coordinator = AuthenticationCoordinator(
+        configSource: config,
+        protocol: protocol,
+        networkState: _FakeNetworkState(),
+      );
 
-    final result = await coordinator.check();
+      final result = await coordinator.check();
 
-    expect(result.status, AuthenticationStatus.failed);
-    expect(config.updates, isEmpty);
-  });
+      expect(result.status, AuthenticationStatus.failed);
+      expect(result.reason, reason);
+      expect(coordinator.state.reason, reason);
+      expect(config.updates, isEmpty);
+    });
+  }
 
-  test('未支持的 Enc 只作为诊断值，不进入认证参数', () async {
+  test('认证参数只使用已验证的 Enc', () async {
     final protocol = _FakeAuthenticationProtocol(
       realityResult: const RealityProbeResult(acid: '143'),
       userInfo: [
         RadUserInfo(clientIp: '10.0.0.8', error: ''),
         RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
       ],
-      detectedEnc: 'srun_bx2',
     );
     final coordinator = AuthenticationCoordinator(
       configSource: _FakeConfigSource(_config()),
@@ -204,12 +234,11 @@ void main() {
 
     expect(result.status, AuthenticationStatus.online);
     expect(protocol.loginParameters?.enc, 'srun_bx1');
-    expect(result.diagnosticEnc, 'srun_bx2');
   });
 
   test('已经在线时不执行登录且不保存 ACID', () async {
     final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(acid: '143', isOnline: true),
+      realityResult: const RealityProbeResult(acid: '143'),
       userInfo: [
         RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
       ],
@@ -400,7 +429,7 @@ void main() {
     final result = await coordinator.check();
 
     expect(result.status, AuthenticationStatus.online);
-    expect(result.persistenceFailed, isTrue);
+    expect(result.message, '登录成功，但 ACID 保存失败');
   });
 
   test('取消中的认证不会保存候选', () async {
@@ -568,7 +597,7 @@ void main() {
     final coordinator = AuthenticationCoordinator(
       configSource: _FakeConfigSource(_config()),
       protocol: _FakeAuthenticationProtocol(
-        realityResult: const RealityProbeResult(acid: '143', isOnline: true),
+        realityResult: const RealityProbeResult(acid: '143'),
         userInfo: _notAuthenticatedResponses(8),
       ),
       networkState: _FakeNetworkState(),
@@ -598,7 +627,7 @@ void main() {
   test('停止和重新启动不会清零连续失败计数', () async {
     final scheduler = _FakeAuthenticationScheduler();
     final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(acid: '143', isOnline: true),
+      realityResult: const RealityProbeResult(acid: '143'),
       userInfo: _notAuthenticatedResponses(2),
     );
     final coordinator = AuthenticationCoordinator(
@@ -680,7 +709,7 @@ void main() {
   test('网络断开取消退避并进入离线，不发起新的认证探测', () async {
     final scheduler = _FakeAuthenticationScheduler();
     final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(acid: '143', isOnline: true),
+      realityResult: const RealityProbeResult(acid: '143'),
       userInfo: _notAuthenticatedResponses(2),
     );
     final coordinator = AuthenticationCoordinator(
@@ -708,7 +737,7 @@ void main() {
   test('网络事件在退避期间立即检查，不等退避周期', () async {
     final scheduler = _FakeAuthenticationScheduler();
     final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(acid: '143', isOnline: true),
+      realityResult: const RealityProbeResult(acid: '143'),
       userInfo: [
         RadUserInfo(clientIp: '10.0.0.8', error: ''),
         RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
@@ -854,7 +883,7 @@ void main() {
   test('Portal 假成功不会清零退避，只有在线确认成功才恢复周期', () async {
     final scheduler = _FakeAuthenticationScheduler();
     final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(acid: '143', isOnline: true),
+      realityResult: const RealityProbeResult(acid: '143'),
       userInfo: [
         RadUserInfo(clientIp: '10.0.0.8', error: ''),
         RadUserInfo(clientIp: '10.0.0.8', error: ''),
@@ -1003,15 +1032,17 @@ void main() {
         RadUserInfo(clientIp: '10.0.0.8', onlineIp: '10.0.0.8', error: 'ok'),
       ],
     );
+    final config = _FakeConfigSource(_config());
     final coordinator = AuthenticationCoordinator(
-      configSource: _FakeConfigSource(_config()),
+      configSource: config,
       protocol: protocol,
       networkState: _FakeNetworkState(),
       scheduler: scheduler,
     );
 
     await coordinator.start();
-    await coordinator.configurationChanged(hasConfig: false);
+    config.config = null;
+    await coordinator.configurationChanged();
 
     expect(coordinator.state.status, AuthenticationStatus.stopped);
     expect(scheduler.hasPending, isFalse);
@@ -1044,7 +1075,7 @@ void main() {
 
     await coordinator.start();
     config.config = _config().copyWith(authServer: '10.129.1.2');
-    final result = await coordinator.configurationChanged(hasConfig: true);
+    final result = await coordinator.configurationChanged();
 
     expect(result.status, AuthenticationStatus.online);
     expect(firstProtocol.disposeCalls, 1);
@@ -1136,10 +1167,10 @@ List<RadUserInfo> _notAuthenticatedResponses(int attempts) {
   );
 }
 
-class _FakeConfigSource implements AuthenticationConfigSource {
+class _FakeConfigSource extends AuthenticationConfigSource {
   _FakeConfigSource(this.config, {this.updateSucceeds = true});
 
-  AuthConfig config;
+  AuthConfig? config;
   final bool updateSucceeds;
   final updates = <ConfigUpdate>[];
 
@@ -1203,13 +1234,28 @@ class _FakeAuthenticationScheduler implements AuthenticationScheduler {
   }
 }
 
+class _FakeAuthenticationAttempt extends AuthenticationAttempt {
+  int calls = 0;
+
+  @override
+  Future<AuthenticationResult> run(AuthenticationAttemptContext context) async {
+    calls++;
+    return AuthenticationResult(status: AuthenticationStatus.online);
+  }
+
+  @override
+  Future<bool> logout(AuthConfig config) async => false;
+
+  @override
+  Future<bool> kickDevice(AuthConfig config, String targetIp) async => false;
+}
+
 class _FakeAuthenticationProtocol implements AuthenticationProtocol {
   _FakeAuthenticationProtocol({
     required this.realityResult,
     required this.userInfo,
     this.rootAcid = '1',
     this.loginSuccess = true,
-    this.detectedEnc = 'srun_bx1',
     this.realityGate,
     this.realityGateCall = 1,
     this.realityFailuresRemaining = 0,
@@ -1221,7 +1267,6 @@ class _FakeAuthenticationProtocol implements AuthenticationProtocol {
   final List<RadUserInfo> userInfo;
   final String? rootAcid;
   final bool loginSuccess;
-  final String? detectedEnc;
   final Completer<void>? realityGate;
   final int realityGateCall;
   final Completer<void> realityGateStarted = Completer<void>();
@@ -1315,9 +1360,6 @@ class _FakeAuthenticationProtocol implements AuthenticationProtocol {
     rootProbeCalls++;
     return rootAcid;
   }
-
-  @override
-  Future<String?> detectEnc(String server) async => detectedEnc;
 
   @override
   Future<bool> logout({

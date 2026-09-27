@@ -9,7 +9,7 @@ on:
 
 jobs:
   test:
-    name: Analyze & Test (Dart)
+    name: CI checks
     runs-on: ubuntu-latest
 
     steps:
@@ -19,13 +19,62 @@ jobs:
           # 需要 base SHA 才能算出本次改动触及了哪些文件。
           fetch-depth: 0
 
+      - name: Detect changed areas
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          full=true
+          deps=true
+          android=true
+          base_valid=false
+
+          if [ "${{ github.event_name }}" != 'workflow_dispatch' ] &&
+             [ -n "$BASE_SHA" ] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only --no-renames "$BASE_SHA" HEAD)
+            base_valid=true
+            deps=false
+            android=false
+            if [ -n "$changed" ]; then full=false; fi
+
+            while IFS= read -r file; do
+              [ -n "$file" ] || continue
+              case "$file" in
+                pubspec.yaml|pubspec.lock) deps=true; android=true ;;
+                android/*|.github/workflows/ci.yml) android=true ;;
+              esac
+              # 只有明确的文档路径跳过 Flutter 检查，取舍见 docs/adr/0010--scope-ci-to-changed-files.md。
+              case "$file" in
+                README.md|AGENTS.md|LICENSE|docs/*.md|.agents/skills/*.md|\
+                assets/readme/*.svg|assets/readme/*.png|assets/readme/*.jpg|\
+                assets/readme/*.webp|assets/setting_screen*.jpg) ;;
+                *) full=true ;;
+              esac
+            done <<< "$changed"
+          fi
+
+          {
+            echo "full=$full"
+            echo "deps=$deps"
+            echo "android=$android"
+            echo "base_valid=$base_valid"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify changed files
+        if: steps.changes.outputs.base_valid == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: git diff --check "$BASE_SHA" HEAD
+
       - name: Setup Java
+        if: steps.changes.outputs.full == 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Setup Flutter
+        if: steps.changes.outputs.full == 'true'
         uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -33,40 +82,37 @@ jobs:
           cache: true
 
       - name: Show Flutter version
+        if: steps.changes.outputs.full == 'true'
         run: flutter --version
 
       - name: Get dependencies
+        if: steps.changes.outputs.full == 'true'
         run: flutter pub get
 
       - name: Generate JSON serializable code
+        if: steps.changes.outputs.full == 'true'
         run: dart run build_runner build
 
-      - name: Detect changed areas
-        id: changes
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - name: Verify generated JSON code is current
+        if: steps.changes.outputs.full == 'true'
+        run: git diff --exit-code -- lib/utils/RadUserInfo.g.dart
+
+      - name: Verify Dart runtime contract matches Kotlin
+        if: steps.changes.outputs.full == 'true'
         run: |
-          changed=$(git diff --name-only "$BASE_SHA" HEAD)
-          if printf '%s\n' "$changed" | grep -qE '^(pubspec\.yaml|pubspec\.lock)$'; then
-            echo "deps=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "deps=false" >> "$GITHUB_OUTPUT"
-          fi
-          if printf '%s\n' "$changed" | grep -qE '^(android/|pubspec\.yaml$|pubspec\.lock$|\.github/workflows/ci\.yml$)'; then
-            echo "android=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "android=false" >> "$GITHUB_OUTPUT"
-          fi
+          dart run tool/generate_runtime_contract.dart
+          git diff --exit-code -- lib/utils/RuntimeContract.g.dart
 
       # 一次全仓格式化之后，格式就是 CI 的永久门：新引入的排版漂移在 PR 上翻红，
       # 不再靠"谁碰到那个文件谁负责"。（此前只判定本次触及的文件。）
       - name: Verify Dart formatting
+        if: steps.changes.outputs.full == 'true'
         run: dart format --output=none --set-exit-if-changed .
 
       # 依赖集变化会让生成的 plugin registrant 漂移。历史上 flutter_secure_storage
       # 就是这样漏掉的：依赖引入了，registrant 没重新生成，也没有任何检查发现。
       - name: Verify generated plugin registrants are current
-        if: steps.changes.outputs.deps == 'true'
+        if: steps.changes.outputs.full == 'true' && steps.changes.outputs.deps == 'true'
         run: |
           flutter pub get
           git diff --exit-code -- \
@@ -75,19 +121,21 @@ jobs:
             '**/GeneratedPluginRegistrant.*'
 
       - name: Analyze
+        if: steps.changes.outputs.full == 'true'
         run: flutter analyze --no-fatal-infos
 
       - name: Run tests
+        if: steps.changes.outputs.full == 'true'
         run: flutter test --coverage
 
       # 源码断言读的是文本：Kotlin 语法写错、依赖写错、Manifest 引用不存在时，
       # test/android_runtime_contract_test.dart 照样通过。编译是唯一能翻红的检查。
       - name: Build debug APK
-        if: steps.changes.outputs.android == 'true'
+        if: steps.changes.outputs.full == 'true' && steps.changes.outputs.android == 'true'
         run: flutter build apk --debug
 
       - name: Upload coverage
-        if: always()
+        if: always() && steps.changes.outputs.full == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: coverage

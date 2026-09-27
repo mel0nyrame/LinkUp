@@ -16,7 +16,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _acidCtrl = TextEditingController(text: defaultAcid);
-  final _authServerCtrl = TextEditingController(text: '10.129.1.1');
+  final _authServerCtrl = TextEditingController(text: defaultAuthServer);
   final _userTypeCtrl = TextEditingController();
   bool _obscurePassword = true;
   bool _isSaving = false;
@@ -41,7 +41,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
     });
 
     try {
-      final success = await ConfigUtil.saveConfig(
+      final success = await configManager.save(
         AuthConfig(
           username: _usernameCtrl.text.trim(),
           password: _passwordCtrl.text,
@@ -194,12 +194,12 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
 
                   TextFormField(
                     controller: _authServerCtrl,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: '认证服务器地址',
-                      hintText: '如: 10.129.1.1',
-                      prefixIcon: Icon(Icons.dns_outlined),
-                      border: OutlineInputBorder(),
-                      helperText: '默认: 10.129.1.1,如有不同请修改',
+                      hintText: '如: $defaultAuthServer',
+                      prefixIcon: const Icon(Icons.dns_outlined),
+                      border: const OutlineInputBorder(),
+                      helperText: '默认: $defaultAuthServer,如有不同请修改',
                     ),
                     keyboardType: TextInputType.url,
                     validator: (v) {

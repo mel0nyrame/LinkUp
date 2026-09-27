@@ -7,20 +7,19 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 
 class UpdateInfo {
   final String version;
   final String downloadUrl;
   final String changelog;
   final bool isForceUpdate;
-  final int? buildNumber;
 
   UpdateInfo({
     required this.version,
     required this.downloadUrl,
     required this.changelog,
     this.isForceUpdate = false,
-    this.buildNumber,
   });
 }
 
@@ -56,30 +55,30 @@ class UpdateUtil {
       );
 
       if (response.statusCode == 404) {
-        print('检查更新: 仓库不存在或为私有仓库');
+        await LogUtil.warning('检查更新: 仓库不存在或为私有仓库');
         return null;
       }
 
       if (response.statusCode == 403) {
-        print('检查更新: API 限流或被禁止');
+        await LogUtil.warning('检查更新: API 限流或被禁止');
         return null;
       }
 
       if (response.statusCode != 200) {
-        print('检查更新失败: HTTP ${response.statusCode}');
+        await LogUtil.warning('检查更新失败: HTTP ${response.statusCode}');
         return null;
       }
 
       final data = jsonDecode(response.body);
       final tag = data['tag_name'] as String?;
       if (tag == null) {
-        print('检查更新: Release 中没有 tag_name');
+        await LogUtil.warning('检查更新: Release 中没有 tag_name');
         return null;
       }
 
       final latestVersion = _extractVersion(tag);
       if (latestVersion == null) {
-        print('检查更新: 无法从 tag "$tag" 提取版本号');
+        await LogUtil.warning('检查更新: 无法从 Release tag 提取版本号');
         return null;
       }
 
@@ -103,7 +102,7 @@ class UpdateUtil {
       }
 
       if (downloadUrl == null) {
-        print('检查更新: 未找到下载地址');
+        await LogUtil.warning('检查更新: 未找到下载地址');
         return null;
       }
 
@@ -116,8 +115,8 @@ class UpdateUtil {
       }
 
       return null; // 已是最新版本
-    } catch (e) {
-      print('检查更新异常: $e');
+    } catch (error, stackTrace) {
+      await LogUtil.error('检查更新异常', error, stackTrace);
       return null;
     }
   }
@@ -167,8 +166,8 @@ class UpdateUtil {
 
       final result = await OpenFilex.open(savePath);
       return result.type == ResultType.done;
-    } catch (e) {
-      print('下载失败: $e');
+    } catch (error, stackTrace) {
+      await LogUtil.error('下载失败', error, stackTrace);
       return false;
     }
   }

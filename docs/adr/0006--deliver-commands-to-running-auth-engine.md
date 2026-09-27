@@ -13,6 +13,8 @@
 
 后台入口仅启动一次。在 Dart 侧注册 `com.mel0ny.linkup/authRuntime` 的命令处理器后，向 Android 桥发送 `ready`；Android 桥在此之前排队命令，收到 `ready` 后按顺序通过同一 MethodChannel 调用 `command`。命令名和参数作为 Map 传递，Dart 处理器调用唯一的 `AuthRuntimeController`，并通过 MethodChannel 调用结果把返回值交还给原生侧。服务销毁时桥使待处理的 UI 请求失败。
 
+UI 侧使用 `fireCommand` 提交启动、手动检查和配置变更等无需结果的命令；宿主入队后立即确认接收，后台 Engine 就绪后再执行。注销和踢设备使用 `command` 等待业务结果。这样首次配置保存不会因后台 Engine 尚未就绪而等待队列出队。
+
 后台入口仍使用 `@pragma('vm:entry-point')` 并由主 APK 的 Dart bundle 引用；Activity 的 Engine 仍不创建协调器。状态与常驻通知继续通过原有脱敏快照发布。
 
 ## Alternatives considered
@@ -25,6 +27,7 @@
 
 - 原生与 Dart 两侧必须保持通道名、`ready`、`command`、`name`、`args` 和返回值语义一致；跨语言契约测试直接检查这些接线。
 - `ready` 只在 Dart 命令处理器注册后发布。若后台入口未打入 AOT 快照或启动失败，命令不会出队；release 构建与真机服务启动检查仍是必要验证。
+- `fireCommand` 的返回只证明宿主已接收，不能证明认证已完成；UI 通过状态流观察最终状态。
 - 命令执行期间服务销毁时，桥会结束待处理的 UI 请求；后到的运行时回包不能恢复已销毁的服务。
 
 ## Reintroduction conditions

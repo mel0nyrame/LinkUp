@@ -34,9 +34,9 @@ object AuthRuntimeNotification {
     }
 
     fun build(context: Context, state: Map<Any?, Any?>?): Notification {
-        val content = state?.get("notification") as? Map<Any?, Any?>
-        val title = content?.get("title") as? String ?: FALLBACK_TITLE
-        val text = content?.get("text") as? String ?: FALLBACK_TEXT
+        val content = state?.get(AuthRuntimeBridge.KEY_NOTIFICATION) as? Map<Any?, Any?>
+        val title = content?.get(AuthRuntimeBridge.KEY_TITLE) as? String ?: FALLBACK_TITLE
+        val text = content?.get(AuthRuntimeBridge.KEY_TEXT) as? String ?: FALLBACK_TEXT
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_auth_runtime_notification)
             .setContentTitle(title)

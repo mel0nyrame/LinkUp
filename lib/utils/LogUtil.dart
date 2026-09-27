@@ -1,13 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// 日志工具类 - 将日志写入文件
 class LogUtil {
   static File? _logFile;
   static bool _initialized = false;
+  static Future<void> _writes = Future<void>.value();
+  static const int _maxBytes = 1024 * 1024;
+  static const int _retainedBytes = 512 * 1024;
 
   /// 初始化日志文件
   static Future<void> init() async {
@@ -30,25 +32,57 @@ class LogUtil {
       }
 
       _initialized = true;
-    } catch (e) {
-      // 初始化失败时回退到 print
-      print('日志初始化失败: $e');
+    } catch (_) {
+      // 日志不可用时不把可能含凭据的底层异常转发到标准输出。
     }
   }
 
   /// 写入日志文件
   static Future<void> _writeToFile(String content) async {
-    try {
-      if (_logFile != null) {
-        await _logFile!.writeAsString(
-          content,
+    _writes = _writes.then((_) async {
+      final file = _logFile;
+      if (file == null) return;
+      try {
+        await file.writeAsString(
+          _redact(content),
           mode: FileMode.append,
           encoding: utf8,
         );
+        if (await file.length() > _maxBytes) {
+          final bytes = await file.readAsBytes();
+          final tail = bytes.sublist(bytes.length - _retainedBytes);
+          await file.writeAsString(
+            utf8.decode(tail, allowMalformed: true),
+            encoding: utf8,
+          );
+        }
+      } catch (_) {
+        // 日志失败不能使认证失败，也不能把原始内容转发到标准输出。
       }
-    } catch (e) {
-      print('写入日志失败: $e');
-    }
+    });
+    await _writes;
+  }
+
+  static String _redact(String value) {
+    final withoutUrlQueries = value.replaceAll(
+      RegExp(r'https?://[^\s?]+\?[^\s]+', caseSensitive: false),
+      '[URL_QUERY_REDACTED]',
+    );
+    final withoutJsonSecrets = withoutUrlQueries.replaceAllMapped(
+      RegExp(
+        r'("(?:password|passwd|username|challenge|chksum|token|sign|info|authorization)"\s*:\s*)"(?:\\.|[^"\\])*"',
+        caseSensitive: false,
+      ),
+      (match) => '${match[1]}"[REDACTED]"',
+    );
+    final secrets = RegExp(
+      r'(password|passwd|username|challenge|chksum|token|sign|info|authorization)\s*[:=]\s*([^&\s,}\]]+)',
+      caseSensitive: false,
+    );
+    return withoutJsonSecrets.replaceAllMapped(
+      secrets,
+      (match) => '${match[1]}=[REDACTED]',
+    );
   }
 
   /// 记录错误日志
@@ -64,7 +98,7 @@ class LogUtil {
     buffer.writeln(message);
 
     if (error != null) {
-      buffer.writeln('异常: $error');
+      buffer.writeln('异常类型: ${error.runtimeType}');
     }
 
     if (stackTrace != null) {
@@ -74,9 +108,6 @@ class LogUtil {
     buffer.writeln('');
 
     await _writeToFile(buffer.toString());
-
-    // 同时输出到控制台（调试用）
-    print('[ERROR] $message${error != null ? ': $error' : ''}');
   }
 
   /// 记录信息日志
@@ -85,8 +116,6 @@ class LogUtil {
 
     final log = '[INFO] ${DateTime.now()} - $message\n';
     await _writeToFile(log);
-
-    print('[INFO] $message');
   }
 
   /// 记录警告日志
@@ -95,8 +124,6 @@ class LogUtil {
 
     final log = '[WARN] ${DateTime.now()} - $message\n';
     await _writeToFile(log);
-
-    print('[WARN] $message');
   }
 
   /// 获取日志文件路径
@@ -111,13 +138,17 @@ class LogUtil {
 
   /// 清空日志文件
   static Future<void> clear() async {
-    try {
-      if (_logFile != null && await _logFile!.exists()) {
-        await _logFile!.writeAsString('', encoding: utf8);
+    _writes = _writes.then((_) async {
+      try {
+        final file = _logFile;
+        if (file != null && await file.exists()) {
+          await file.writeAsString('', encoding: utf8);
+        }
+      } catch (_) {
+        // 清理失败不泄漏底层异常。
       }
-    } catch (e) {
-      print('清空日志失败: $e');
-    }
+    });
+    await _writes;
   }
 
   /// 读取日志内容（使用 UTF-8 编码，允许无效字节）
@@ -129,17 +160,16 @@ class LogUtil {
         return utf8.decode(bytes, allowMalformed: true);
       }
       return '';
-    } catch (e) {
-      return '读取日志失败: $e';
+    } catch (_) {
+      return '读取日志失败';
     }
   }
 
-  /// 敏感信息脱敏 - 使用 SHA-256 哈希算法
-  /// 返回前8位哈希值，保证相同输入输出相同，且不可逆
-  static String mask(String? data) {
-    if (data == null || data.isEmpty) return 'empty';
-    final bytes = utf8.encode(data);
-    final hash = sha256.convert(bytes);
-    return hash.toString().substring(0, 8);
+  /// 测试结束时释放文件与队列的静态状态。
+  static Future<void> resetForTest() async {
+    await _writes;
+    _logFile = null;
+    _initialized = false;
+    _writes = Future<void>.value();
   }
 }

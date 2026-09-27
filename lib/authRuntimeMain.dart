@@ -8,6 +8,7 @@ import 'package:LinkUp/utils/AuthRuntimeHost.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SrunAuthenticationProtocol.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
 /// 后台认证入口。
 ///
@@ -20,6 +21,15 @@ void linkupAuthRuntimeDispatcher() {
 }
 
 AuthRuntimeController? _controller;
+
+/// 清除测试 isolate 中的后台入口状态；生产环境由 FlutterEngine 销毁 isolate。
+Future<void> resetAuthRuntimeForTest() async {
+  final current = _controller;
+  _controller = null;
+  const MethodChannel(MethodChannelAuthRuntimeHost.hostChannelName)
+      .setMethodCallHandler(null);
+  await current?.coordinator.dispose();
+}
 
 /// 构建后台运行时并在命令处理器就绪后通知宿主。
 ///
@@ -38,6 +48,13 @@ Future<void> _bootstrap() async {
     ),
     host: MethodChannelAuthRuntimeHost(),
   );
+  await startAuthRuntimeController(controller);
+}
+
+/// 注册命令处理器并发布就绪状态；宿主可在就绪回调中立即发送命令。
+Future<void> startAuthRuntimeController(
+  AuthRuntimeController controller,
+) async {
   _controller = controller;
   const MethodChannel(MethodChannelAuthRuntimeHost.hostChannelName)
       .setMethodCallHandler(_dispatch);
@@ -46,7 +63,7 @@ Future<void> _bootstrap() async {
 }
 
 Future<Object?> _dispatch(MethodCall call) async {
-  if (call.method != 'command') return null;
+  if (call.method != RuntimeContract.methodCommand) return null;
   final controller = _controller;
   if (controller == null) {
     await LogUtil.warning('认证运行时尚未就绪，忽略命令');
@@ -54,10 +71,11 @@ Future<Object?> _dispatch(MethodCall call) async {
   }
 
   final command = call.arguments;
-  if (command is! Map || command['name'] is! String) return null;
-  final args = command['args'];
+  if (command is! Map || command[RuntimeContract.keyName] is! String)
+    return null;
+  final args = command[RuntimeContract.keyArgs];
   return controller.execute(
-    command['name'] as String,
+    command[RuntimeContract.keyName] as String,
     args is Map ? Map<String, Object?>.from(args) : null,
   );
 }

@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:LinkUp/utils/AuthParameters.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunEncrypt.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
@@ -101,5 +104,79 @@ void main() {
 
     expect(first.client.host, '10.0.0.9');
     expect(second.client.host, '10.0.0.2');
+  });
+
+  test('SrunClient 默认服务器跟随配置常量', () {
+    final client = SrunClient(
+      client: MockClient((_) async => http.Response('testCallback({})', 200)),
+    );
+    expect(client.host, defaultAuthServer);
+    client.dispose();
+  });
+
+  test('Portal 错误分类保留可操作原因', () async {
+    for (final (response, expected) in [
+      (
+        '{"error":"fail","error_msg":"","res":"E2901"}',
+        LoginErrorType.authFailed,
+      ),
+      (
+        '{"error":"fail","error_msg":"invalid ac_id","res":""}',
+        LoginErrorType.acIdError,
+      ),
+      for (final code in ['E2905', 'E3001'])
+        (
+          '{"error":"fail","error_msg":"","res":"$code"}',
+          LoginErrorType.paymentRequired,
+        ),
+      (
+        '{"error":"fail","error_msg":"账号欠费","res":"E2905"}',
+        LoginErrorType.paymentRequired,
+      ),
+      for (final code in ['E2902', 'E2606'])
+        (
+          '{"error":"fail","error_msg":"","res":"$code"}',
+          LoginErrorType.accountUnavailable,
+        ),
+      (
+        '{"error":"fail","error_msg":"账号已停用","res":"E2902"}',
+        LoginErrorType.accountUnavailable,
+      ),
+      (
+        '{"error":"fail","error_msg":"","res":"E2620"}',
+        LoginErrorType.deviceLimit,
+      ),
+    ]) {
+      final login = SrunLogin(
+        client: SrunClient(
+          client: MockClient(
+            (_) async => http.Response.bytes(
+              utf8.encode('testCallback($response)'),
+              200,
+              headers: {'content-type': 'text/javascript; charset=utf-8'},
+            ),
+          ),
+          host: '10.0.0.1',
+        ),
+      );
+      final result = await login.login(
+        parameters: AuthParameters(
+          server: '10.0.0.1',
+          username: _fixtureUsername,
+          ip: '10.0.0.8',
+          acid: '143',
+          callback: 'testCallback',
+        ),
+        password: _fixturePassword,
+        challenge: _fixtureChallenge,
+      );
+
+      expect(result.success, isFalse);
+      expect(
+        result.errorType,
+        expected,
+        reason: '$response → ${result.message}',
+      );
+    }
   });
 }

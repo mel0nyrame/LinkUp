@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/AcidDetector.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ChallengeResponse.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
@@ -11,7 +12,7 @@ import 'package:LinkUp/utils/SrunLogin.dart';
 class SrunAuthenticationProtocol implements AuthenticationProtocol {
   SrunAuthenticationProtocol({
     http.Client? httpClient,
-    String initialServer = '10.129.1.1',
+    String initialServer = defaultAuthServer,
   }) : _httpClient = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null,
        _server = initialServer {
@@ -40,8 +41,8 @@ class SrunAuthenticationProtocol implements AuthenticationProtocol {
     bool getAcid = true,
   }) async {
     _useServer(server);
-    final (acid, isOnline, error) = await _detector.reality(getAcid: getAcid);
-    return RealityProbeResult(acid: acid, isOnline: isOnline, error: error);
+    final (acid, _, _) = await _detector.reality(getAcid: getAcid);
+    return RealityProbeResult(acid: acid);
   }
 
   @override
@@ -79,12 +80,6 @@ class SrunAuthenticationProtocol implements AuthenticationProtocol {
   Future<String?> detectAcid(String server) async {
     _useServer(server);
     return _detector.detectAcid();
-  }
-
-  @override
-  Future<String?> detectEnc(String server) async {
-    _useServer(server);
-    return _detector.detectEnc();
   }
 
   @override

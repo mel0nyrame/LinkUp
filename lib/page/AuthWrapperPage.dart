@@ -6,9 +6,9 @@ import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 class AuthWrapperPage extends StatefulWidget {
   final Widget child;
 
-  /// 权威的配置存在性检查，缺省走 [ConfigUtil.configExists]。
+  /// 权威的配置存在性检查，缺省走 [configManager.exists]。
   ///
-  /// 这层真实检查要读写配置文件，测试里换成一个可控的返回值，
+  /// 这层检查要读取配置文件并同步派生提示，测试里换成一个可控的返回值，
   /// 首屏呈现的判定才能被确定性地验证。
   final Future<bool> Function()? configExists;
 
@@ -39,7 +39,7 @@ class _AuthWrapperState extends State<AuthWrapperPage> {
   }
 
   Future<void> _checkConfig() async {
-    final check = widget.configExists ?? ConfigUtil.configExists;
+    final check = widget.configExists ?? configManager.exists;
     final exists = await check();
     if (!mounted) return;
 

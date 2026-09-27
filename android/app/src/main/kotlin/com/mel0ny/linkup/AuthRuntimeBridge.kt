@@ -14,20 +14,59 @@ import io.flutter.plugin.common.MethodChannel
 object AuthRuntimeBridge {
     private const val TAG = "LinkUpAuthRuntime"
 
-    /** 后台 Dart isolate 使用的通道名，必须与 Dart 侧保持一致。 */
+    // BEGIN runtime contract: tool/generate_runtime_contract.dart 派生 Dart 常量。
     const val HOST_CHANNEL = "com.mel0ny.linkup/authRuntime"
+    const val UI_CHANNEL = "com.mel0ny.linkup/authUi"
+    const val SYSTEM_CHANNEL = "com.mel0ny.linkup/system"
 
-    /** 启动监控。必须与 Dart 侧 `AuthRuntimeController.commandStart` 一致。 */
     const val COMMAND_START = "start"
-
-    /** 停止监控并释放协议资源。必须与 Dart 侧 `AuthRuntimeController.commandStop` 一致。 */
     const val COMMAND_STOP = "stop"
-
-    /**
-     * Wi-Fi 可用性变化。必须与 Dart 侧 `AuthRuntimeController.commandNetworkChanged`
-     * 一致，负载只有 `connected` 布尔值。
-     */
+    const val COMMAND_MANUAL_CHECK = "manualCheck"
+    const val COMMAND_LOGOUT = "logout"
+    const val COMMAND_KICK_DEVICE = "kickDevice"
+    const val COMMAND_CONFIGURATION_CHANGED = "configurationChanged"
     const val COMMAND_NETWORK_CHANGED = "networkChanged"
+
+    const val METHOD_READY = "ready"
+    const val METHOD_STATE = "state"
+    const val METHOD_COMMAND = "command"
+    const val METHOD_FIRE_COMMAND = "fireCommand"
+    const val METHOD_ATTACH = "attach"
+    const val METHOD_DETACH = "detach"
+    const val METHOD_ON_STATE = "onState"
+
+    const val KEY_NAME = "name"
+    const val KEY_ARGS = "args"
+    const val KEY_STATUS = "status"
+    const val KEY_IS_ONLINE = "isOnline"
+    const val KEY_MESSAGE = "message"
+    const val KEY_REASON = "reason"
+    const val KEY_ACID = "acid"
+    const val KEY_RETRY_AFTER_SECONDS = "retryAfterSeconds"
+    const val KEY_USER_INFO = "userInfo"
+    const val KEY_NOTIFICATION = "notification"
+    const val KEY_TITLE = "title"
+    const val KEY_TEXT = "text"
+    const val KEY_CONNECTED = "connected"
+    const val KEY_IP = "ip"
+
+    const val PREFERENCES_NAME = "FlutterSharedPreferences"
+    const val PREFERENCE_PREFIX = "flutter."
+    const val PREFERENCE_KEEP_ALIVE = "keep_alive"
+    const val PREFERENCE_AUTO_START = "auto_start"
+    const val PREFERENCE_ACCOUNT_CONFIGURED = "account_configured"
+    const val DEFAULT_KEEP_ALIVE = true
+    const val DEFAULT_AUTO_START = false
+    const val DEFAULT_ACCOUNT_CONFIGURED = false
+
+    const val SYSTEM_START_AUTH_RUNTIME = "startAuthRuntime"
+    const val SYSTEM_STOP_AUTH_RUNTIME = "stopAuthRuntime"
+    const val SYSTEM_REQUEST_NOTIFICATION_PERMISSION = "requestNotificationPermission"
+    const val SYSTEM_IS_AUTO_START_SUPPORTED = "isAutoStartSupported"
+    const val SYSTEM_CHECK_AUTO_START_PERMISSION = "checkAutoStartPermission"
+    const val SYSTEM_REQUEST_AUTO_START_PERMISSION = "requestAutoStartPermission"
+    const val SYSTEM_OPEN_BATTERY_OPTIMIZATION_SETTINGS = "openBatteryOptimizationSettings"
+    // END runtime contract
 
     /** 状态消费者，由前台服务注册，用于刷新常驻通知。 */
     var onState: ((Map<Any?, Any?>) -> Unit)? = null
@@ -39,7 +78,7 @@ object AuthRuntimeBridge {
     private val pendingResults = HashMap<Long, MethodChannel.Result>()
     private val clients = LinkedHashSet<MethodChannel>()
 
-    /** 最近一次由后台运行时发布的状态，供刚绑定的 UI 取回。 */
+    /** Dart 认证快照的最近一次投影缓存，供刚绑定的 UI 取回；这里不判定认证状态。 */
     @Volatile
     var latestState: Map<Any?, Any?>? = null
         private set
@@ -68,6 +107,15 @@ object AuthRuntimeBridge {
         runtimeReady = false
         queuedCommands.clear()
         failPendingResults()
+    }
+
+    /** 清除测试进程中的桥状态；服务生命周期使用 [detachEngine]。 */
+    internal fun resetForTest() {
+        detachEngine()
+        onState = null
+        latestState = null
+        nextRequestId = 0L
+        clients.clear()
     }
 
     /** 注册一个可见 UI 的通道，并立即补发最新状态。 */
@@ -100,7 +148,7 @@ object AuthRuntimeBridge {
             queuedCommands.add(command)
             return
         }
-        channel.invokeMethod("command", mapOf("name" to command.name, "args" to command.args),
+        channel.invokeMethod(METHOD_COMMAND, mapOf(KEY_NAME to command.name, KEY_ARGS to command.args),
             object : MethodChannel.Result {
                 override fun success(value: Any?) {
                     complete(command.id, value)
@@ -120,13 +168,13 @@ object AuthRuntimeBridge {
 
     private fun handleRuntimeCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "ready" -> {
+            METHOD_READY -> {
                 runtimeReady = true
                 result.success(null)
                 flushQueuedCommands()
             }
 
-            "state" -> {
+            METHOD_STATE -> {
                 val state = call.arguments as? Map<Any?, Any?>
                 if (state == null) {
                     result.error("invalid_state", "认证运行时发布的状态无效", null)
@@ -148,7 +196,7 @@ object AuthRuntimeBridge {
 
     private fun pushToClient(channel: MethodChannel, state: Map<Any?, Any?>) {
         try {
-            channel.invokeMethod("onState", state)
+            channel.invokeMethod(METHOD_ON_STATE, state)
         } catch (error: Exception) {
             Log.w(TAG, "转发认证状态失败", error)
         }

@@ -8,9 +8,11 @@ import 'package:LinkUp/utils/LogUtil.dart';
 enum LoginErrorType {
   success, // 登录成功
   networkError, // 网络错误
-  httpError, // HTTP 错误
   parseError, // 解析错误
   authFailed, // 认证失败（账号密码错误）
+  accountUnavailable, // 账号停用或被禁用
+  paymentRequired, // 欠费或流量用尽
+  deviceLimit, // 同时在线设备数超限
   alreadyOnline, // 已经在线
   ipNotAllowed, // IP 不允许
   acIdError, // ACID 错误
@@ -23,60 +25,13 @@ enum LoginErrorType {
 class LoginResult {
   final bool success;
   final String message;
-  final String? detailedMessage; // 详细错误说明
   final LoginErrorType errorType;
-  final Map<String, dynamic>? rawData; // 原始响应数据
-  final String? res; // 服务器返回的 res 字段
 
   LoginResult({
     required this.success,
     required this.message,
-    this.detailedMessage,
     this.errorType = LoginErrorType.unknown,
-    this.rawData,
-    this.res,
   });
-
-  /// 获取用户友好的错误提示
-  String get userFriendlyMessage {
-    if (success) return '登录成功';
-
-    StringBuffer sb = StringBuffer();
-    sb.writeln(message);
-
-    if (detailedMessage != null && detailedMessage!.isNotEmpty) {
-      sb.writeln('\n详细说明: $detailedMessage');
-    }
-
-    // 根据错误类型给出建议
-    switch (errorType) {
-      case LoginErrorType.authFailed:
-        sb.writeln('\n💡 建议: 请检查账号和密码是否正确');
-        break;
-      case LoginErrorType.alreadyOnline:
-        sb.writeln('\n💡 建议: 您已经登录，可以直接使用网络');
-        break;
-      case LoginErrorType.acIdError:
-        sb.writeln('\n💡 建议: 请尝试修改 ACID 值 (常见值: 1, 2, 5, 11, 15)');
-        break;
-      case LoginErrorType.ipNotAllowed:
-        sb.writeln('\n💡 建议: 当前 IP 不允许登录，请检查网络连接');
-        break;
-      case LoginErrorType.networkError:
-        sb.writeln('\n💡 建议: 请检查网络连接是否正常');
-        break;
-      case LoginErrorType.serverError:
-        sb.writeln('\n💡 建议: 认证服务器异常，请稍后再试');
-        break;
-      case LoginErrorType.challengeExpired:
-        sb.writeln('\n💡 建议: 认证令牌过期，请重新尝试');
-        break;
-      default:
-        break;
-    }
-
-    return sb.toString();
-  }
 
   @override
   String toString() {
@@ -92,16 +47,28 @@ class SrunLogin {
 
   /// 根据服务器返回的错误信息分析错误类型
   /// 参考 Go 代码中的错误码映射
-  static LoginErrorType _analyzeErrorType(
-    String error,
-    String errorMsg,
-    String res,
-  ) {
+  static LoginErrorType _analyzeErrorType(String errorMsg, String res) {
     final msgLower = errorMsg.toLowerCase();
     final resLower = res.toLowerCase();
 
     // 注意：alreadyOnline 检测已移至 login 成功路径 (error == 'ok' 时先判断)，
     // _analyzeErrorType 仅在失败分支被调用，已不可能进入 error == 'ok' 的分支
+
+    if (res.contains('E2905') ||
+        res.contains('E3001') ||
+        msgLower.contains('欠费') ||
+        msgLower.contains('流量用尽') ||
+        msgLower.contains('时长用尽')) {
+      return LoginErrorType.paymentRequired;
+    }
+
+    if (res.contains('E2902') || res.contains('E2606')) {
+      return LoginErrorType.accountUnavailable;
+    }
+
+    if (res.contains('E2620')) {
+      return LoginErrorType.deviceLimit;
+    }
 
     // 账号密码错误 - 包含常见错误码
     if (msgLower.contains('password') ||
@@ -111,17 +78,7 @@ class SrunLogin {
         msgLower.contains('username') ||
         resLower.contains('password') ||
         res.contains('E2901') || // 密码错误或账号不存在
-        res.contains('E2902') || // 账号不存在或已停用
-        res.contains('E2553') || // 密码错误（加密方式不对）
-        res.contains('E2606')) {
-      // 用户被禁用
-      return LoginErrorType.authFailed;
-    }
-
-    // 账号欠费/流量用尽
-    if (res.contains('E2905') || // 账号已欠费停机
-        res.contains('E3001')) {
-      // 流量或时长已用尽
+        res.contains('E2553')) {
       return LoginErrorType.authFailed;
     }
 
@@ -160,68 +117,6 @@ class SrunLogin {
     }
 
     return LoginErrorType.unknown;
-  }
-
-  /// 获取详细错误说明
-  /// 与 Go 代码中的 getFriendlyErrorMessage 对应
-  static String? _getDetailedExplanation(
-    LoginErrorType type,
-    String errorMsg,
-    String res,
-  ) {
-    switch (type) {
-      case LoginErrorType.authFailed:
-        if (res.contains('E2901')) {
-          return '错误代码 E2901: 密码错误或账号不存在。请检查：\n1. 学号/工号是否输入正确\n2. 密码是否输入正确（注意大小写）\n3. 如果忘记密码，请联系网络中心重置';
-        } else if (res.contains('E2902')) {
-          return '错误代码 E2902: 账号不存在或已停用。请联系网络中心确认账号状态。';
-        } else if (res.contains('E2905')) {
-          return '错误代码 E2905: 账号已欠费停机。请前往网络中心充值。';
-        } else if (res.contains('E2553')) {
-          return '错误代码 E2553: 密码错误（可能是加密方式不对）。请检查密码是否正确，或联系网络中心。';
-        } else if (res.contains('E2606')) {
-          return '错误代码 E2606: 用户被禁用。请联系网络中心解除禁用状态。';
-        } else if (res.contains('E3001')) {
-          return '错误代码 E3001: 流量或时长已用尽。请前往网络中心充值或购买流量包。';
-        }
-        return '账号或密码验证失败。请确认输入的账号密码正确无误。';
-
-      case LoginErrorType.alreadyOnline:
-        return '该账号已经在其他设备上登录，或当前设备已在线。';
-
-      case LoginErrorType.acIdError:
-        return 'ACID（接入点 ID）配置不正确。不同的网络环境需要不同的 ACID 值：\n• 校园无线网通常使用 1 或 2\n• 有线网络可能使用 5、11 或 15\n请尝试切换不同的 ACID 值。';
-
-      case LoginErrorType.ipNotAllowed:
-        if (res.contains('E2821')) {
-          return '错误代码 E2821: IP 不在线。请检查网络连接是否正常。';
-        } else if (res.contains('E2833')) {
-          return '错误代码 E2833: IP 已经被占用。该 IP 地址已被其他设备使用，请稍后再试。';
-        }
-        return '当前 IP 地址不允许认证。可能原因：\n1. 您不在校园网络范围内\n2. IP 地址获取异常\n3. 该 IP 段未开通认证服务';
-
-      case LoginErrorType.challengeExpired:
-        return '认证令牌已过期。这通常是由于网络延迟导致的，请重新尝试登录。';
-
-      case LoginErrorType.serverError:
-        if (res.contains('E2602')) {
-          return '错误代码 E2602: 认证设备响应超时。可能是服务器负载过高，建议稍后再试。';
-        }
-        return '认证服务器暂时不可用。可能原因：\n1. 服务器维护中\n2. 服务器负载过高\n建议稍后再试，或联系网络中心咨询。';
-
-      case LoginErrorType.networkError:
-        return '无法连接到认证服务器。请检查：\n1. 是否已连接到校园网 WiFi\n2. 网络信号是否稳定\n3. 认证服务器地址是否正确';
-
-      case LoginErrorType.parseError:
-        return '服务器返回了非预期格式的数据。可能原因：\n1. 网络不稳定导致响应截断\n2. 认证服务器异常\n建议稍后重试或检查认证服务器地址是否正确';
-
-      default:
-        // 尝试从 res 中解析错误码
-        if (res.isNotEmpty && res.startsWith('E')) {
-          return '错误代码: $res。这是深澜认证系统的错误，建议联系学校网络中心咨询具体原因。';
-        }
-        return null;
-    }
   }
 
   Future<LoginResult> login({
@@ -302,7 +197,6 @@ class SrunLogin {
         return LoginResult(
           success: false,
           message: '解析响应失败',
-          detailedMessage: '无法解析服务器返回的数据，可能是服务器返回了非标准格式的响应。',
           errorType: LoginErrorType.parseError,
         );
       }
@@ -326,8 +220,6 @@ class SrunLogin {
           success: true,
           message: '已经在线，无需重复登录',
           errorType: LoginErrorType.alreadyOnline,
-          rawData: result,
-          res: res,
         );
       }
 
@@ -338,18 +230,10 @@ class SrunLogin {
           success: true,
           message: '登录成功',
           errorType: LoginErrorType.success,
-          rawData: result,
-          res: res,
         );
       } else {
         // 登录失败，分析错误类型
-        final errorType = _analyzeErrorType(error, errorMsg, res);
-        final detailedMessage = _getDetailedExplanation(
-          errorType,
-          errorMsg,
-          res,
-        );
-
+        final errorType = _analyzeErrorType(errorMsg, res);
         // 构建错误信息
         String failMessage = errorMsg.isNotEmpty ? errorMsg : error;
         if (failMessage.isEmpty) {
@@ -362,10 +246,7 @@ class SrunLogin {
         return LoginResult(
           success: false,
           message: failMessage,
-          detailedMessage: detailedMessage,
           errorType: errorType,
-          rawData: result,
-          res: res,
         );
       }
     } on FormatException catch (e) {
@@ -373,7 +254,6 @@ class SrunLogin {
       return LoginResult(
         success: false,
         message: '响应格式错误: $e',
-        detailedMessage: '服务器返回的数据格式不正确，可能是网络不稳定导致的。',
         errorType: LoginErrorType.parseError,
       );
     } on http.ClientException catch (e) {
@@ -381,8 +261,6 @@ class SrunLogin {
       return LoginResult(
         success: false,
         message: '网络错误: $e',
-        detailedMessage:
-            '无法连接到认证服务器，请检查：\n1. 是否已连接到校园网 WiFi\n2. 网络信号是否稳定\n3. 认证服务器地址是否正确',
         errorType: LoginErrorType.networkError,
       );
     } catch (e, stackTrace) {
@@ -390,7 +268,6 @@ class SrunLogin {
       return LoginResult(
         success: false,
         message: '登录异常: $e',
-        detailedMessage: '发生了未预期的错误，请尝试重新登录或重启应用。',
         errorType: LoginErrorType.unknown,
       );
     }

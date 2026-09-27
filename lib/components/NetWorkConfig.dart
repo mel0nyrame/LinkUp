@@ -18,7 +18,7 @@ class NetworkConfigCard extends StatefulWidget {
 class _NetworkConfigCardState extends State<NetworkConfigCard> {
   bool _autoAcid = true;
   final _acidCtrl = TextEditingController(text: defaultAcid);
-  final _authServerCtrl = TextEditingController(text: '10.129.1.1');
+  final _authServerCtrl = TextEditingController(text: defaultAuthServer);
   String _displayAcid = defaultAcid;
 
   @override
@@ -37,7 +37,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   // 加载配置
   Future<void> _loadConfig() async {
     try {
-      final config = await ConfigUtil.loadConfig();
+      final config = await configManager.loadFacts();
       if (!mounted) return;
       if (config != null) {
         setState(() {
@@ -54,7 +54,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
   Future<void> _saveAutoAcid() async {
     try {
-      final success = await ConfigUtil.updateConfig(
+      final success = await configManager.update(
         ConfigUpdate(autoAcid: _autoAcid),
       );
       if (success && mounted) widget.onConfigChanged?.call();
@@ -65,7 +65,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
   Future<void> _saveAcid() async {
     try {
-      final success = await ConfigUtil.updateConfig(
+      final success = await configManager.update(
         ConfigUpdate(acid: _acidCtrl.text),
       );
       if (success && mounted) widget.onConfigChanged?.call();
@@ -77,7 +77,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   // 保存认证服务器
   Future<void> _saveAuthServer() async {
     try {
-      final success = await ConfigUtil.updateConfig(
+      final success = await configManager.update(
         ConfigUpdate(authServer: _authServerCtrl.text),
       );
       if (!mounted || !success) return;
@@ -310,10 +310,10 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           onSubmitted: (_) => _saveAuthServer(),
           decoration: InputDecoration(
             labelText: '服务器地址',
-            hintText: '如: 10.129.1.1',
+            hintText: '如: $defaultAuthServer',
             prefixIcon: const Icon(Icons.dns_outlined),
             border: const OutlineInputBorder(),
-            helperText: '默认: 10.129.1.1,按回车保存',
+            helperText: '默认: $defaultAuthServer,按回车保存',
             helperStyle: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
@@ -328,7 +328,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
                   tooltip: '恢复默认',
                   onPressed: () {
                     setState(() {
-                      _authServerCtrl.text = '10.129.1.1';
+                      _authServerCtrl.text = defaultAuthServer;
                     });
                     _saveAuthServer();
                   },

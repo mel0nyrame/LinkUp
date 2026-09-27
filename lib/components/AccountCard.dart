@@ -4,7 +4,7 @@ import 'package:LinkUp/components/GlassCard.dart';
 import 'package:LinkUp/main.dart';
 
 class AccountCard extends StatefulWidget {
-  final ValueChanged<bool>? onConfigChanged;
+  final VoidCallback? onConfigChanged;
 
   const AccountCard({super.key, this.onConfigChanged});
 
@@ -18,6 +18,7 @@ class _AccountcartState extends State<AccountCard> {
   final TextEditingController _userTypeCtrl = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = true;
+  bool _hasConfig = false;
   String _loadedUsername = '';
   String _loadedUserType = '';
 
@@ -38,15 +39,15 @@ class _AccountcartState extends State<AccountCard> {
   // 加载当前配置
   Future<void> _loadCurrentConfig() async {
     try {
-      final config = await ConfigUtil.loadConfig();
+      final config = await configManager.loadFacts();
       if (!mounted) return;
       if (config != null) {
         setState(() {
           _usernameCtrl.text = config.username;
-          _passwordCtrl.text = config.password;
           _userTypeCtrl.text = config.userType;
           _loadedUsername = config.username;
           _loadedUserType = config.userType;
+          _hasConfig = true;
           _isLoading = false;
         });
       } else {
@@ -67,45 +68,47 @@ class _AccountcartState extends State<AccountCard> {
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
 
-    if (username.isEmpty || password.isEmpty) {
+    if (username.isEmpty || (!_hasConfig && password.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('学号和密码不能为空'), backgroundColor: Colors.red),
       );
       return;
     }
 
-    setState(() => _isLoading = true);
-
     final userType = _userTypeCtrl.text.trim();
     final accountChanged =
         username != _loadedUsername || userType != _loadedUserType;
+    if (!accountChanged && password.isEmpty) {
+      return;
+    }
+    setState(() => _isLoading = true);
     bool success;
     try {
-      success = await ConfigUtil.updateConfig(
-        accountChanged
-            ? ConfigUpdate(
-                username: username,
-                password: password,
-                userType: userType,
-              )
-            : ConfigUpdate(password: password),
+      success = await configManager.update(
+        ConfigUpdate(
+          username: accountChanged ? username : null,
+          password: password.isEmpty ? null : password,
+          userType: accountChanged ? userType : null,
+        ),
       );
-      if (success) {
-        _loadedUsername = username;
-        _loadedUserType = userType;
-      }
     } on ConfigStorageException {
       success = false;
     }
 
     if (!mounted) return;
+    if (success) {
+      _loadedUsername = username;
+      _loadedUserType = userType;
+      _passwordCtrl.clear();
+      _hasConfig = true;
+    }
     setState(() => _isLoading = false);
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('配置已保存'), backgroundColor: Colors.green),
       );
-      widget.onConfigChanged?.call(true);
+      widget.onConfigChanged?.call();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -142,7 +145,7 @@ class _AccountcartState extends State<AccountCard> {
 
     setState(() => _isLoading = true);
 
-    final success = await ConfigUtil.deleteConfig();
+    final success = await configManager.delete();
 
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -154,11 +157,12 @@ class _AccountcartState extends State<AccountCard> {
         _userTypeCtrl.clear();
         _loadedUsername = '';
         _loadedUserType = '';
+        _hasConfig = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('配置已删除'), backgroundColor: Colors.green),
       );
-      widget.onConfigChanged?.call(false);
+      widget.onConfigChanged?.call();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('删除失败'), backgroundColor: Colors.red),
@@ -216,7 +220,7 @@ class _AccountcartState extends State<AccountCard> {
             controller: _passwordCtrl,
             decoration: InputDecoration(
               labelText: '密码',
-              hintText: '请输入密码',
+              hintText: _hasConfig ? '留空则保留当前密码' : '请输入密码',
               prefixIcon: const Icon(Icons.lock_outline),
               border: const OutlineInputBorder(
                 borderRadius: BorderRadius.all(Radius.circular(12)),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:LinkUp/components/UpdateDialog.dart';
 import 'package:LinkUp/utils/UpdateUtil.dart';
@@ -6,7 +7,6 @@ import 'package:LinkUp/main.dart';
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
-import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
@@ -33,11 +33,16 @@ class MainNavigator extends StatefulWidget {
 
 class _MainNavigatorState extends State<MainNavigator> {
   int _currentIndex = 0;
-  bool _isLoading = false;
-  String? _statusMessage;
-  bool _isOnline = false;
-  RadUserInfo? _userInfo;
-  String _currentAcid = '1';
+  final ValueNotifier<AuthRuntimeState> _status = ValueNotifier(
+    const AuthRuntimeState.stopped(),
+  );
+  final ValueNotifier<RadUserInfo?> _userInfo = ValueNotifier(null);
+  final ValueNotifier<bool> _online = ValueNotifier(false);
+  final ValueNotifier<String?> _acid = ValueNotifier(null);
+  final ValueNotifier<OverviewOperation> _operation = ValueNotifier((
+    loading: false,
+    message: null,
+  ));
 
   late final AuthRuntimeClient _client;
   StreamSubscription<AuthRuntimeState>? _authStateSubscription;
@@ -67,54 +72,25 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   void _onAuthRuntimeState(AuthRuntimeState state) {
     if (!mounted) return;
-
-    switch (state.status) {
-      case AuthenticationStatus.checking:
-        setState(() {
-          _isLoading = true;
-          _statusMessage = '正在检查网络状态...';
-        });
-      case AuthenticationStatus.authenticating:
-        setState(() {
-          _isLoading = true;
-          _statusMessage = '正在登录...';
-        });
-      case AuthenticationStatus.online:
-      case AuthenticationStatus.alreadyOnline:
-        setState(() {
-          _isLoading = false;
-          _isOnline = true;
-          _userInfo = state.userInfo ?? _userInfo;
-          _currentAcid = state.acid ?? _currentAcid;
-          _statusMessage = state.message ?? '已在线';
-        });
-      case AuthenticationStatus.failed:
-      case AuthenticationStatus.cancelled:
-      case AuthenticationStatus.stale:
-      case AuthenticationStatus.backingOff:
-        setState(() {
-          _isLoading = false;
-          _isOnline = false;
-          _statusMessage = state.message ?? '认证未完成，将自动重试';
-        });
-      case AuthenticationStatus.offline:
-        setState(() {
-          _isLoading = false;
-          _isOnline = false;
-          _statusMessage = state.message ?? 'WiFi 未连接';
-        });
-      case AuthenticationStatus.stopped:
-        setState(() {
-          _isLoading = false;
-          _isOnline = false;
-          _userInfo = null;
-          _statusMessage = state.message;
-        });
-      case AuthenticationStatus.idle:
-        setState(() {
-          _isLoading = false;
-          _isOnline = false;
-        });
+    final previous = _status.value;
+    if (previous.status != state.status ||
+        previous.message != state.message ||
+        previous.retryAfterSeconds != state.retryAfterSeconds ||
+        previous.reason != state.reason ||
+        previous.isOnline != state.isOnline) {
+      _status.value = state;
+    }
+    if (_acid.value != state.acid) _acid.value = state.acid;
+    if (_online.value != state.isOnline) {
+      _online.value = state.isOnline;
+    }
+    final nextInfo = state.isOnline ? state.userInfo ?? _userInfo.value : null;
+    if (jsonEncode(nextInfo?.toJson()) !=
+        jsonEncode(_userInfo.value?.toJson())) {
+      _userInfo.value = nextInfo;
+    }
+    if (!_userOperationInProgress && _operation.value.message != null) {
+      _operation.value = (loading: false, message: null);
     }
   }
 
@@ -142,6 +118,11 @@ class _MainNavigatorState extends State<MainNavigator> {
   void dispose() {
     unawaited(_authStateSubscription?.cancel());
     unawaited(_client.dispose());
+    _status.dispose();
+    _userInfo.dispose();
+    _online.dispose();
+    _acid.dispose();
+    _operation.dispose();
     super.dispose();
   }
 
@@ -223,33 +204,28 @@ class _MainNavigatorState extends State<MainNavigator> {
     if (confirmed != true || !mounted) return;
 
     _userOperationInProgress = true;
-    setState(() {
-      _isLoading = true;
-      _statusMessage = '正在注销...';
-    });
+    _operation.value = (loading: true, message: '正在注销...');
 
     try {
       final success = await _client.logout();
       if (!mounted) return;
-      setState(() {
-        _isOnline = false;
-        _userInfo = null;
-        _isLoading = false;
-        _statusMessage = success ? '已注销' : '注销失败';
-      });
+      _operation.value = (loading: false, message: null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success ? '已成功注销' : '注销失败，请重试'),
           backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
         ),
       );
+    } on AuthRuntimeUnavailableException {
+      if (mounted) {
+        _operation.value = (loading: false, message: '后台认证运行时不可用');
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('后台认证运行时不可用，请稍后重试')));
+      }
     } catch (error, stackTrace) {
       LogUtil.error('注销异常', error, stackTrace);
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _statusMessage = '注销异常';
-        });
+        _operation.value = (loading: false, message: '注销异常');
       }
     } finally {
       _userOperationInProgress = false;
@@ -269,6 +245,12 @@ class _MainNavigatorState extends State<MainNavigator> {
         ),
       );
       return success;
+    } on AuthRuntimeUnavailableException {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('后台认证运行时不可用，请稍后重试')));
+      }
+      return false;
     } catch (error, stackTrace) {
       LogUtil.error('踢设备异常', error, stackTrace);
       if (mounted) {
@@ -303,48 +285,52 @@ class _MainNavigatorState extends State<MainNavigator> {
         title: const SizedBox.shrink(),
         backgroundColor: Colors.transparent,
         actions: [
-          if (_isOnline)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton.icon(
-                onPressed: _handleLogout,
-                icon: const Icon(Icons.logout, size: 18),
-                label: const Text('注销'),
-                style: TextButton.styleFrom(
-                  foregroundColor: MyApp.iosRed,
-                  textStyle: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _online,
+            builder: (context, online, child) => online
+                ? Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: TextButton.icon(
+                      onPressed: _handleLogout,
+                      icon: const Icon(Icons.logout, size: 18),
+                      label: const Text('注销'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: MyApp.iosRed,
+                        textStyle: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
       body: Stack(
         children: [
           IndexedStack(
             index: _currentIndex,
-            children:
-                widget._testPages ??
-                [
-                  OverviewPage(
-                    isLoading: _isLoading,
-                    statusMessage: _statusMessage,
-                    isOnline: _isOnline,
-                    currentAcid: _currentAcid,
-                    userInfo: _userInfo,
-                    onRefresh: _manualLogin,
-                    onKickDevice: _kickDevice,
-                  ),
-                  SettingsPage(
-                    onConfigChanged: (hasConfig) {
-                      unawaited(
-                        _client.configurationChanged(hasConfig: hasConfig),
-                      );
-                    },
-                  ),
-                ],
+            children: [
+              TickerMode(
+                enabled: _currentIndex == 0,
+                child:
+                    widget._testPages?[0] ??
+                    OverviewPage(
+                      status: _status,
+                      acid: _acid,
+                      online: _online,
+                      userInfo: _userInfo,
+                      operation: _operation,
+                      onRefresh: _manualLogin,
+                      onKickDevice: _kickDevice,
+                    ),
+              ),
+              TickerMode(
+                enabled: _currentIndex == 1,
+                child: widget._testPages?[1] ?? const SettingsPage(),
+              ),
+            ],
           ),
           // Floating liquid glass pill — transparent background, no Scaffold chrome
           Positioned(

@@ -7,9 +7,41 @@ import 'package:path_provider/path_provider.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SecretStore.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
+import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 
 const String defaultAuthServer = '10.129.1.1';
 const String defaultAcid = '143';
+
+/// 可供界面和调度判断使用的普通配置事实，不携带认证凭据。
+class AuthConfigFacts {
+  const AuthConfigFacts({
+    required this.username,
+    required this.acid,
+    required this.autoAcid,
+    required this.authServer,
+    required this.userType,
+    required this.hasExplicitAcid,
+  });
+
+  final String username;
+  final String acid;
+  final bool autoAcid;
+  final String authServer;
+  final String userType;
+  final bool hasExplicitAcid;
+
+  factory AuthConfigFacts.fromJson(Map<String, dynamic> json) {
+    final rawAcid = _stringValue(json['acid'], '');
+    return AuthConfigFacts(
+      username: _stringValue(json['username']),
+      acid: normalizeAcid(rawAcid),
+      autoAcid: _boolValue(json['auto_acid'], true),
+      authServer: normalizeAuthServer(_stringValue(json['auth_server'])),
+      userType: _stringValue(json['user_type']),
+      hasExplicitAcid: rawAcid.trim().isNotEmpty,
+    );
+  }
+}
 
 /// 认证配置的不可变内存表示。
 ///
@@ -23,7 +55,6 @@ class AuthConfig {
     required this.authServer,
     required this.userType,
     this.hasExplicitAcid = true,
-    this.createdAt,
   });
 
   final String username;
@@ -35,7 +66,6 @@ class AuthConfig {
 
   /// 运行时 [acid] 会使用默认值，但该标记保留空值是否明确可用。
   final bool hasExplicitAcid;
-  final String? createdAt;
 
   String get authenticatedUsername =>
       userType.isEmpty ? username : '$username@$userType';
@@ -48,7 +78,6 @@ class AuthConfig {
     String? authServer,
     String? userType,
     bool? hasExplicitAcid,
-    String? createdAt,
   }) {
     return AuthConfig(
       username: username ?? this.username,
@@ -58,7 +87,6 @@ class AuthConfig {
       authServer: authServer ?? this.authServer,
       userType: userType ?? this.userType,
       hasExplicitAcid: hasExplicitAcid ?? this.hasExplicitAcid,
-      createdAt: createdAt ?? this.createdAt,
     );
   }
 
@@ -70,7 +98,6 @@ class AuthConfig {
       'auto_acid': autoAcid,
       'auth_server': authServer,
       'user_type': userType,
-      'created_at': createdAt ?? DateTime.now().toIso8601String(),
     };
   }
 
@@ -87,7 +114,6 @@ class AuthConfig {
       autoAcid: _boolValue(json['auto_acid'], true),
       authServer: normalizeAuthServer(_stringValue(json['auth_server'])),
       userType: _stringValue(json['user_type']),
-      createdAt: _stringValue(json['created_at'], ''),
     );
   }
 }
@@ -359,6 +385,18 @@ class ConfigRepository {
     }
   });
 
+  /// 读取普通配置，不访问秘密存储。
+  Future<AuthConfigFacts?> loadFacts() => _enqueue(() async {
+    try {
+      final raw = await _readRawUnlocked();
+      return raw == null ? null : AuthConfigFacts.fromJson(raw);
+    } on ConfigStorageException {
+      rethrow;
+    } catch (_) {
+      throw const ConfigStorageException('读取配置失败，请重试');
+    }
+  });
+
   /// 保存一份完整的初始配置。密码先写入秘密存储，普通 JSON 永远不含密码。
   Future<bool> save(AuthConfig config) => _enqueue(() async {
     final normalized = _normalize(config);
@@ -472,61 +510,101 @@ class ConfigRepository {
   });
 }
 
-/// 生产环境的 [ConfigRepository] 入口。
-class ConfigUtil {
-  ConfigUtil._();
+/// 用户配置写入的副作用 owner；认证周期落盘 ACID 时不触发运行时重启。
+class ConfigManager {
+  ConfigManager({
+    required this.repository,
+    required this.writeConfiguredHint,
+    required this.notifyRuntime,
+  });
 
-  static final ConfigRepository _repository = ConfigRepository(
-    pathProvider: _defaultPath,
-    secretStore: FlutterSecureStorageSecretStore(),
-  );
+  final ConfigRepository repository;
+  final Future<void> Function(bool) writeConfiguredHint;
+  final Future<void> Function() notifyRuntime;
 
-  static Future<AuthConfig?> loadConfig() => _repository.load();
+  Future<AuthConfig?> load() => repository.load();
 
-  static Future<bool> saveConfig(AuthConfig config) async {
-    final saved = await _repository.save(config);
-    await _syncAccountConfigured();
+  Future<AuthConfigFacts?> loadFacts() => repository.loadFacts();
+
+  Future<bool> save(AuthConfig config) async {
+    final saved = await repository.save(config);
+    await _syncConfiguredHint();
+    if (saved) await _notifyRuntime();
     return saved;
   }
 
-  static Future<bool> updateConfig(
+  Future<bool> update(
     ConfigUpdate update, {
     bool Function()? canPersist,
-  }) => _repository.update(update, canPersist: canPersist);
+  }) async {
+    final updated = await repository.update(update, canPersist: canPersist);
+    if (updated && update.hasChanges && canPersist == null) {
+      await _syncConfiguredHint();
+      await _notifyRuntime();
+    }
+    return updated;
+  }
 
-  static Future<bool> deleteConfig() async {
-    final deleted = await _repository.delete();
-    await _syncAccountConfigured();
+  Future<bool> delete() async {
+    final deleted = await repository.delete();
+    await _syncConfiguredHint();
+    await _notifyRuntime();
     return deleted;
   }
 
-  static Future<bool> configExists() async {
-    final exists = await _repository.exists();
-    await _syncAccountConfigured();
+  Future<bool> exists() async {
+    final exists = await repository.exists();
+    await _writeConfiguredHint(exists);
     return exists;
   }
 
-  /// 同步开机自启依赖的“配置存在”标记。
-  ///
-  /// 配置文件在 Dart 的文档目录里，原生 BootReceiver 在 Dart isolate 启动前无法读取；
-  /// 这个偏好标记是唯一跨语言可读的事实。保存、删除和每次启动检查都重新同步，
-  /// 让标记不会和磁盘上的配置脱节。
-  static Future<void> _syncAccountConfigured() async {
+  Future<void> _syncConfiguredHint() async {
+    await _writeConfiguredHint(await repository.exists());
+  }
+
+  Future<void> _writeConfiguredHint(bool exists) async {
     try {
-      await SystemSettingsUtil.setAccountConfigured(await _repository.exists());
+      await writeConfiguredHint(exists);
     } catch (_) {
       await LogUtil.warning('同步开机自启配置标记失败');
     }
   }
 
-  static Future<String> _defaultPath() async {
+  Future<void> _notifyRuntime() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      return '${directory.path}/linkup_config.json';
+      await notifyRuntime();
     } catch (_) {
-      await LogUtil.warning('获取配置文件路径失败');
-      rethrow;
+      await LogUtil.warning('通知认证运行时配置变更失败');
     }
+  }
+}
+
+/// 生产环境唯一的配置写入入口。
+final ConfigManager configManager = ConfigManager(
+  repository: ConfigRepository(
+    pathProvider: _defaultPath,
+    secretStore: FlutterSecureStorageSecretStore(),
+  ),
+  writeConfiguredHint: SystemSettingsUtil.setAccountConfigured,
+  notifyRuntime: _notifyRuntime,
+);
+
+Future<void> _notifyRuntime() async {
+  final client = AuthRuntimeClient();
+  try {
+    await client.configurationChanged();
+  } finally {
+    await client.dispose();
+  }
+}
+
+Future<String> _defaultPath() async {
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}/linkup_config.json';
+  } catch (_) {
+    await LogUtil.warning('获取配置文件路径失败');
+    rethrow;
   }
 }
 

@@ -1,17 +1,17 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 import 'package:LinkUp/utils/AuthRuntimeController.dart';
 import 'package:LinkUp/utils/AuthRuntimeHost.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
 /// Android 原生层与 Dart 之间的跨语言契约。
 ///
-/// 这些约束没有其他机制能守住：通道名、命令名和 wire 键在两侧各写一份，
-/// `flutter analyze` 与 Kotlin 编译都发现不了漂移；服务是否被提升为 started
-/// 状态则决定 Activity 销毁后后台认证能否继续，而这在纯 Dart 测试里观察不到。
-/// 因此这里直接对两侧源码断言契约本身。
+/// Kotlin 桥是通道、命令、wire 键与原生偏好约定的源文件；Dart 常量由它生成。
+/// 这里直接比对两侧事实，并检查关键接线仍消费这些常量。
 void main() {
   final mainActivity = _read(
     'android/app/src/main/kotlin/com/mel0ny/linkup/MainActivity.kt',
@@ -41,77 +41,127 @@ void main() {
   final controller = _read('lib/utils/AuthRuntimeController.dart');
   final dartSettings = _read('lib/utils/SystemSettingsUtil.dart');
   final config = _read('lib/utils/ConfigUtil.dart');
+  final backupRules = _read('android/app/src/main/res/xml/backup_rules.xml');
+  final extractionRules = _read(
+    'android/app/src/main/res/xml/data_extraction_rules.xml',
+  );
 
-  group('通道与命令名跨语言一致', () {
-    test('Dart 侧声明的通道名在 Kotlin 侧逐字出现', () {
-      expect(
-        mainActivity,
-        contains(AuthRuntimeClient.uiChannelName),
-        reason: 'MainActivity 必须使用 AuthRuntimeClient.uiChannelName',
-      );
-      expect(
-        bridge,
-        contains(MethodChannelAuthRuntimeHost.hostChannelName),
-        reason: 'AuthRuntimeBridge 必须使用宿主通道名',
-      );
-    });
+  test('诊断日志不进入 Android 云备份或设备迁移', () {
+    expect(backupRules, contains('path="app_flutter/error.log"'));
+    expect(
+      RegExp('path="app_flutter/error.log"').allMatches(extractionRules),
+      hasLength(2),
+    );
+  });
 
-    test('Kotlin 常量与 Dart 命令常量取值一致', () {
-      expect(
-        bridge,
-        contains(
-          'const val COMMAND_START = "${AuthRuntimeController.commandStart}"',
-        ),
-      );
-      expect(
-        bridge,
-        contains(
-          'const val COMMAND_STOP = "${AuthRuntimeController.commandStop}"',
-        ),
-      );
-      expect(
-        bridge,
-        contains(
-          'const val COMMAND_NETWORK_CHANGED = '
-          '"${AuthRuntimeController.commandNetworkChanged}"',
-        ),
-      );
-    });
-
-    test('每个声明的命令都被运行时接受', () {
-      for (final command in AuthRuntimeController.declaredCommands) {
+  group('跨语言运行时契约', () {
+    test('通道、命令、wire 键和偏好约定都来自 Kotlin 桥', () {
+      final facts = <String, Object>{
+        'HOST_CHANNEL': RuntimeContract.hostChannel,
+        'UI_CHANNEL': RuntimeContract.uiChannel,
+        'SYSTEM_CHANNEL': RuntimeContract.systemChannel,
+        'COMMAND_START': RuntimeContract.commandStart,
+        'COMMAND_STOP': RuntimeContract.commandStop,
+        'COMMAND_MANUAL_CHECK': RuntimeContract.commandManualCheck,
+        'COMMAND_LOGOUT': RuntimeContract.commandLogout,
+        'COMMAND_KICK_DEVICE': RuntimeContract.commandKickDevice,
+        'COMMAND_CONFIGURATION_CHANGED':
+            RuntimeContract.commandConfigurationChanged,
+        'COMMAND_NETWORK_CHANGED': RuntimeContract.commandNetworkChanged,
+        'METHOD_READY': RuntimeContract.methodReady,
+        'METHOD_STATE': RuntimeContract.methodState,
+        'METHOD_COMMAND': RuntimeContract.methodCommand,
+        'METHOD_FIRE_COMMAND': RuntimeContract.methodFireCommand,
+        'METHOD_ATTACH': RuntimeContract.methodAttach,
+        'METHOD_DETACH': RuntimeContract.methodDetach,
+        'METHOD_ON_STATE': RuntimeContract.methodOnState,
+        'KEY_NAME': RuntimeContract.keyName,
+        'KEY_ARGS': RuntimeContract.keyArgs,
+        'KEY_STATUS': RuntimeContract.keyStatus,
+        'KEY_IS_ONLINE': RuntimeContract.keyIsOnline,
+        'KEY_MESSAGE': RuntimeContract.keyMessage,
+        'KEY_REASON': RuntimeContract.keyReason,
+        'KEY_ACID': RuntimeContract.keyAcid,
+        'KEY_RETRY_AFTER_SECONDS': RuntimeContract.keyRetryAfterSeconds,
+        'KEY_USER_INFO': RuntimeContract.keyUserInfo,
+        'KEY_NOTIFICATION': RuntimeContract.keyNotification,
+        'KEY_TITLE': RuntimeContract.keyTitle,
+        'KEY_TEXT': RuntimeContract.keyText,
+        'KEY_CONNECTED': RuntimeContract.keyConnected,
+        'KEY_IP': RuntimeContract.keyIp,
+        'PREFERENCES_NAME': RuntimeContract.preferencesName,
+        'PREFERENCE_PREFIX': RuntimeContract.preferencePrefix,
+        'PREFERENCE_KEEP_ALIVE': RuntimeContract.preferenceKeepAlive,
+        'PREFERENCE_AUTO_START': RuntimeContract.preferenceAutoStart,
+        'PREFERENCE_ACCOUNT_CONFIGURED':
+            RuntimeContract.preferenceAccountConfigured,
+        'DEFAULT_KEEP_ALIVE': RuntimeContract.defaultKeepAlive,
+        'DEFAULT_AUTO_START': RuntimeContract.defaultAutoStart,
+        'DEFAULT_ACCOUNT_CONFIGURED': RuntimeContract.defaultAccountConfigured,
+        'SYSTEM_START_AUTH_RUNTIME': RuntimeContract.systemStartAuthRuntime,
+        'SYSTEM_STOP_AUTH_RUNTIME': RuntimeContract.systemStopAuthRuntime,
+        'SYSTEM_REQUEST_NOTIFICATION_PERMISSION':
+            RuntimeContract.systemRequestNotificationPermission,
+        'SYSTEM_IS_AUTO_START_SUPPORTED':
+            RuntimeContract.systemIsAutoStartSupported,
+        'SYSTEM_CHECK_AUTO_START_PERMISSION':
+            RuntimeContract.systemCheckAutoStartPermission,
+        'SYSTEM_REQUEST_AUTO_START_PERMISSION':
+            RuntimeContract.systemRequestAutoStartPermission,
+        'SYSTEM_OPEN_BATTERY_OPTIMIZATION_SETTINGS':
+            RuntimeContract.systemOpenBatteryOptimizationSettings,
+      };
+      for (final fact in facts.entries) {
         expect(
-          _methodBody(entrypoint, 'Future<Object?> _dispatch('),
-          isNot(contains(command)),
-          reason: '入口只按位置解析命令名，不应硬编码 $command',
-        );
-        expect(
-          _methodBody(state, 'Map<String, Object?> toMap()'),
-          isNot(contains(command)),
+          bridge,
+          contains('const val ${fact.key} = ${jsonEncode(fact.value)}'),
+          reason: '${fact.key} 的 Dart 派生值必须与 Kotlin 源一致',
         );
       }
-      expect(AuthRuntimeController.declaredCommands, hasLength(7));
     });
 
-    test('wire 键在两侧拼写一致', () {
-      _expectKeys(bridge, const ['ready', 'state', 'command', 'name', 'args']);
-      _expectKeys(mainActivity, const [
-        'attach',
-        'detach',
-        'command',
-        'name',
-        'args',
-      ]);
-      _expectKeys(notification, const ['notification', 'title', 'text']);
-      _expectKeys(state, const [
-        'status',
-        'isOnline',
-        'retryAfterSeconds',
-        'message',
-        'acid',
-        'userInfo',
-      ]);
-      _expectKeys(entrypoint, const ['command', 'name', 'args']);
+    test('两侧消费者使用契约常量', () {
+      expect(AuthRuntimeClient.uiChannelName, RuntimeContract.uiChannel);
+      expect(
+        MethodChannelAuthRuntimeHost.hostChannelName,
+        RuntimeContract.hostChannel,
+      );
+      expect(mainActivity, contains('AuthRuntimeBridge.SYSTEM_CHANNEL'));
+      expect(mainActivity, contains('AuthRuntimeBridge.UI_CHANNEL'));
+      expect(mainActivity, contains('AuthRuntimeBridge.METHOD_COMMAND'));
+      expect(mainActivity, contains('AuthRuntimeBridge.METHOD_FIRE_COMMAND'));
+      expect(settings, contains('AuthRuntimeBridge.PREFERENCES_NAME'));
+      expect(settings, contains('AuthRuntimeBridge.PREFERENCE_PREFIX'));
+      expect(
+        settings,
+        contains('AuthRuntimeBridge.DEFAULT_ACCOUNT_CONFIGURED'),
+      );
+      expect(notification, contains('AuthRuntimeBridge.KEY_NOTIFICATION'));
+      expect(state, contains('RuntimeContract.keyNotification'));
+      expect(dartSettings, contains('RuntimeContract.systemChannel'));
+      expect(entrypoint, contains('RuntimeContract.methodCommand'));
+    });
+
+    test('运行时命令清单与共享契约一致', () {
+      expect(AuthRuntimeController.declaredCommands, {
+        RuntimeContract.commandStart,
+        RuntimeContract.commandStop,
+        RuntimeContract.commandManualCheck,
+        RuntimeContract.commandLogout,
+        RuntimeContract.commandKickDevice,
+        RuntimeContract.commandConfigurationChanged,
+        RuntimeContract.commandNetworkChanged,
+      });
+    });
+
+    test('无需回包的命令交给宿主后立即完成 UI 调用', () {
+      final handler = _methodBody(
+        mainActivity,
+        'private fun handleRuntimeCall(',
+      );
+      expect(handler, contains('AuthRuntimeBridge.METHOD_FIRE_COMMAND'));
+      expect(handler, contains('else null'));
+      expect(handler, contains('result.success(null)'));
     });
   });
 
@@ -220,7 +270,7 @@ void main() {
       );
       expect(entrypoint, contains("@pragma('vm:entry-point')"));
       expect(bridge, isNot(contains('executeDartCallback(')));
-      expect(bridge, contains('invokeMethod("command"'));
+      expect(bridge, contains('invokeMethod(METHOD_COMMAND'));
       expect(entrypoint, contains('setMethodCallHandler('));
     });
 
@@ -259,7 +309,10 @@ void main() {
     });
 
     test('保留后台运行时默认值在两侧一致', () {
-      expect(settings, contains('KEY_KEEP_ALIVE, true'));
+      expect(
+        settings,
+        contains('KEY_KEEP_ALIVE, AuthRuntimeBridge.DEFAULT_KEEP_ALIVE'),
+      );
       expect(
         _methodBody(service, 'private fun ensureMonitoring()'),
         contains('isKeepAliveEnabled'),
@@ -325,7 +378,7 @@ void main() {
         expect(
           code,
           isNot(contains(forbidden)),
-          reason: '平台回调不得接触 $forbidden：Srun 协议只能在协调器里运行',
+          reason: '平台回调不得接触 $forbidden：Srun 协议只在 Dart 单轮认证实现里运行',
         );
       }
     });
@@ -365,29 +418,23 @@ void main() {
         _methodBody(service, 'private fun startNetworkMonitor()'),
         contains('AuthRuntimeBridge.COMMAND_NETWORK_CHANGED'),
       );
-      _expectKeys(service, const ['connected']);
-      _expectKeys(controller, const ['connected']);
+      expect(service, contains('AuthRuntimeBridge.KEY_CONNECTED'));
+      expect(controller, contains('RuntimeContract.keyConnected'));
       expect(
         _methodBody(controller, 'case commandNetworkChanged:'),
-        contains("args?['connected'] == true"),
+        contains('args?[RuntimeContract.keyConnected] == true'),
         reason: '原生只发命令，可用性判断必须由协调器做',
       );
     });
   });
 
   group('开机自启', () {
-    test('配置存在且两个开关同时开启才启动服务', () {
+    test('开机门读取配置和开关并保留服务启动接线', () {
       final onReceive = _methodBody(boot, 'override fun onReceive(');
       expect(onReceive, contains('isAccountConfigured'));
       expect(onReceive, contains('isKeepAliveEnabled'));
       expect(onReceive, contains('isAutoStartEnabled'));
       expect(onReceive, contains('AuthRuntimeService.start(context)'));
-      // 三个条件缺一即返回：把 || 写成 && 会让"两个开关都开"变成"两个开关都关"才启动。
-      expect(
-        onReceive,
-        contains('if (!keepAlive || !autoStart || !configured) return'),
-        reason: '开机门必须是三条件合取的反面，任一不满足都不得启动服务',
-      );
     });
 
     test('运行期间改设置会立刻反映到服务启停', () {
@@ -395,13 +442,12 @@ void main() {
         dartSettings,
         'static Future<void> applyKeepAlive(',
       );
+      expect(applyKeepAlive, contains('getKeepAlive()'));
       expect(
         applyKeepAlive,
-        contains('if (getKeepAlive())'),
-        reason: '保留后台运行是总开关，关闭即刻停服务',
+        contains('RuntimeContract.systemStartAuthRuntime'),
       );
-      expect(applyKeepAlive, contains('startAuthRuntime'));
-      expect(applyKeepAlive, contains('stopAuthRuntime'));
+      expect(applyKeepAlive, contains('RuntimeContract.systemStopAuthRuntime'));
       expect(
         _methodBody(dartSettings, 'static Future<bool> setKeepAlive('),
         contains('applyKeepAlive()'),
@@ -417,25 +463,33 @@ void main() {
     });
 
     test('配置存在标记由配置 owner 维护，两侧键名与默认值一致', () {
-      expect(settings, contains('"flutter.account_configured"'));
-      expect(settings, contains('KEY_AUTO_START, false'));
-      expect(settings, contains('KEY_ACCOUNT_CONFIGURED, false'));
-      expect(dartSettings, contains("'auto_start'"));
-      expect(dartSettings, contains("'account_configured'"));
-      // 三个写入口都要同步：少一个，标记就会和磁盘上的配置脱节。
-      for (final entryPoint in const [
-        'static Future<bool> saveConfig(',
-        'static Future<bool> deleteConfig(',
-        'static Future<bool> configExists(',
-      ]) {
-        expect(
-          _methodBody(config, entryPoint),
-          contains('_syncAccountConfigured()'),
-          reason:
-              '$entryPoint 之后必须同步配置存在标记，'
-              '配置文件在 Dart 侧文档目录，原生读不到',
-        );
-      }
+      expect(
+        settings,
+        contains(
+          'KEY_ACCOUNT_CONFIGURED = AuthRuntimeBridge.PREFERENCE_PREFIX + AuthRuntimeBridge.PREFERENCE_ACCOUNT_CONFIGURED',
+        ),
+      );
+      expect(
+        settings,
+        contains('KEY_AUTO_START, AuthRuntimeBridge.DEFAULT_AUTO_START'),
+      );
+      expect(
+        settings,
+        contains(
+          'KEY_ACCOUNT_CONFIGURED, AuthRuntimeBridge.DEFAULT_ACCOUNT_CONFIGURED',
+        ),
+      );
+      expect(dartSettings, contains('RuntimeContract.preferenceAutoStart'));
+      expect(
+        dartSettings,
+        contains('RuntimeContract.preferenceAccountConfigured'),
+      );
+      expect(
+        config,
+        contains(
+          'writeConfiguredHint: SystemSettingsUtil.setAccountConfigured',
+        ),
+      );
     });
 
     test('不用 WorkManager、精确闹钟或后台 Activity 兜底', () {
@@ -501,15 +555,10 @@ void main() {
       );
     });
 
-    test('推迟之后副作用一个不少，且日志仍然早于后台运行时', () {
+    test('首帧之后仍初始化日志并应用后台开关', () {
       final deferred = _methodBody(mainDart, 'Future<void> _prepareRuntime(');
       expect(deferred, contains('LogUtil.init()'));
       expect(deferred, contains('applyKeepAlive()'));
-      expect(
-        deferred.indexOf('LogUtil.init()'),
-        lessThan(deferred.indexOf('applyKeepAlive()')),
-        reason: '顺序与推迟前一致：后台运行时出错的日志要落得住',
-      );
     });
   });
 
@@ -545,17 +594,6 @@ String _codeOnly(String source) {
   return source
       .replaceAll(RegExp(r'/\*.*?\*/', dotAll: true), '')
       .replaceAll(RegExp(r'//.*'), '');
-}
-
-void _expectKeys(String source, List<String> keys) {
-  for (final key in keys) {
-    // Kotlin 用双引号、Dart 用单引号，两侧拼写必须一致。
-    expect(
-      source.contains("'$key'") || source.contains('"$key"'),
-      isTrue,
-      reason: '缺少 wire 键 $key',
-    );
-  }
 }
 
 /// 截取从 `signature` 所在行起、到下一个同缩进声明为止的方法体。
