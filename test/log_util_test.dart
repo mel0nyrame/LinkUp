@@ -27,13 +27,17 @@ void main() {
     await LogUtil.info(
       '请求 https://example.test/login?username=alice&password=secret',
     );
+    await LogUtil.info('{"password":"json-secret","username": "json-user"}');
     await LogUtil.error('token:secret2', Exception('secret3'));
 
     final content = await LogUtil.readLog();
     expect(content, contains('[URL_QUERY_REDACTED]'));
     expect(content, contains('token=[REDACTED]'));
+    expect(content, contains('"password":"[REDACTED]"'));
+    expect(content, contains('"username": "[REDACTED]"'));
     expect(content, isNot(contains('alice')));
     expect(content, isNot(contains('secret')));
+    expect(content, isNot(contains('json-user')));
     expect(content, contains('异常类型: _Exception'));
   });
 

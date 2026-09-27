@@ -68,11 +68,18 @@ class LogUtil {
       RegExp(r'https?://[^\s?]+\?[^\s]+', caseSensitive: false),
       '[URL_QUERY_REDACTED]',
     );
+    final withoutJsonSecrets = withoutUrlQueries.replaceAllMapped(
+      RegExp(
+        r'("(?:password|passwd|username|challenge|chksum|token|sign|info|authorization)"\s*:\s*)"(?:\\.|[^"\\])*"',
+        caseSensitive: false,
+      ),
+      (match) => '${match[1]}"[REDACTED]"',
+    );
     final secrets = RegExp(
       r'(password|passwd|username|challenge|chksum|token|sign|info|authorization)\s*[:=]\s*([^&\s,}\]]+)',
       caseSensitive: false,
     );
-    return withoutUrlQueries.replaceAllMapped(
+    return withoutJsonSecrets.replaceAllMapped(
       secrets,
       (match) => '${match[1]}=[REDACTED]',
     );
