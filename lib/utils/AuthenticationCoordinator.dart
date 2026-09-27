@@ -437,21 +437,15 @@ class AuthenticationCoordinator {
   }
 
   Future<DmResult> logout() async {
-    if (_disposed || _stopping) {
-      return const DmResult(accepted: false, errorMessage: _runtimeNotReady);
-    }
+    if (_disposed || _stopping) return const DmResult(accepted: false);
     _beginStop();
 
     try {
       await _quiesce();
-      if (!_canRun) {
-        return const DmResult(accepted: false, errorMessage: _runtimeNotReady);
-      }
+      if (!_canRun) return const DmResult(accepted: false);
 
       final config = await configSource.load();
-      if (config == null) {
-        return const DmResult(accepted: false, errorMessage: '没有可用的账号配置');
-      }
+      if (config == null) return const DmResult(accepted: false);
       return await _attempt.logout(config);
     } finally {
       _finishStop();
@@ -468,15 +462,7 @@ class AuthenticationCoordinator {
     if (config == null) {
       return const DmKickResult(DmOutcome.rejected, '没有可用的账号配置');
     }
-    // 复查要连着发几次请求，途中可能停监控或换网。把世代判定传下去，复查就能在
-    // 判据失效时停下来如实报「未确认」，而不是拿一个过期网络世代的答复去确认断开。
-    final server = _activeServer;
-    final generation = networkState.generation;
-    return _attempt.kickDevice(
-      config,
-      targetIp,
-      isCurrent: () => server != null && _isCurrent(server, generation),
-    );
+    return _attempt.kickDevice(config, targetIp);
   }
 
   Future<void> stop() async {

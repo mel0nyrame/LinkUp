@@ -240,11 +240,11 @@ class _MainNavigatorState extends State<MainNavigator> {
       if (!mounted) return;
 
       _showKickOutcome(targetIp, result);
-      await LogUtil.info('踢设备 $targetIp 结果：${result.outcome.name}');
       if (result.outcome == DmOutcome.kicked) {
         // 踢掉的那一行就是复查的依据，本地这份列表仍是旧的，重新拉一次。
         await _manualLogin();
       }
+      await LogUtil.info('踢设备 $targetIp 结果：${result.outcome.name}');
     } on AuthRuntimeUnavailableException {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -265,7 +265,7 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   /// 注销提示。被拒绝时把服务器给的原因带上，否则用户只知道失败、不知道为什么。
   String _logoutMessage(DmResult result) {
-    if (result.accepted) return '已成功注销';
+    if (result.accepted) return '已要求注销';
     final reason = result.reason;
     return reason == null ? '注销失败，请重试' : '注销失败：$reason';
   }

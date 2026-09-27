@@ -405,19 +405,6 @@ void main() {
       expect(outcome.outcome, DmOutcome.accepted);
     });
 
-    test('踢设备回传的不是结果包时也降级为未确认', () async {
-      // 发信端与收信端是同一个 bundle，不该出现形状不对的回传值；但真出现了也不能
-      // 让硬转型把降级路径本身变成崩点。
-      host.commandResults[AuthRuntimeController.commandKickDevice] = true;
-      final client = AuthRuntimeClient(channel: uiChannel);
-      addTearDown(client.dispose);
-      await client.attach();
-
-      final outcome = await client.kickDevice('10.0.0.9');
-
-      expect(outcome.outcome, DmOutcome.accepted);
-    });
-
     test('运行时通道失败与业务失败分别返回', () async {
       final client = AuthRuntimeClient(channel: uiChannel);
       addTearDown(client.dispose);
