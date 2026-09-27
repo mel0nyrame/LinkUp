@@ -24,7 +24,7 @@
 
 `BootReceiver` 只在三个条件同时成立时调用 `AuthRuntimeService.start`：已保存账号配置、“保留后台运行”、“开机自启”。它不创建也不拉起 Activity，因此开机自启是“保留后台运行”的下游开关，关掉总开关后即使 `auto_start` 仍为 true 也不会启动服务。开机时没有网络，服务进入离线状态等待，不产生失败循环。
 
-“配置存在”这份跨语言事实由 Dart 写入 plain 偏好 `account_configured`。`ConfigManager` 在用户保存、修改或删除配置时同步，`ConfigUtil.configExists()` 在启动检查时重新同步；标记始终由配置文件派生。默认值 false，读取失败按无配置处理，即不开服务。
+“配置存在”这份跨语言事实由 Dart 写入 plain 偏好 `account_configured`。`ConfigManager` 在用户保存、修改或删除配置时同步，`configManager.exists()` 在启动检查时重新同步；标记始终由配置文件派生。默认值 false，读取失败按无配置处理，即不开服务。
 
 ## Alternatives considered
 

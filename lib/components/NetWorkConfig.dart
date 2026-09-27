@@ -37,7 +37,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   // 加载配置
   Future<void> _loadConfig() async {
     try {
-      final config = await ConfigUtil.loadConfigFacts();
+      final config = await configManager.loadFacts();
       if (!mounted) return;
       if (config != null) {
         setState(() {
@@ -54,7 +54,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
   Future<void> _saveAutoAcid() async {
     try {
-      final success = await ConfigUtil.updateConfig(
+      final success = await configManager.update(
         ConfigUpdate(autoAcid: _autoAcid),
       );
       if (success && mounted) widget.onConfigChanged?.call();
@@ -65,7 +65,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
   Future<void> _saveAcid() async {
     try {
-      final success = await ConfigUtil.updateConfig(
+      final success = await configManager.update(
         ConfigUpdate(acid: _acidCtrl.text),
       );
       if (success && mounted) widget.onConfigChanged?.call();
@@ -77,7 +77,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
   // 保存认证服务器
   Future<void> _saveAuthServer() async {
     try {
-      final success = await ConfigUtil.updateConfig(
+      final success = await configManager.update(
         ConfigUpdate(authServer: _authServerCtrl.text),
       );
       if (!mounted || !success) return;

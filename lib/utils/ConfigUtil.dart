@@ -579,51 +579,32 @@ class ConfigManager {
   }
 }
 
-/// 生产环境的配置入口。
-class ConfigUtil {
-  ConfigUtil._();
+/// 生产环境唯一的配置写入入口。
+final ConfigManager configManager = ConfigManager(
+  repository: ConfigRepository(
+    pathProvider: _defaultPath,
+    secretStore: FlutterSecureStorageSecretStore(),
+  ),
+  writeConfiguredHint: SystemSettingsUtil.setAccountConfigured,
+  notifyRuntime: _notifyRuntime,
+);
 
-  static final ConfigManager _manager = ConfigManager(
-    repository: ConfigRepository(
-      pathProvider: _defaultPath,
-      secretStore: FlutterSecureStorageSecretStore(),
-    ),
-    writeConfiguredHint: SystemSettingsUtil.setAccountConfigured,
-    notifyRuntime: _notifyRuntime,
-  );
-
-  static Future<AuthConfig?> loadConfig() => _manager.load();
-
-  static Future<AuthConfigFacts?> loadConfigFacts() => _manager.loadFacts();
-
-  static Future<bool> saveConfig(AuthConfig config) => _manager.save(config);
-
-  static Future<bool> updateConfig(
-    ConfigUpdate update, {
-    bool Function()? canPersist,
-  }) => _manager.update(update, canPersist: canPersist);
-
-  static Future<bool> deleteConfig() => _manager.delete();
-
-  static Future<bool> configExists() => _manager.exists();
-
-  static Future<void> _notifyRuntime() async {
-    final client = AuthRuntimeClient();
-    try {
-      await client.configurationChanged();
-    } finally {
-      await client.dispose();
-    }
+Future<void> _notifyRuntime() async {
+  final client = AuthRuntimeClient();
+  try {
+    await client.configurationChanged();
+  } finally {
+    await client.dispose();
   }
+}
 
-  static Future<String> _defaultPath() async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      return '${directory.path}/linkup_config.json';
-    } catch (_) {
-      await LogUtil.warning('获取配置文件路径失败');
-      rethrow;
-    }
+Future<String> _defaultPath() async {
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}/linkup_config.json';
+  } catch (_) {
+    await LogUtil.warning('获取配置文件路径失败');
+    rethrow;
   }
 }
 

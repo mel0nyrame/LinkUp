@@ -159,15 +159,15 @@ abstract class AuthenticationConfigSource {
 
 class ConfigUtilSource implements AuthenticationConfigSource {
   @override
-  Future<AuthConfig?> load() => ConfigUtil.loadConfig();
+  Future<AuthConfig?> load() => configManager.load();
 
   @override
-  Future<AuthConfigFacts?> loadFacts() => ConfigUtil.loadConfigFacts();
+  Future<AuthConfigFacts?> loadFacts() => configManager.loadFacts();
 
   @override
   Future<bool> update(ConfigUpdate update, {bool Function()? canPersist}) {
-    if (canPersist == null) return ConfigUtil.updateConfig(update);
-    return ConfigUtil.updateConfig(update, canPersist: canPersist);
+    if (canPersist == null) return configManager.update(update);
+    return configManager.update(update, canPersist: canPersist);
   }
 }
 

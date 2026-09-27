@@ -14,7 +14,7 @@
 
 校园网密码通过 `SecretStore` 保存。生产实现使用 `flutter_secure_storage` 的 Android Keystore 支持，并使用独立的 `linkup_auth` 命名空间。普通 JSON 只保存非敏感字段，密码不会进入其序列化结果、日志或异常文本。
 
-只需要普通配置字段的调用方使用 `AuthConfigFacts`。`ConfigRepository.loadFacts` 直接读取普通 JSON，不访问 `SecretStore`，返回类型没有密码字段；账号编辑与执行登录的路径仍使用包含凭据的 `AuthConfig`。这样配置展示与认证服务器变更检查不必持有明文密码。
+只需要普通配置字段的调用方使用 `AuthConfigFacts`。`ConfigRepository.loadFacts` 直接读取普通 JSON，不访问 `SecretStore`，返回类型没有密码字段；账号编辑页不回填密码，留空保存即保留现有密码。只有执行认证的路径读取包含凭据的 `AuthConfig`。这样配置展示与认证服务器变更检查不持有明文密码。
 
 升级迁移遵循固定顺序：先把旧 JSON 中的密码写入 `SecretStore`，再读回并校验；只有两步都成功后才移除普通 JSON 中的密码字段。普通文件通过同目录临时文件校验后替换，迁移清理失败时保留旧文件并返回可重试错误。密码更新只写秘密存储；删除操作分别尝试删除普通配置和秘密，并读回确认秘密已清除，任一失败都返回失败，后续调用可以重试。
 
@@ -25,6 +25,7 @@ Android 11 及更早版本使用 `full-backup-content`，Android 12 及更高版
 - **继续把密码写入普通 JSON，并依赖日志遮罩**：不能建立存储边界，日志遮罩也无法覆盖文件、备份和异常路径，因此不采用。
 - **使用普通 `SharedPreferences` 或自定义未绑定 Keystore 的文件保存密码**：实现简单，但不满足 Android Keystore 保护要求，因此不采用。
 - **由调用方读取完整配置 Map 后覆盖写回**：无法区分未提供字段与明确清空，容易恢复旧 `user_type` 或覆盖并发的其他更新，因此不采用。
+- **在账号编辑页回填已保存密码**：方便重复查看，但会把秘密从认证链带到 Widget 内存；用“留空保留现有密码”保持修改能力，因此不采用。
 - **在 Flutter 之外自行实现 MethodChannel Keystore 适配器**：可以减少依赖，但需要维护额外的 Android 加密、迁移和错误语义；当前插件已经提供所需 Android 能力，因此不采用。
 
 ## Consequences / Risks

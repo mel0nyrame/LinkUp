@@ -41,7 +41,7 @@ class _FirstSetupDialogState extends State<FirstSetupDialog> {
     });
 
     try {
-      final success = await ConfigUtil.saveConfig(
+      final success = await configManager.save(
         AuthConfig(
           username: _usernameCtrl.text.trim(),
           password: _passwordCtrl.text,
