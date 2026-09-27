@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -7,6 +9,16 @@ import 'package:LinkUp/utils/SrunEncrypt.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
 final _fixtureChallenge = List.filled(9, 'c').join();
+
+/// 包成 JSONP 的 UTF-8 响应。
+///
+/// [http.Response] 的 String 构造按 Latin-1 编码，装不下深澜返回的中文原因；带
+/// charset 的字节响应才和真实服务器一致。
+http.Response _utf8Response(String json) => http.Response.bytes(
+  utf8.encode('jQueryCallback($json)'),
+  200,
+  headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -50,12 +62,12 @@ void main() {
       }),
     );
 
-    final accepted = await client.dmLogout(
+    final result = await client.dmLogout(
       username: '2021000100000',
       ip: '10.0.0.9',
     );
 
-    expect(accepted, isTrue);
+    expect(result.accepted, isTrue);
     expect(requested!.path, '/cgi-bin/rad_user_dm');
     final query = requested!.queryParameters;
     expect(query['ip'], '10.0.0.9');
@@ -73,17 +85,37 @@ void main() {
     final client = SrunClient(
       host: '10.0.0.1',
       client: MockClient((_) async {
-        return http.Response(
-          'jQueryCallback({"error":"some_parameter_error"})',
-          200,
+        return _utf8Response(
+          '{"error":"E6502","ecode":"E6502","error_msg":"该 IP 不在在线设备表中"}',
         );
       }),
     );
 
-    expect(
-      await client.dmLogout(username: '2021000100000', ip: '10.0.0.9'),
-      isFalse,
+    final result = await client.dmLogout(
+      username: '2021000100000',
+      ip: '10.0.0.9',
     );
+
+    expect(result.accepted, isFalse);
+    expect(result.error, 'E6502');
+    expect(result.ecode, 'E6502');
+    expect(result.errorMessage, '该 IP 不在在线设备表中');
+  });
+
+  test('DM 下线响应缺少 error_msg 时退回到 error 字段作为原因', () async {
+    // 部分部署把可读原因塞在 error 里而不是 error_msg，丢掉就等于没诊断信息。
+    final client = SrunClient(
+      host: '10.0.0.1',
+      client: MockClient((_) async => _utf8Response('{"error":"E6504"}')),
+    );
+
+    final result = await client.dmLogout(
+      username: '2021000100000',
+      ip: '10.0.0.9',
+    );
+
+    expect(result.accepted, isFalse);
+    expect(result.reason, 'E6504');
   });
 
   test('认证服务器无响应时在期限内结束检查', () async {

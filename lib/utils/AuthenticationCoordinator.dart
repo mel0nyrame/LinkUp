@@ -6,6 +6,7 @@ import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/NetworkUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 export 'package:LinkUp/utils/AuthParameters.dart';
@@ -220,6 +221,17 @@ enum DmOutcome {
   rejected,
 }
 
+/// 一次踢设备的判定结果。
+///
+/// [outcome] 决定提示的颜色，[reason] 补上被拒绝时服务器给出的原因。两者一起过桥，
+/// 因为只回传枚举名的话，被拒绝时用户仍然不知道为什么。
+class DmKickResult {
+  const DmKickResult(this.outcome, [this.reason]);
+
+  final DmOutcome outcome;
+  final String? reason;
+}
+
 /// 认证协议的可替换边界。生产实现连接 Srun 客户端，测试实现使用确定性 fake。
 abstract class AuthenticationProtocol {
   Future<RealityProbeResult> reality(String server, {bool getAcid = true});
@@ -241,7 +253,8 @@ abstract class AuthenticationProtocol {
 
   Future<String?> detectAcid(String server);
 
-  Future<bool> logout({
+  /// 下线请求的应答。协议层只回答受理与否，目标是否真断开由调用方复查。
+  Future<DmResult> logout({
     required String server,
     required String username,
     required String ip,
@@ -448,28 +461,36 @@ class AuthenticationCoordinator {
     return start();
   }
 
-  Future<bool> logout() async {
-    if (_disposed || _stopping) return false;
+  Future<DmResult> logout() async {
+    if (_disposed || _stopping) {
+      return const DmResult(accepted: false, errorMessage: '认证运行时未就绪');
+    }
     _beginStop();
 
     try {
       await _quiesce();
-      if (!_canRun) return false;
+      if (!_canRun) {
+        return const DmResult(accepted: false, errorMessage: '认证运行时未就绪');
+      }
 
       final config = await configSource.load();
-      if (config == null) return false;
+      if (config == null) {
+        return const DmResult(accepted: false, errorMessage: '没有可用的账号配置');
+      }
       return await _attempt.logout(config);
     } finally {
       _finishStop();
     }
   }
 
-  Future<DmOutcome> kickDevice(String targetIp) async {
-    if (!_canRun) return DmOutcome.rejected;
+  Future<DmKickResult> kickDevice(String targetIp) async {
+    if (!_canRun) return const DmKickResult(DmOutcome.rejected, '认证运行时未就绪');
     final active = _inFlight;
     if (active != null) await active;
     final config = await configSource.load();
-    if (config == null) return DmOutcome.rejected;
+    if (config == null) {
+      return const DmKickResult(DmOutcome.rejected, '没有可用的账号配置');
+    }
     return _attempt.kickDevice(config, targetIp);
   }
 

@@ -83,7 +83,7 @@ class SrunAuthenticationProtocol implements AuthenticationProtocol {
   }
 
   @override
-  Future<bool> logout({
+  Future<DmResult> logout({
     required String server,
     required String username,
     required String ip,

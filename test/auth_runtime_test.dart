@@ -13,6 +13,7 @@ import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
@@ -102,11 +103,15 @@ void main() {
         <String, Object?>{'ip': ''},
       );
 
-      expect(logout, isTrue);
-      // 过桥的是结果的名字；这个替身没有在线设备表，复查拿不到判据，因此未确认。
-      expect(kicked, 'accepted');
+      // 过桥的是结果包：状态按枚举名字走，序号会随成员增删改绑。
+      expect(logout, <String, Object?>{'status': 'accepted'});
+      // 这个替身没有在线设备表，复查拿不到判据，因此未确认。
+      expect(kicked, <String, Object?>{'status': 'accepted'});
       expect(protocol.kickedIps, <String>['10.0.0.8', '10.0.0.9']);
-      expect(rejected, 'rejected');
+      expect(rejected, <String, Object?>{
+        'status': 'rejected',
+        'reason': '目标地址为空',
+      });
     });
 
     test('配置变化命令在删除配置后保持停止', () async {
@@ -340,7 +345,10 @@ void main() {
     test('手动检查、注销和踢设备命令原样路由到宿主', () async {
       host.commandResults
         ..[AuthRuntimeController.commandManualCheck] = true
-        ..[AuthRuntimeController.commandKickDevice] = DmOutcome.kicked.name
+        ..[AuthRuntimeController.commandKickDevice] = <String, Object?>{
+          RuntimeContract.keyStatus: DmOutcome.kicked.name,
+          RuntimeContract.keyReason: null,
+        }
         ..[AuthRuntimeController.commandConfigurationChanged] = true;
       final client = AuthRuntimeClient(channel: uiChannel);
       addTearDown(client.dispose);
@@ -352,8 +360,8 @@ void main() {
       final kicked = await client.kickDevice('10.0.0.9');
       await client.configurationChanged();
 
-      expect(loggedOut, isFalse);
-      expect(kicked, DmOutcome.kicked);
+      expect(loggedOut.accepted, isFalse);
+      expect(kicked.outcome, DmOutcome.kicked);
       expect(
         calls
             .where(
@@ -394,7 +402,7 @@ void main() {
 
       final outcome = await client.kickDevice('10.0.0.9');
 
-      expect(outcome, DmOutcome.accepted);
+      expect(outcome.outcome, DmOutcome.accepted);
     });
 
     test('运行时通道失败与业务失败分别返回', () async {
@@ -402,7 +410,7 @@ void main() {
       addTearDown(client.dispose);
       await client.attach();
 
-      expect(await client.logout(), isFalse);
+      expect((await client.logout()).accepted, isFalse);
       host.commandError = PlatformException(code: 'runtime_gone');
       await expectLater(
         client.logout(),
@@ -807,7 +815,7 @@ class _FakeProtocol implements AuthenticationProtocol {
   Future<String?> detectAcid(String server) async => null;
 
   @override
-  Future<bool> logout({
+  Future<DmResult> logout({
     required String server,
     required String username,
     required String ip,
@@ -816,7 +824,7 @@ class _FakeProtocol implements AuthenticationProtocol {
     loggedOutIps.add(ip);
     _online = false;
     _userInfoCalls = 0;
-    return true;
+    return const DmResult(accepted: true);
   }
 
   @override

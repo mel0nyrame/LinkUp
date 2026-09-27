@@ -4,6 +4,7 @@ import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 final _config = AuthConfig(
@@ -30,10 +31,17 @@ String _deviceList(List<String> ips) {
 
 /// 可编排的协议替身：DM 结果与每次复查返回的在线设备表都由测试决定。
 class _ScriptedProtocol implements AuthenticationProtocol {
-  _ScriptedProtocol({required this.dmAccepted, required this.deviceLists});
+  _ScriptedProtocol({
+    required this.dmAccepted,
+    required this.deviceLists,
+    this.dmErrorMessage,
+  });
 
   /// `rad_user_dm` 是否被受理。
   bool dmAccepted;
+
+  /// DM 被拒时服务器给出的原因，透传给 UI。
+  final String? dmErrorMessage;
 
   /// 依次返回的在线设备表；用完则重复最后一份。
   final List<String> deviceLists;
@@ -42,13 +50,13 @@ class _ScriptedProtocol implements AuthenticationProtocol {
   int userInfoCalls = 0;
 
   @override
-  Future<bool> logout({
+  Future<DmResult> logout({
     required String server,
     required String username,
     required String ip,
   }) async {
     loggedOutIps.add(ip);
-    return dmAccepted;
+    return DmResult(accepted: dmAccepted, errorMessage: dmErrorMessage);
   }
 
   @override
@@ -113,9 +121,9 @@ void main() {
       ],
     );
 
-    final outcome = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
+    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
 
-    expect(outcome, DmOutcome.kicked);
+    expect(result.outcome, DmOutcome.kicked);
     expect(protocol.loggedOutIps, <String>['10.0.0.9']);
     // 第一次复查仍看到目标，所以要重试到第二次才给出确认。
     expect(protocol.userInfoCalls, 2);
@@ -129,9 +137,9 @@ void main() {
       ],
     );
 
-    final outcome = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
+    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
 
-    expect(outcome, DmOutcome.accepted);
+    expect(result.outcome, DmOutcome.accepted);
     // 重试用尽后仍无判据，不该无限复查。
     expect(protocol.userInfoCalls, 3);
   });
@@ -144,10 +152,25 @@ void main() {
       ],
     );
 
-    final outcome = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
+    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
 
-    expect(outcome, DmOutcome.rejected);
+    expect(result.outcome, DmOutcome.rejected);
     expect(protocol.userInfoCalls, 0);
+  });
+
+  test('被拒绝时把服务器给出的原因带到结果里', () async {
+    final protocol = _ScriptedProtocol(
+      dmAccepted: false,
+      deviceLists: [
+        _deviceList(<String>['10.0.0.8']),
+      ],
+      dmErrorMessage: 'E6502: 该 IP 不在在线设备表中',
+    );
+
+    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
+
+    expect(result.outcome, DmOutcome.rejected);
+    expect(result.reason, 'E6502: 该 IP 不在在线设备表中');
   });
 
   test('目标 IP 为空白时报被拒绝且不发出请求', () async {
@@ -158,18 +181,18 @@ void main() {
       ],
     );
 
-    final outcome = await _attempt(protocol).kickDevice(_config, '   ');
+    final result = await _attempt(protocol).kickDevice(_config, '   ');
 
-    expect(outcome, DmOutcome.rejected);
+    expect(result.outcome, DmOutcome.rejected);
     expect(protocol.loggedOutIps, isEmpty);
   });
 
   test('复查拿不到在线设备表时报已受理但未确认', () async {
     final protocol = _ScriptedProtocol(dmAccepted: true, deviceLists: ['']);
 
-    final outcome = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
+    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
 
-    expect(outcome, DmOutcome.accepted);
+    expect(result.outcome, DmOutcome.accepted);
   });
 
   test('目标只出现在记录的 ip6 字段时同样算仍在线', () async {
@@ -182,8 +205,8 @@ void main() {
       ],
     );
 
-    final outcome = await _attempt(protocol).kickDevice(_config, '2001:db8::9');
+    final result = await _attempt(protocol).kickDevice(_config, '2001:db8::9');
 
-    expect(outcome, DmOutcome.accepted);
+    expect(result.outcome, DmOutcome.accepted);
   });
 }

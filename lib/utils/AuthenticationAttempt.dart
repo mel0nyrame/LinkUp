@@ -12,9 +12,9 @@ abstract class AuthenticationAttempt {
 
   void stop() {}
 
-  Future<bool> logout(AuthConfig config);
+  Future<DmResult> logout(AuthConfig config);
 
-  Future<DmOutcome> kickDevice(AuthConfig config, String targetIp);
+  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp);
 }
 
 class AuthenticationAttemptContext {
@@ -100,13 +100,15 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   }
 
   @override
-  Future<bool> logout(AuthConfig config) async {
+  Future<DmResult> logout(AuthConfig config) async {
     reset();
     final server = normalizeAuthServer(config.authServer);
     final protocol = _protocol;
     final info = await protocol.getUserInfo(server);
     final ip = _ipFrom(info);
-    if (ip.isEmpty) return false;
+    if (ip.isEmpty) {
+      return const DmResult(accepted: false, errorMessage: '拿不到本机地址');
+    }
     return protocol.logout(
       server: server,
       username: config.authenticatedUsername,
@@ -115,18 +117,22 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   }
 
   @override
-  Future<DmOutcome> kickDevice(AuthConfig config, String targetIp) async {
+  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp) async {
     final target = targetIp.trim();
-    if (target.isEmpty) return DmOutcome.rejected;
+    if (target.isEmpty) {
+      return const DmKickResult(DmOutcome.rejected, '目标地址为空');
+    }
     final server = normalizeAuthServer(config.authServer);
     final protocol = _protocol;
-    final accepted = await protocol.logout(
+    final result = await protocol.logout(
       server: server,
       username: config.authenticatedUsername,
       ip: target,
     );
-    if (!accepted) return DmOutcome.rejected;
-    return _confirmOffline(protocol, server, target);
+    if (!result.accepted) {
+      return DmKickResult(DmOutcome.rejected, result.reason);
+    }
+    return DmKickResult(await _confirmOffline(protocol, server, target));
   }
 
   /// 复查目标是否真的下线。

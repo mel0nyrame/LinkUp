@@ -6,6 +6,7 @@ import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 
 class AuthRuntimeUnavailableException implements Exception {
   const AuthRuntimeUnavailableException();
@@ -61,23 +62,47 @@ class AuthRuntimeClient {
       _fire(AuthRuntimeController.commandConfigurationChanged);
 
   /// 注销结果决定 UI 提示，因此需要命令回传值。
-  Future<bool> logout() async =>
-      await _command(AuthRuntimeController.commandLogout) == true;
+  Future<DmResult> logout() async {
+    final result = _resultOf(
+      await _command(AuthRuntimeController.commandLogout),
+    );
+    return DmResult(
+      accepted: result.status == DmOutcome.accepted.name,
+      errorMessage: result.reason,
+    );
+  }
 
   /// 踢设备结果决定 UI 提示，因此需要命令回传值。
   ///
-  /// 运行时回传 [DmOutcome] 的名字。无法识别时如实报「已受理但未确认」，因为此时既
-  /// 不能声称踢掉了，也不能断言服务器拒绝了请求。
-  Future<DmOutcome> kickDevice(String ip) async {
-    final value = await _command(
-      AuthRuntimeController.commandKickDevice,
-      <String, Object?>{RuntimeContract.keyIp: ip},
+  /// 运行时回传 [DmOutcome] 的名字和被拒绝时的原因。无法识别状态名时如实报
+  /// 「已受理但未确认」，因为此时既不能声称踢掉了，也不能断言服务器拒绝了请求。
+  Future<DmKickResult> kickDevice(String ip) async {
+    final result = _resultOf(
+      await _command(AuthRuntimeController.commandKickDevice, <String, Object?>{
+        RuntimeContract.keyIp: ip,
+      }),
     );
     for (final outcome in DmOutcome.values) {
-      if (outcome.name == value) return outcome;
+      if (outcome.name == result.status) {
+        return DmKickResult(outcome, result.reason);
+      }
     }
     await LogUtil.warning('认证运行时回传了无法识别的踢设备结果');
-    return DmOutcome.accepted;
+    return const DmKickResult(DmOutcome.accepted);
+  }
+
+  /// 拆出命令结果包里的状态名和原因。
+  ///
+  /// 状态按名字匹配而不是序号，序号会随枚举成员增删而改绑。回传值不是结果包时
+  /// （只回传状态名的旧运行时）按裸字符串处理。
+  ({String? status, String? reason}) _resultOf(Object? payload) {
+    if (payload is Map) {
+      return (
+        status: payload[RuntimeContract.keyStatus] as String?,
+        reason: payload[RuntimeContract.keyReason] as String?,
+      );
+    }
+    return (status: payload as String?, reason: null);
   }
 
   Future<void> _fire(String name, [Map<String, Object?>? args]) async {
