@@ -143,8 +143,8 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   /// 比对的是每条记录自己的 `ip`/`ip6` 字段，不是 map 的键：键是 `rad_online_id`，
   /// 它和 IP 的关系没有资料能确认，拿它当 IP 比会永远判定成「已踢掉」。
   ///
-  /// 只在拿到非空设备表、且其中确实没有目标地址时才判定踢掉。表为空或读不出来都是
-  /// 没有判据，此时宁可报未确认也不报已踢掉。
+  /// 只在用户信息查询成功、设备表非空且每条记录都有地址，并且其中没有目标地址时
+  /// 才判定踢掉。其余情况没有完整判据，此时宁可报未确认也不报已踢掉。
   Future<DmOutcome> _confirmOffline(
     AuthenticationProtocol protocol,
     String server,
@@ -160,8 +160,14 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
         await LogUtil.error('踢设备复查失败', error, stackTrace);
         continue;
       }
+      if (!info.isOnline) continue;
       final devices = info.onlineDeviceDetail;
       if (devices == null || devices.isEmpty) continue;
+      if (devices.values.any(
+        (device) => device.getIp.trim().isEmpty && device.getIp6.trim().isEmpty,
+      )) {
+        continue;
+      }
       final stillOnline = devices.values.any(
         (device) => device.getIp == target || device.getIp6 == target,
       );

@@ -38,6 +38,7 @@ class _ScriptedProtocol implements AuthenticationProtocol {
     required this.deviceLists,
     this.dmErrorMessage,
     this.onlineDeviceTotal = '2',
+    this.userInfoError = 'ok',
   });
 
   /// `rad_user_dm` 是否被受理。
@@ -48,6 +49,8 @@ class _ScriptedProtocol implements AuthenticationProtocol {
 
   /// 响应自报的在线设备总数。用来构造「总数说还有设备，明细却是空的」这种自相矛盾。
   final String onlineDeviceTotal;
+
+  final String userInfoError;
 
   /// 依次返回的在线设备表；用完则重复最后一份。
   final List<String> deviceLists;
@@ -74,7 +77,7 @@ class _ScriptedProtocol implements AuthenticationProtocol {
     return RadUserInfo(
       clientIp: '10.0.0.8',
       onlineIp: '10.0.0.8',
-      error: 'ok',
+      error: userInfoError,
       onlineDeviceTotal: onlineDeviceTotal,
       onlineDeviceDetailRaw: deviceLists[index],
     );
@@ -223,6 +226,34 @@ void main() {
       dmAccepted: true,
       deviceLists: ['{}'],
       onlineDeviceTotal: '0',
+    );
+
+    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
+
+    expect(result.outcome, DmOutcome.accepted);
+  });
+
+  test('复查响应失败时不能用附带的设备表确认已踢掉', () async {
+    final protocol = _ScriptedProtocol(
+      dmAccepted: true,
+      deviceLists: [
+        _deviceList(<String>['10.0.0.8']),
+      ],
+      userInfoError: 'not_online_error',
+    );
+
+    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
+
+    expect(result.outcome, DmOutcome.accepted);
+  });
+
+  test('设备记录缺少地址时不能确认目标已从表中消失', () async {
+    final protocol = _ScriptedProtocol(
+      dmAccepted: true,
+      deviceLists: [
+        '{"online0":{"class_name":"PC","ip":"10.0.0.8"},'
+            '"online1":{"class_name":"Phone"}}',
+      ],
     );
 
     final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
