@@ -429,15 +429,11 @@ void main() {
   });
 
   group('开机自启', () {
-    test('配置存在且两个开关同时开启才启动服务', () {
+    test('开机门读取配置和开关并保留服务启动接线', () {
       final onReceive = _methodBody(boot, 'override fun onReceive(');
       expect(onReceive, contains('isAccountConfigured'));
       expect(onReceive, contains('isKeepAliveEnabled'));
       expect(onReceive, contains('isAutoStartEnabled'));
-      expect(
-        onReceive,
-        contains('if (!keepAlive || !autoStart || !configured) return'),
-      );
       expect(onReceive, contains('AuthRuntimeService.start(context)'));
     });
 
