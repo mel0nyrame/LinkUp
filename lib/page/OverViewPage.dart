@@ -13,6 +13,8 @@ typedef OverviewOperation = ({bool loading, String? message});
 
 class OverviewPage extends StatefulWidget {
   final ValueListenable<AuthRuntimeState> status;
+  final ValueListenable<String?> acid;
+  final ValueListenable<bool> online;
   final ValueListenable<RadUserInfo?> userInfo;
   final ValueListenable<OverviewOperation> operation;
   final Future<void> Function()? onRefresh;
@@ -21,6 +23,8 @@ class OverviewPage extends StatefulWidget {
   const OverviewPage({
     super.key,
     required this.status,
+    required this.acid,
+    required this.online,
     required this.userInfo,
     required this.operation,
     this.onRefresh,
@@ -128,17 +132,15 @@ class _OverviewPageState extends State<OverviewPage> {
             ),
           ),
           SliverToBoxAdapter(
-            child: ValueListenableBuilder<AuthRuntimeState>(
-              valueListenable: widget.status,
-              builder: (context, state, child) => Padding(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: widget.online,
+              builder: (context, online, child) => Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Text(
-                  state.isOnline ? '网络已连接' : '网络监控中',
+                  online ? '网络已连接' : '网络监控中',
                   style: TextStyle(
                     fontSize: 15,
-                    color: state.isOnline
-                        ? MyApp.iosGreen
-                        : MyApp.iosSecondaryText,
+                    color: online ? MyApp.iosGreen : MyApp.iosSecondaryText,
                   ),
                 ),
               ),
@@ -160,11 +162,7 @@ class _OverviewPageState extends State<OverviewPage> {
                           final online = state.isOnline && !operation.loading;
                           final message =
                               operation.message ?? presentation.detail;
-                          final detail = operation.loading
-                              ? operation.message
-                              : presentation.loading
-                              ? '正在尝试 ACID: ${state.acid ?? defaultAcid}'
-                              : message;
+                          final guidance = presentation.actionHint ?? message;
                           return Column(
                             children: [
                               Statuscard(
@@ -172,7 +170,7 @@ class _OverviewPageState extends State<OverviewPage> {
                                 statusText: operation.loading
                                     ? '正在注销'
                                     : presentation.title,
-                                detailText: detail,
+                                detailText: message,
                               ),
                               const SizedBox(height: 16),
                               if (loading)
@@ -191,7 +189,7 @@ class _OverviewPageState extends State<OverviewPage> {
                                     ],
                                   ),
                                 ),
-                              if (!loading && !online && message != null)
+                              if (!loading && !online && guidance != null)
                                 GlassCard(
                                   child: Row(
                                     children: [
@@ -201,11 +199,11 @@ class _OverviewPageState extends State<OverviewPage> {
                                         size: 20,
                                       ),
                                       const SizedBox(width: 10),
-                                      Expanded(child: Text(message)),
+                                      Expanded(child: Text(guidance)),
                                     ],
                                   ),
                                 ),
-                              if (loading || (!online && message != null))
+                              if (loading || (!online && guidance != null))
                                 const SizedBox(height: 16),
                             ],
                           );
@@ -214,15 +212,28 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
                 ValueListenableBuilder<AuthRuntimeState>(
                   valueListenable: widget.status,
-                  builder: (context, state, child) =>
+                  builder: (context, state, child) => state.presentation.loading
+                      ? ValueListenableBuilder<String?>(
+                          valueListenable: widget.acid,
+                          builder: (context, acid, child) => Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: GlassCard(
+                              child: Text('正在尝试 ACID: ${acid ?? defaultAcid}'),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: widget.online,
+                  builder: (context, online, child) =>
                       ValueListenableBuilder<OverviewOperation>(
                         valueListenable: widget.operation,
                         builder: (context, operation, child) =>
                             ValueListenableBuilder<RadUserInfo?>(
                               valueListenable: widget.userInfo,
                               builder: (context, rawInfo, child) {
-                                final userInfo =
-                                    state.isOnline && !operation.loading
+                                final userInfo = online && !operation.loading
                                     ? rawInfo
                                     : null;
                                 return Column(

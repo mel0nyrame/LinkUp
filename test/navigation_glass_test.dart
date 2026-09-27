@@ -55,12 +55,7 @@ void main() {
     final beforeOverview = overviewBuilds;
     final beforeSettings = settingsBuilds;
 
-    client.emit(
-      const AuthRuntimeState(
-        status: AuthenticationStatus.checking,
-        isOnline: false,
-      ),
-    );
+    client.emit(const AuthRuntimeState(status: AuthenticationStatus.checking));
     await tester.pump();
 
     expect(overviewBuilds, beforeOverview);

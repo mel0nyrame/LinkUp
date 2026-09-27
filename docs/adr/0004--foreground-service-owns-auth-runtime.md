@@ -18,7 +18,7 @@ Dart 入口用 `@pragma('vm:entry-point')` 保留在 AOT 快照中。最初采�
 
 服务类型使用 `specialUse` 并声明 `FOREGROUND_SERVICE_SPECIAL_USE` 与 `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`。不使用 `dataSync`：它受 Android 15+ 每 24 小时 6 小时限制，并且禁止从 `BOOT_COMPLETED` 启动。开启“保留后台运行”时始终经 `startForegroundService` 把服务提升为 started 状态——仅绑定的服务在 Activity 解绑后会被系统销毁，后台认证无法继续——并在 `onCreate` 与 `onStartCommand` 中及时进入前台；关闭时只有绑定，没有常驻通知。
 
-桥只搬运命令和状态。协调器、Srun 协议、退避策略仍只有一份 Dart 实现，Kotlin 不复制任何认证规则。常驻通知文本由 `notificationContentFor(AuthRuntimeState)` 在 Dart 侧从状态枚举和重试间隔派生，不读取用户信息、ACID 或状态 message，因此通知在结构上不可能出现账号、密码、Challenge、HMD5 或签名。
+桥只搬运命令和状态。协调器、Srun 协议、退避策略仍只有一份 Dart 实现，Kotlin 不复制任何认证规则。`AuthenticationState` 是进程内认证状态；`AuthRuntimeState` 是跨语言纯数据投影，在线布尔值从状态枚举派生，Kotlin 的 `latestState` 只缓存最后一次投影供 UI 重连。概况页与常驻通知共用 Dart 侧的状态文案映射；通知文案不读取用户信息、ACID 或状态 message，因此通知在结构上不可能出现账号、密码、Challenge、HMD5 或签名。
 
 跨语言通道名、命令名、wire 键和原生偏好约定由 `AuthRuntimeBridge.kt` 的契约区块声明；`tool/generate_runtime_contract.dart` 从它生成 Dart 常量。Kotlin 与 Dart 消费者使用各自常量，CI 比对生成结果，源码契约测试核对两侧的值与关键调用路径。
 

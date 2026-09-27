@@ -78,7 +78,7 @@ object AuthRuntimeBridge {
     private val pendingResults = HashMap<Long, MethodChannel.Result>()
     private val clients = LinkedHashSet<MethodChannel>()
 
-    /** 最近一次由后台运行时发布的状态，供刚绑定的 UI 取回。 */
+    /** Dart 认证快照的最近一次投影缓存，供刚绑定的 UI 取回；这里不判定认证状态。 */
     @Volatile
     var latestState: Map<Any?, Any?>? = null
         private set

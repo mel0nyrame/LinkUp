@@ -10,7 +10,6 @@ import 'package:LinkUp/utils/RuntimeContract.g.dart';
 class AuthRuntimeState {
   const AuthRuntimeState({
     required this.status,
-    required this.isOnline,
     this.message,
     this.acid,
     this.retryAfterSeconds,
@@ -19,7 +18,9 @@ class AuthRuntimeState {
   });
 
   final AuthenticationStatus status;
-  final bool isOnline;
+  bool get isOnline =>
+      status == AuthenticationStatus.online ||
+      status == AuthenticationStatus.alreadyOnline;
   final String? message;
   final String? acid;
   final int? retryAfterSeconds;
@@ -29,7 +30,6 @@ class AuthRuntimeState {
   factory AuthRuntimeState.fromCoordinatorState(AuthenticationState state) {
     return AuthRuntimeState(
       status: state.status,
-      isOnline: state.isOnline,
       message: state.message,
       acid: state.parameters?.acid,
       retryAfterSeconds: state.retryAfter?.inSeconds,
@@ -40,7 +40,6 @@ class AuthRuntimeState {
 
   const AuthRuntimeState.stopped()
     : status = AuthenticationStatus.stopped,
-      isOnline = false,
       message = null,
       acid = null,
       retryAfterSeconds = null,
@@ -80,10 +79,12 @@ class AuthRuntimeState {
         return AuthStatusPresentation(
           title: _reasonTitle(reason),
           detail: message ?? '认证未完成，稍后重试',
-          notification: retryAfterSeconds == null
-              ? '认证未完成，稍后重试'
-              : '认证未完成，$retryAfterSeconds 秒后重试',
-          needsAction: _needsAction(reason),
+          notification:
+              _actionHint(reason) ??
+              (retryAfterSeconds == null
+                  ? '认证未完成，稍后重试'
+                  : '认证未完成，$retryAfterSeconds 秒后重试'),
+          actionHint: _actionHint(reason),
         );
       case AuthenticationStatus.failed:
       case AuthenticationStatus.cancelled:
@@ -91,8 +92,8 @@ class AuthRuntimeState {
         return AuthStatusPresentation(
           title: _reasonTitle(reason),
           detail: message ?? '认证未完成，将自动重试',
-          notification: '认证未完成，将自动重试',
-          needsAction: _needsAction(reason),
+          notification: _actionHint(reason) ?? '认证未完成，将自动重试',
+          actionHint: _actionHint(reason),
         );
       case AuthenticationStatus.stopped:
         return AuthStatusPresentation(
@@ -131,7 +132,6 @@ class AuthRuntimeState {
     final rawReason = map[RuntimeContract.keyReason];
     return AuthRuntimeState(
       status: status,
-      isOnline: map[RuntimeContract.keyIsOnline] == true,
       message: map[RuntimeContract.keyMessage] as String?,
       acid: map[RuntimeContract.keyAcid] as String?,
       retryAfterSeconds: map[RuntimeContract.keyRetryAfterSeconds] as int?,
@@ -167,14 +167,15 @@ class AuthStatusPresentation {
     required this.detail,
     required this.notification,
     this.loading = false,
-    this.needsAction = false,
+    this.actionHint,
   });
 
   final String title;
   final String? detail;
   final String notification;
   final bool loading;
-  final bool needsAction;
+  final String? actionHint;
+  bool get needsAction => actionHint != null;
 }
 
 String _reasonTitle(AuthenticationReason reason) => switch (reason) {
@@ -187,10 +188,12 @@ String _reasonTitle(AuthenticationReason reason) => switch (reason) {
   AuthenticationReason.none || AuthenticationReason.unknown => '未连接',
 };
 
-bool _needsAction(AuthenticationReason reason) =>
-    reason == AuthenticationReason.missingConfig ||
-    reason == AuthenticationReason.invalidCredentials ||
-    reason == AuthenticationReason.invalidAcid;
+String? _actionHint(AuthenticationReason reason) => switch (reason) {
+  AuthenticationReason.missingConfig => '请在设置中填写账号和密码',
+  AuthenticationReason.invalidCredentials => '请在设置中检查账号和密码',
+  AuthenticationReason.invalidAcid => '请在设置中检查 ACID',
+  _ => null,
+};
 
 /// 从状态快照派生常驻通知内容。
 AuthRuntimeNotificationContent notificationContentFor(AuthRuntimeState state) {

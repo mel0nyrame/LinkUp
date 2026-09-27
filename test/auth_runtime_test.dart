@@ -12,6 +12,7 @@ import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
@@ -148,7 +149,6 @@ void main() {
     test('可操作错误原因在跨语言快照中保持类型', () {
       const state = AuthRuntimeState(
         status: AuthenticationStatus.failed,
-        isOnline: false,
         reason: AuthenticationReason.invalidCredentials,
         message: '登录失败',
       );
@@ -157,43 +157,40 @@ void main() {
       expect(restored.reason, AuthenticationReason.invalidCredentials);
       expect(restored.presentation.title, '账号验证失败');
       expect(restored.presentation.needsAction, isTrue);
-      expect(notificationContentFor(restored).text, '认证未完成，将自动重试');
+      expect(notificationContentFor(restored).text, '请在设置中检查账号和密码');
+    });
+
+    test('跨语言在线布尔值不覆盖状态枚举的判定', () {
+      final snapshot = AuthRuntimeState.fromMap({
+        RuntimeContract.keyStatus: AuthenticationStatus.offline.name,
+        RuntimeContract.keyIsOnline: true,
+      });
+      expect(snapshot.isOnline, isFalse);
+      expect(snapshot.toMap()[RuntimeContract.keyIsOnline], isFalse);
     });
 
     test('协调器状态变化映射为持续可见的认证状态文案', () {
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.online,
-            isOnline: true,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.online),
         ).text,
         '已连接到校园网',
       );
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.alreadyOnline,
-            isOnline: true,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.alreadyOnline),
         ).text,
         '已连接到校园网',
       );
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.checking,
-            isOnline: false,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.checking),
         ).text,
         '正在检查网络状态…',
       );
       expect(
         notificationContentFor(
-          const AuthRuntimeState(
-            status: AuthenticationStatus.authenticating,
-            isOnline: false,
-          ),
+          const AuthRuntimeState(status: AuthenticationStatus.authenticating),
         ).text,
         '正在认证校园网…',
       );
@@ -201,7 +198,6 @@ void main() {
         notificationContentFor(
           const AuthRuntimeState(
             status: AuthenticationStatus.offline,
-            isOnline: false,
             message: 'WiFi 未连接',
           ),
         ).text,
@@ -211,7 +207,6 @@ void main() {
         notificationContentFor(
           const AuthRuntimeState(
             status: AuthenticationStatus.backingOff,
-            isOnline: false,
             retryAfterSeconds: 6,
           ),
         ).text,
@@ -296,7 +291,6 @@ void main() {
     test('attach 取回最近一次发布的状态', () async {
       host.latest = const AuthRuntimeState(
         status: AuthenticationStatus.online,
-        isOnline: true,
         acid: '143',
       ).toMap();
       final client = AuthRuntimeClient(channel: uiChannel);
@@ -387,7 +381,6 @@ void main() {
         uiChannel,
         const AuthRuntimeState(
           status: AuthenticationStatus.authenticating,
-          isOnline: false,
           message: '正在登录...',
         ).toMap(),
       );

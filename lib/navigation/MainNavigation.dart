@@ -38,6 +38,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   );
   final ValueNotifier<RadUserInfo?> _userInfo = ValueNotifier(null);
   final ValueNotifier<bool> _online = ValueNotifier(false);
+  final ValueNotifier<String?> _acid = ValueNotifier(null);
   final ValueNotifier<OverviewOperation> _operation = ValueNotifier((
     loading: false,
     message: null,
@@ -74,12 +75,12 @@ class _MainNavigatorState extends State<MainNavigator> {
     final previous = _status.value;
     if (previous.status != state.status ||
         previous.message != state.message ||
-        previous.acid != state.acid ||
         previous.retryAfterSeconds != state.retryAfterSeconds ||
         previous.reason != state.reason ||
         previous.isOnline != state.isOnline) {
       _status.value = state;
     }
+    if (_acid.value != state.acid) _acid.value = state.acid;
     if (_online.value != state.isOnline) {
       _online.value = state.isOnline;
     }
@@ -120,6 +121,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     _status.dispose();
     _userInfo.dispose();
     _online.dispose();
+    _acid.dispose();
     _operation.dispose();
     super.dispose();
   }
@@ -316,6 +318,8 @@ class _MainNavigatorState extends State<MainNavigator> {
                     widget._testPages?[0] ??
                     OverviewPage(
                       status: _status,
+                      acid: _acid,
+                      online: _online,
                       userInfo: _userInfo,
                       operation: _operation,
                       onRefresh: _manualLogin,
