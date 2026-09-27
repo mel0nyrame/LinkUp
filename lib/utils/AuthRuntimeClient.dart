@@ -92,9 +92,8 @@ class AuthRuntimeClient {
 
   /// 拆出命令结果包里的状态名和原因。
   ///
-  /// 状态按名字匹配而不是序号，序号会随枚举成员增删而改绑。结果包不是 Map 时读出
-  /// 空状态，由调用方按「无法识别」处理——发信端与收信端是同一个 bundle，不存在
-  /// 只回传状态名的旧运行时，硬转型反而会把降级路径本身变成崩点。
+  /// 状态按名字匹配而不是序号，序号会随枚举成员增删而改绑。结果包不是 Map 时按没有
+  /// 状态处理，由调用方走「无法识别」分支。
   ({String? status, String? reason}) _resultOf(Object? payload) {
     if (payload is! Map) return (status: null, reason: null);
     return (

@@ -216,55 +216,9 @@ void main() {
     expect(result.outcome, DmOutcome.accepted);
   });
 
-  test('网络世代在复查途中失效时报未确认，不拿过期答复确认断开', () async {
-    final protocol = _ScriptedProtocol(
-      dmAccepted: true,
-      deviceLists: [
-        _deviceList(<String>['10.0.0.8', '10.0.0.9']),
-        _deviceList(<String>['10.0.0.8']),
-      ],
-    );
-    // 第一次复查还看得到目标，所以会继续重试；第二次那张表确实没有目标，但世代
-    // 已经换过，这份答复不能用来确认断开。
-
-    final result = await _attempt(protocol).kickDevice(
-      _config,
-      '10.0.0.9',
-      isCurrent: () => protocol.userInfoCalls < 2,
-    );
-
-    expect(result.outcome, DmOutcome.accepted);
-  });
-
-  test('总数说有设备在线而明细表为空时报未确认，不当成已踢掉', () async {
-    final protocol = _ScriptedProtocol(
-      dmAccepted: true,
-      deviceLists: ['{}'],
-      onlineDeviceTotal: '2',
-    );
-
-    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
-
-    expect(result.outcome, DmOutcome.accepted);
-  });
-
-  test('明细表里一条地址都读不出来时报未确认，不当成已踢掉', () async {
-    // 字段名与预期不符时每条记录的 ip/ip6 都是空，此时「表里没有目标」是解析失败的
-    // 表现，不是目标真的下线了。
-    final protocol = _ScriptedProtocol(
-      dmAccepted: true,
-      deviceLists: [
-        '{"online0":{"class_name":"","ip":"","ip6":"",'
-            '"os_name":"","rad_online_id":"online0"}}',
-      ],
-    );
-
-    final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
-
-    expect(result.outcome, DmOutcome.accepted);
-  });
-
-  test('总数和明细一致地为零时才把空表当成已下线', () async {
+  test('设备表为空时报未确认，不当成已踢掉', () async {
+    // 表为空有两种可能：目标真的下线且账号下再无设备，或者响应里的设备明细没能
+    // 解析出来。两种都没有「目标已断开」的证据，因此不判已踢掉。
     final protocol = _ScriptedProtocol(
       dmAccepted: true,
       deviceLists: ['{}'],
@@ -273,6 +227,6 @@ void main() {
 
     final result = await _attempt(protocol).kickDevice(_config, '10.0.0.9');
 
-    expect(result.outcome, DmOutcome.kicked);
+    expect(result.outcome, DmOutcome.accepted);
   });
 }

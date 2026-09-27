@@ -8,12 +8,14 @@
 
 1. **LinkUp 的协议方向是对的。** 踢设备不需要新端点，官方 Portal 内置的「在线设备管理」面板用的就是 LinkUp 已实现的 `/cgi-bin/rad_user_dm`，唯一区别是 `ip` 传目标设备的地址。签名公式与官方逐字一致。
 2. **`error: "ok"` 不是「已断开」的证据，这是 LinkUp 判定逻辑最严重的问题。** 官方自己的前端**完全不信** `rad_user_dm` 的响应——它发出 DM 之后轮询 `rad_user_info?ip=`，直到该 IP 报不在线才宣布成功。LinkUp 只读 DM 响应就弹绿色 SnackBar。
-3. **`username` 很可能传错了。** 官方把 `rad_user_info` 返回的裸 `user_name`（注释明确「不会携带域」）直接用作 DM 的 `username`，域单独存着不拼进去。LinkUp 用的是配置里拼好的 `账号@userType`。
-4. **成功值不唯一，LinkUp 只认 `ok`。** 跨三代部署，`rad_user_dm` 成功时可能返回 `ok`、`logout_ok`、`LogoutOK` 或裸文本 `logout_ok`。9 个开源实现要求 `logout_ok`，其中 1 个明确把 `ok` 判为失败。
+3. **`username` 的取值与官方不同，是否就是原因待验证。** 官方把 `rad_user_info` 返回的裸 `user_name`（注释明确「不会携带域」）直接用作 DM 的 `username`，域单独存着不拼进去；11 个开源实现也这么做。LinkUp 用的是配置里拼好的 `账号@userType`。**目标部署要求哪一种，调查无法确定**，需实机抓包（§8 第 2 步）。本 PR 不改这个行为。
+4. **成功值不唯一，LinkUp 只认 `ok`。** 跨三代部署，`rad_user_dm` 成功时可能返回 `ok`、`logout_ok`、`LogoutOK` 或裸文本 `logout_ok`。9 个开源实现要求 `logout_ok`，其中 1 个明确把 `ok` 判为失败。**这是多实现观察，不是目标部署的事实**；本 PR 不动这个判定。
 5. **「踢设备」本身可能没有产品意义。** DM 只置离线、不封禁。目标设备下一次认证就回来了。若目标设备跑着自动认证客户端（LinkUp 自己就是），会立刻重连。
 6. **用户侧踢设备是可选部署能力。** 官方码表里有 `E4104`「来自自服务（8800）的 DM 下线」，说明它被官方承认；但官方 2025 版自助服务平台的功能公告里没有这一项，各校还要受跨校区、网络位置限制。
 
 ## 1. LinkUp 现状
+
+以下三小节记录的是**调查当时的代码**（`master` 基线），行号对应那个版本。本 PR 已改动的部分在 §7 的「本 PR 已处理」里逐条列出。
 
 ### 1.1 调用链
 
@@ -157,13 +159,13 @@ _this.checkOnlineTimer = setInterval(function () {
 
 > A gateway that says "ok" has said something about itself, not about whose session is now on the line.
 
-> **⚠️ 部署差异警告**
+> **这套复查方式不能照抄。**
 >
-> 上面的 `params: { ip: _this.userInfo.ip }` **传的是调用者自己的 IP**，所以这套复查只证明「我自己下线了」，**证明不了别人被踢下线**。
+> 上面的 `params: { ip: _this.userInfo.ip }` **传的是调用者自己的 IP**，所以它只证明「我自己下线了」，**证明不了别人被踢下线**。另外 `checkNum === 0` 那一支无条件关闭弹窗、不看复查结果，官方 UI 上的「注销完成」在复查没能确认时同样会显示。
 >
-> 更晚的 2026 版深澜 Portal 改成了无条件调用 `rad_user_info` 且不带 `ip`（`checkOnlineWithIP` 被注释掉，`urlNetIp` 恒为空字符串，`ip` 参数不会被拼进查询串），即按请求来源 IP 判定 ⇒ 复查的仍然是**调用者自己**。配上 `checkNum === 0` 时无条件关闭弹窗，官方 UI 上的「注销完成」就退化成一个 3 秒定时器，而不是验证结果。
+> 是否有部署把复查改成「不带 `ip`、按请求来源 IP 判定」——见 §9，**未找到能引用的公开证据**。即便有，判定对象仍然是调用者自己。
 >
-> **结论：不要照抄官方的复查方式。** 判定「目标是否下线」要用能识别目标身份的判据——最省事的是账号自己的在线设备表：踢完再拉一次 `rad_user_info`，看目标地址还在不在里面。这既是新增零协议面的做法，也让判定事实和 UI 上那一行是否消失是同一个事实。
+> **判定「目标是否下线」要用能识别目标身份的判据**：账号自己的在线设备表。踢完再拉一次 `rad_user_info`，看目标地址还在不在里面。这不新增协议面，也让判定事实和 UI 上那一行是否消失变成同一个事实。
 
 同一项目的 `core/internal/application/terminal.go:32-51` 实现了 `verifyLogout`：`MaxTerminalAttempts` × `TerminalIntervalSeconds` 的有界重试确认，失败时返回 `domain.CodeConflict, "网关接受了登出请求，但这条线路上仍有在线会话"`。
 
@@ -234,7 +236,7 @@ sign = lowercase_hex(SHA1(time + username + ip + unbind + time))
 
 `time` 单位在不同实现里分裂为秒（官方与多数实现）、毫秒（6 个实现）、十分之一秒（2 个实现）。**没有任何一份资料明确说明协议要求哪种单位。** 官方用秒，LinkUp 用秒，两者一致。
 
-### 3.3 `username` 应取自 `rad_user_info`
+### 3.3 `username` 的取值：官方与多数实现用裸账号名
 
 【一手·官方】2020 代 Portal 在处理 `rad_user_info` 响应时这样存字段（`Portal.js:2279-2285`，注释为官方原文）：
 
@@ -256,7 +258,7 @@ _this3.userInfo.domain   = res.domain ? "@".concat(res.domain) : ''; // String �
 
 【一手·源码】`LYCaikano/lzunet.py:184-188` 的注释是最直接的表述：*"用户名用裸用户名（不带域后缀），与前端 `_logoutDm` 一致"*。
 
-**LinkUp 已经解析了这个字段但没有用**：`lib/utils/RadUserInfo.dart:96` 有 `@JsonKey(name: 'user_name') final String? userName`，而 `lib/utils/AuthenticationAttempt.dart:101` 和 `:110` 传的都是 `config.authenticatedUsername`。
+LinkUp 已经解析了这个字段但没有用：`lib/utils/RadUserInfo.dart:96` 有 `@JsonKey(name: 'user_name') final String? userName`，而 `lib/utils/AuthenticationAttempt.dart` 的 `logout` 与 `kickDevice` 传的都是 `config.authenticatedUsername`。**这是 LinkUp 与上述实现的做法不同，不等于目标部署一定要求裸名**——见 §7 的 D3。
 
 服务端确实有独立的用户名错误通道：`user_name_error`（`PengweeWang/SRunAuth` 实测 token 表）和官方码 `E6501`「用户名输入错误」。
 
@@ -297,7 +299,7 @@ _this3.userInfo.domain   = res.domain ? "@".concat(res.domain) : ''; // String �
 
 【一手·官方】官方 `lang.js` 同时维护一批符号化 token，比 `E####` 更常出现在 `error` 字段里：`LogoutOK`（DM 下线成功）、`NotOnlineError`、`YouAreNotOnline`（该设备不在线）、`SignError`、`TimestampError`、`MissingRequiredParametersError`。
 
-**LinkUp 只认 `ok`**（`lib/utils/SrunClient.dart:263`），并且强制走 JSONP 提取（`_extractJsonFromJsonp`）。在返回 `logout_ok` 或裸文本的部署上，它会把成功报成失败——而且因为裸文本无法通过 JSONP 提取，`_extractJsonFromJsonp` 抛异常后被 `catch (e)` 吞掉，返回 `false`。
+**LinkUp 只认 `ok`**，并且强制走 JSONP 提取（`_extractJsonFromJsonp`）。**本 PR 不改这个判定**（§7 的 D1）。在返回 `logout_ok` 或裸文本的部署上，它会把成功报成失败——而且因为裸文本无法通过 JSONP 提取，`_extractJsonFromJsonp` 抛异常后被 `catch (e)` 吞掉，返回 `false`。
 
 **注意反证**：用户报告的现象是「App 弹了绿色『已踢』」，这说明用户所在部署返回的是 `ok`（2020 代语义）。所以这条不是当前故障的原因，但换部署会静默误判。
 
@@ -308,7 +310,7 @@ _this3.userInfo.domain   = res.domain ? "@".concat(res.domain) : ''; // String �
 - 官方 `Portal.js:3055-3097` `translate(res)`：`ploy_msg`（非 `E0000` 开头）→ `ecode === 'E2901'` 时用 `error_msg` → `ecode` → `error_msg` → `res.error`
 - `PengweeWang/SRunAuth` `client.py:151-158` `response_message()`：`("error_msg", "suc_msg", "error", "res", "message")`
 
-**`error_msg` / `ecode` 优先于 `error`。** LinkUp 只读 `error`，会丢掉 `E6502`（注销时发生错误，或没有帐号在线）、`E6527`（当前设备不在线）、`E6501`（用户名输入错误）、`E6522`（客户端时间不正确）这些真正的原因码。
+**`error_msg` / `ecode` 优先于 `error`。** 只读 `error` 会丢掉 `E6502`（注销时发生错误，或没有帐号在线）、`E6527`（当前设备不在线）、`E6501`（用户名输入错误）、`E6522`（客户端时间不正确）这些真正的原因码。**本 PR 已按这个优先级解析并把原因透传到 UI**（§7 的 D2），实现见 `lib/utils/SrunClient.dart` 的 `DmResult.reason`。
 
 【一手·源码 ×9】所有实现都只用 HTTP 层的传输成功/失败两级区分，业务失败一律走 `200` + body。这是协议现实，LinkUp 用 `http` 包读 JSON 与之一致，**问题不是「读错了字段」，而是「读的字段不足以判断是否生效」。**
 
@@ -321,15 +323,15 @@ _this3.userInfo.domain   = res.domain ? "@".concat(res.domain) : ''; // String �
 | 需要 `mac` 参数 | **否定** | 官方 `params` 里没有 mac；`hitsz-autonet/AGENTS.md` 写明「MAC disagreement is notify-only, never a blocker」 |
 | 该校部署禁用了用户侧踢设备 | **基本否定** | 官方码表有 `E4104`「来自自服务（8800）的 DM 下线」；官方 Portal 内置在线设备管理 UI |
 | `unbind=1` 只是解绑绑定而不踢会话 | **未找到支持证据** | 18 个实现用 `1` 且工作正常；无任何资料这样描述它 |
-| **`username` 多了 `@域` 后缀** | **未否定，且有独立错误码支持** | 见 §3.3。6 份官方 JS + 5 个独立实现一致用裸名；服务端有 `user_name_error` / `E6501` |
+| **`username` 多了 `@域` 后缀** | **未否定** | 见 §3.3。6 份官方 JS + 11 个实现一致用裸名；服务端另有 `user_name_error` / `E6501` 通道。**这是做法差异，不是已确认的失败原因** |
 | **目标设备自动重连** | **机制已证实** | 官方码表有 `E3101` 心跳包超时、`E3007` 超时、`E3010` 无流量超时、`E2405` Session-Timeout；`rad_user_info` 带 `keepalive_time` 字段；DM 只置离线不封禁 |
 | **`online_device_detail` 里的 IP 是僵尸记录或不属本账号** | **机制成立** | 该字段无 `add_time`、无 MAC、无 `is_online`；对比 `/v1/auth/device/get` 多出 `user_mac` / `add_time` / `is_online`，`SRunAuth` 显式跳过 `is_online is False` |
 | `time` 单位或时钟偏移导致签名被拒 | **低，但须排除** | 官方 `E6522`「客户端时间不正确…时差超过 2 小时」；LinkUp 的秒级换算与官方一致 |
 
 ### 4.1 按可能性排序
 
-1. **`username` 带了 `@域` 后缀。** 置信度**高**。签名自洽所以不会因签名错被拒，服务端匹配在线表时可能走另一分支却仍返回 `ok`（这一步是【推测】）。
-2. **只判 `error == 'ok'`、不做踢后验证。** 置信度**高**。这**未必是踢不掉的原因，但是「弹了成功却没踢掉」被掩盖的直接原因**——在这个实现下，「没踢掉」在 UI 上根本不可观测。
+1. **`username` 带了 `@域` 后缀。** 置信度**中**。可观察到的事实是「LinkUp 与官方和 11 个实现取值不同」；「因此服务端匹配在线表走了另一分支却仍返回 `ok`」是【推测】，没有直接证据。
+2. **只判 `error == 'ok'`、不做踢后验证。** 置信度**高**。这**未必是踢不掉的原因，但是「弹了成功却没踢掉」被掩盖的直接原因**——在这个实现下，「没踢掉」在 UI 上根本不可观测。**本 PR 已修掉这一项**（§7 的 D4），但它只让「没踢掉」变得可观测，不能让踢设备真的生效。
 3. **目标设备自动重连。** 置信度**中高**。DM 只置离线不封禁。若目标设备跑着自动认证客户端（LinkUp 自己就是），它会立刻重连。
 4. **目标 IP 是过期记录或不属于本账号。** 置信度**中**。`online_device_detail` 不带 `is_online`，无法从字段本身分辨。
 5. **`unbind=1` 在非 MAC 认证部署上语义不对。** 置信度**中低**。有 6 个实现用 `0` 正常工作，但没有任何实现记录了「试过 0 不行才改 1」的过程。
@@ -403,25 +405,34 @@ if !identity.MatchesExpected && prepared.intent != auth.IntentManual {
 
 **在全部 24 个仓库的 issue 里搜索 `rad_user_dm` / `踢设备`，标题与正文全部 0 命中。** 跨设备踢人在开源社区基本没人踩坑，因为几乎没人实现它。也没有找到任何公开的 `rad_user_dm` 抓包（pcap 或分析文章）。
 
-## 7. LinkUp 偏差清单
+## 7. LinkUp 现状清单
 
-### 确证偏差
+下面三类分开的依据是**证据强度**：只有能从仓库代码直接读出来的算第一类；「别的实现这么做」只能说明做法有差异，不能说明目标部署一定要求它——那是第三类。
 
-| # | 偏差 | 位置 | 风险 |
+### 本 PR 已处理
+
+| # | 问题 | 位置 |
+| --- | --- | --- |
+| D2 | 只看 `error`，不回落 `res` / `ecode` / `error_msg`，失败时用户看不到原因 | `lib/utils/SrunClient.dart` |
+| D4 | 踢完不做任何确认，`error == 'ok'` 直接被当成已下线 | `lib/utils/AuthenticationAttempt.dart` |
+| D5 | 踢出成功后不刷新设备列表，要等下一轮轮询 | `lib/navigation/MainNavigation.dart` |
+| D8 | `rad_user_dm` 的 URL、query、`unbind`、`sign` 无任何测试断言 | `test/srun_client_test.dart` |
+
+### 与多数实现做法不同，是否构成偏差未验证
+
+| # | 差异 | 证据 | LinkUp 的做法 |
 | --- | --- | --- | --- |
-| D1 | 成功判定只认 `ok`，会漏掉 `logout_ok` / `LogoutOK` / 裸文本 | `lib/utils/SrunClient.dart:263` | 高。9 个实现要求 `logout_ok`，1 个明确把 `ok` 判为失败 |
-| D2 | 不回落 `res` / `ecode` / `error_msg` | 同上 | 中高。`error_msg` 优先于 `error` 是两个独立实现的一致结论 |
-| D3 | `username` 用配置值而非 `rad_user_info` 的 `user_name` | `lib/utils/AuthenticationAttempt.dart:101,110` | 高。`RadUserInfo.dart:96` 已解析该字段但未使用。**对 `kickDevice` 尤其致命** |
-| D4 | 踢完不做任何确认 | `lib/utils/AuthenticationCoordinator.dart:450-457` | 中。官方 Portal 自己做轮询确认 |
-| D5 | 踢出成功后不刷新设备列表 | `lib/navigation/MainNavigation.dart:236-266` | 中。`git show 24d8ea3` 的原始实现有，重构丢失 |
-| D6 | 不处理 `not_online_error` 为幂等成功 | `lib/utils/SrunClient.dart:263` | 中低 |
-| D7 | 不校验目标 IP 归属与格式 | `lib/utils/AuthenticationAttempt.dart:107-113` | 中低。`logout` 用 `_ipFrom` 校验，`kickDevice` 直接透传 |
-| D8 | 无协议层测试 | `test/srun_client_test.dart` | 中。`rad_user_dm` 的 URL、query、`unbind`、`sign` 全部无断言 |
+| D1 | 成功值取值 | 9 个实现要求 `logout_ok`，另有实现认 `LogoutOK` 或裸文本，其中一份明确把 `ok` 判为失败 | 只认 `ok` |
+| D3 | `username` 取值 | 官方 Portal 与 11 个实现用 `rad_user_info` 返回的裸 `user_name`；`ucas_portal_login` 拼 `username@domain` | 用配置值 `authenticatedUsername`，是否带 `@域` 取决于用户填没填运营商类型 |
+| D6 | `not_online_error` | 部分实现把它当幂等成功 | 只认 `ok`，`not_online_error` 报失败 |
+| D7 | 目标 IP 校验 | `logout` 侧会校验地址非空 | `kickDevice` 只 trim 后判空，不校验归属与格式 |
+
+**这四条不是已确认的缺陷。** 目标部署返回什么、要求什么，只有实机抓包能确定；本 PR 不动它们。
 
 ### 无法判定（学校方言，只能实机抓包）
 
 - `unbind` 该取 `0` 还是 `1`（18 家用 1，6 家用 0，无任何实现记录了试错过程）
-- `username` 该带 `@域` 还是裸名（三种做法都存在：官方 Portal 裸名、`ucas_portal_login` 拼 `username+domain`、LinkUp 用配置值）
+- `username` 该带 `@域` 还是裸名（见 D3）
 - `ip` 还是 `user_ip`（HITSZ 方言）
 - `time` 用秒 / 毫秒 / 十分之一秒
 - `rad_user_dm` 相对 `srun_portal?action=logout` 是否必需（取决于学校是否开 MacAuth 无感知认证）
@@ -431,11 +442,11 @@ if !identity.MatchesExpected && prepared.intent != auth.IntentManual {
 
 调查无法在只读条件下确定用户部署的实际行为。下一步应当先诊断再改代码。
 
-1. **先做诊断，把「真没踢掉」和「踢掉了但没验证」彻底分开。** DM 之后立刻调 `rad_user_info?ip=<目标IP>`，看 `error` 是 `ok`（会话还在，真失效）还是 `not_online_error`（实际踢掉了，是展示问题）。这一步能把所有候选原因一刀切成两半，优先做。
+1. **先做诊断，把「真没踢掉」和「踢掉了但没验证」彻底分开。** 踢完拉一次 `rad_user_info`，看 `online_device_detail` 里还有没有目标地址。这一步能把所有候选原因一刀切成两半，优先做。**不要用 `rad_user_info?ip=<目标IP>` 判据**——那个 `ip` 是可选参数，不拼进查询串的部署会回答调用者自己，得到假阳性（见 §2.2）。
 2. **抓 LinkUp 实际发出的请求，比对 `username=` 是否含 `@`。** 官方 Portal 是可用的对照：用浏览器打开官方 Portal 登录，点它自己的「踢」按钮，对比两边 URL 的 `username` / `unbind` / `ip` 三个值。这是分辨学校方言最直接的办法。
 3. **换一个裸 `user_name` 重试。** 如果目标学校门户确认用裸名，改用 `rad_user_info` 的 `user_name` 签名后重发，看目标是否掉线。
 4. **对照实验 `unbind`。** 把 `unbind` 改成 `0` 重算签名发一次（老代官方前端行为）。改 `unbind` 必须同步改签名输入。
-5. **观察是否自动重连。** 被踢设备若跑着自动认证客户端，DM 后每 2 秒轮询 `rad_user_info?ip=<目标IP>` 持续 60–120 秒，看是否出现「掉线 → 又在线」的锯齿。若是，则「踢设备」在该场景下本来就没有产品意义。
+5. **观察是否自动重连。** 被踢设备若跑着自动认证客户端，DM 后每 2 秒拉一次 `rad_user_info` 看目标地址是否重新出现，持续 60–120 秒。若出现「掉线 → 又在线」的锯齿，则「踢设备」在该场景下本来就没有产品意义。
 6. **确认该部署是否开放用户侧 DM。** 官方 Portal 能踢、LinkUp 不能踢 → 差异在参数；官方也不能踢 → 该部署禁用了此能力。
 
 如果后续要改代码，按 `docs/深澜认证协议技术文档.md` 的定位，改协议实现前先核对本文与真实 Portal 响应。
@@ -504,4 +515,4 @@ if !identity.MatchesExpected && prepared.intent != auth.IntentManual {
 | `lib/utils/AuthenticationCoordinator.dart` | 434-457 | `logout` 与 `kickDevice` 的编排差异 |
 | `docs/深澜认证协议技术文档.md` | 53, 219-227, 229-247 | 端点表、DM 注销、错误码表 |
 
-**`docs/深澜认证协议技术文档.md` §9 目前只写「DM 注销」，没有任何地方说明「换个 IP 就能踢其他设备」这一事实。** §10 的错误码表与官方 `lang.js` 存在出入，见 §5。
+**行号对应调查当时的 `master`。** 本 PR 之后 `docs/深澜认证协议技术文档.md` 新增了 §9.1「踢其他设备」，上面这条观察已不成立；其余路径的行号会随改动漂移，请按符号名定位。§10 的错误码表与官方 `lang.js` 存在出入，见 §5。
