@@ -1,0 +1,53 @@
+name: PR body
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  sections:
+    name: Verify PR body sections
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required section order
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_number="${GITHUB_REF#refs/pull/}"
+          pr_number="${pr_number%%/*}"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
+          python3 - "$RUNNER_TEMP/pr-body.md" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          expected = [
+              "## 背景",
+              "## 变更轮廓",
+              "## 验证汇总",
+              "## 评审注意事项",
+              "## 风险与回滚",
+          ]
+          headings = []
+          fence = None
+          for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+              marker = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
+              if marker:
+                  char, length = marker.group(1)[0], len(marker.group(1))
+                  if fence is None:
+                      fence = (char, length)
+                  elif char == fence[0] and length >= fence[1]:
+                      fence = None
+                  continue
+              if fence is None and line.startswith("## "):
+                  headings.append(line.rstrip())
+
+          if headings != expected:
+              print("PR 正文二级标题需按以下顺序且仅出现一次：", file=sys.stderr)
+              print("\n".join(expected), file=sys.stderr)
+              print(f"实际标题：{headings}", file=sys.stderr)
+              sys.exit(1)
+          PY
