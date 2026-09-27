@@ -48,4 +48,16 @@ void main() {
     expect(await File(path!).length(), lessThanOrEqualTo(1024 * 1024));
     expect(await LogUtil.readLog(), contains('AAAA'));
   });
+
+  test('清理与后续写入按调用顺序执行', () async {
+    await LogUtil.info('清理前的记录');
+
+    final clearing = LogUtil.clear();
+    final writing = LogUtil.info('清理后的记录');
+    await Future.wait([clearing, writing]);
+
+    final content = await LogUtil.readLog();
+    expect(content, isNot(contains('清理前的记录')));
+    expect(content, contains('清理后的记录'));
+  });
 }

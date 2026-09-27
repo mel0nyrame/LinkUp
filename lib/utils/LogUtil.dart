@@ -138,14 +138,17 @@ class LogUtil {
 
   /// 清空日志文件
   static Future<void> clear() async {
-    try {
-      await _writes;
-      if (_logFile != null && await _logFile!.exists()) {
-        await _logFile!.writeAsString('', encoding: utf8);
+    _writes = _writes.then((_) async {
+      try {
+        final file = _logFile;
+        if (file != null && await file.exists()) {
+          await file.writeAsString('', encoding: utf8);
+        }
+      } catch (_) {
+        // 清理失败不泄漏底层异常。
       }
-    } catch (_) {
-      // 清理失败不泄漏底层异常。
-    }
+    });
+    await _writes;
   }
 
   /// 读取日志内容（使用 UTF-8 编码，允许无效字节）
