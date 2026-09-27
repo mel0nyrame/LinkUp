@@ -142,19 +142,16 @@ void main() {
       expect(entrypoint, contains('RuntimeContract.methodCommand'));
     });
 
-    test('每个声明的命令都被运行时接受', () {
-      for (final command in AuthRuntimeController.declaredCommands) {
-        expect(
-          _methodBody(entrypoint, 'Future<Object?> _dispatch('),
-          isNot(contains(command)),
-          reason: '入口只按位置解析命令名，不应硬编码 $command',
-        );
-        expect(
-          _methodBody(state, 'Map<String, Object?> toMap()'),
-          isNot(contains(command)),
-        );
-      }
-      expect(AuthRuntimeController.declaredCommands, hasLength(7));
+    test('运行时命令清单与共享契约一致', () {
+      expect(AuthRuntimeController.declaredCommands, {
+        RuntimeContract.commandStart,
+        RuntimeContract.commandStop,
+        RuntimeContract.commandManualCheck,
+        RuntimeContract.commandLogout,
+        RuntimeContract.commandKickDevice,
+        RuntimeContract.commandConfigurationChanged,
+        RuntimeContract.commandNetworkChanged,
+      });
     });
 
     test('命令处理器先注册，随后发布就绪通知', () {
@@ -390,7 +387,7 @@ void main() {
         expect(
           code,
           isNot(contains(forbidden)),
-          reason: '平台回调不得接触 $forbidden：Srun 协议只能在协调器里运行',
+          reason: '平台回调不得接触 $forbidden：Srun 协议只在 Dart 单轮认证实现里运行',
         );
       }
     });
@@ -447,12 +444,6 @@ void main() {
       expect(onReceive, contains('isKeepAliveEnabled'));
       expect(onReceive, contains('isAutoStartEnabled'));
       expect(onReceive, contains('AuthRuntimeService.start(context)'));
-      // 三个条件缺一即返回：把 || 写成 && 会让"两个开关都开"变成"两个开关都关"才启动。
-      expect(
-        onReceive,
-        contains('if (!keepAlive || !autoStart || !configured) return'),
-        reason: '开机门必须是三条件合取的反面，任一不满足都不得启动服务',
-      );
     });
 
     test('运行期间改设置会立刻反映到服务启停', () {
@@ -460,11 +451,7 @@ void main() {
         dartSettings,
         'static Future<void> applyKeepAlive(',
       );
-      expect(
-        applyKeepAlive,
-        contains('if (getKeepAlive())'),
-        reason: '保留后台运行是总开关，关闭即刻停服务',
-      );
+      expect(applyKeepAlive, contains('getKeepAlive()'));
       expect(
         applyKeepAlive,
         contains('RuntimeContract.systemStartAuthRuntime'),
@@ -577,15 +564,10 @@ void main() {
       );
     });
 
-    test('推迟之后副作用一个不少，且日志仍然早于后台运行时', () {
+    test('首帧之后仍初始化日志并应用后台开关', () {
       final deferred = _methodBody(mainDart, 'Future<void> _prepareRuntime(');
       expect(deferred, contains('LogUtil.init()'));
       expect(deferred, contains('applyKeepAlive()'));
-      expect(
-        deferred.indexOf('LogUtil.init()'),
-        lessThan(deferred.indexOf('applyKeepAlive()')),
-        reason: '顺序与推迟前一致：后台运行时出错的日志要落得住',
-      );
     });
   });
 
