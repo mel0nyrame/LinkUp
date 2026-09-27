@@ -768,9 +768,6 @@ class _FakeProtocol implements AuthenticationProtocol {
   Future<String?> detectAcid(String server) async => null;
 
   @override
-  Future<String?> detectEnc(String server) async => AuthParameters.supportedEnc;
-
-  @override
   Future<bool> logout({
     required String server,
     required String username,

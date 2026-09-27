@@ -10,6 +10,8 @@ import 'package:LinkUp/utils/SrunLogin.dart';
 
 export 'package:LinkUp/utils/AuthParameters.dart';
 
+part 'AuthenticationAttempt.dart';
+
 enum AcidCandidateSource { reality, saved, rootProbe }
 
 class AcidCandidate {
@@ -27,11 +29,9 @@ class AcidCandidate {
 }
 
 class RealityProbeResult {
-  const RealityProbeResult({this.acid, this.isOnline = false, this.error});
+  const RealityProbeResult({this.acid});
 
   final String? acid;
-  final bool isOnline;
-  final String? error;
 }
 
 enum AuthenticationStatus {
@@ -67,7 +67,6 @@ AuthenticationReason _loginFailureReason(LoginErrorType errorType) {
     case LoginErrorType.ipNotAllowed:
     case LoginErrorType.networkError:
       return AuthenticationReason.networkUnavailable;
-    case LoginErrorType.httpError:
     case LoginErrorType.serverError:
     case LoginErrorType.challengeExpired:
     case LoginErrorType.parseError:
@@ -102,39 +101,32 @@ class AuthenticationState {
 }
 
 class AuthenticationResult {
-  const AuthenticationResult({
-    required this.status,
-    this.message,
-    this.userInfo,
-    this.parameters,
+  AuthenticationResult({
+    required AuthenticationStatus status,
+    String? message,
+    RadUserInfo? userInfo,
+    AuthParameters? parameters,
     this.candidate,
-    this.diagnosticEnc,
-    this.persistenceFailed = false,
-    this.reason = AuthenticationReason.none,
-  });
+    AuthenticationReason reason = AuthenticationReason.none,
+  }) : state = AuthenticationState(
+         status: status,
+         message: message,
+         userInfo: userInfo,
+         parameters: parameters,
+         reason: reason,
+       );
 
-  final AuthenticationStatus status;
-  final String? message;
-  final RadUserInfo? userInfo;
-  final AuthParameters? parameters;
+  final AuthenticationState state;
+  AuthenticationStatus get status => state.status;
+  String? get message => state.message;
+  RadUserInfo? get userInfo => state.userInfo;
+  AuthParameters? get parameters => state.parameters;
   final AcidCandidate? candidate;
-  final String? diagnosticEnc;
-  final bool persistenceFailed;
-  final AuthenticationReason reason;
+  AuthenticationReason get reason => state.reason;
 
-  bool get isOnline =>
-      status == AuthenticationStatus.online ||
-      status == AuthenticationStatus.alreadyOnline;
+  bool get isOnline => state.isOnline;
 
   bool get isSuccess => isOnline;
-
-  AuthenticationState get state => AuthenticationState(
-    status: status,
-    message: message,
-    userInfo: userInfo,
-    parameters: parameters,
-    reason: reason,
-  );
 }
 
 abstract class AuthenticationConfigSource {
@@ -223,8 +215,6 @@ abstract class AuthenticationProtocol {
 
   Future<String?> detectAcid(String server);
 
-  Future<String?> detectEnc(String server);
-
   Future<bool> logout({
     required String server,
     required String username,
@@ -272,10 +262,12 @@ class AuthenticationCoordinator {
     required this.networkState,
     AuthenticationProtocol Function()? protocolFactory,
     AuthenticationScheduler? scheduler,
+    AuthenticationAttempt? attempt,
   }) : _protocolInstance = protocol,
        // ignore: prefer_initializing_formals
        _protocolFactory = protocolFactory,
-       _scheduler = scheduler ?? TimerAuthenticationScheduler();
+       _scheduler = scheduler ?? TimerAuthenticationScheduler(),
+       _attempt = attempt ?? SrunAuthenticationAttempt();
 
   static const String supportedEnc = AuthParameters.supportedEnc;
 
@@ -283,6 +275,7 @@ class AuthenticationCoordinator {
   final AuthenticationNetworkState networkState;
   final AuthenticationProtocol Function()? _protocolFactory;
   final AuthenticationScheduler _scheduler;
+  final AuthenticationAttempt _attempt;
   AuthenticationProtocol? _protocolInstance;
 
   bool get _canRun => _protocolInstance != null || _protocolFactory != null;
@@ -601,140 +594,24 @@ class AuthenticationCoordinator {
         _activeServer = server;
       }
       final generation = networkState.generation;
-      final useManualAcid = manual ?? !config.autoAcid;
-
       if (!(_platformWifiConnected ?? await networkState.isConnected())) {
         return _offline('WiFi 未连接');
       }
       if (_cancelled(cancellation)) return _cancelledResult();
       if (!_isCurrent(server, generation)) return _staleResult();
 
-      final reality = await protocol.reality(server, getAcid: !useManualAcid);
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-
-      final userInfo = await protocol.getUserInfo(server);
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-
-      if (userInfo.isOnline) {
-        final result = AuthenticationResult(
-          status: AuthenticationStatus.alreadyOnline,
-          message: '已在线',
-          userInfo: userInfo,
-        );
-        _emit(result.state);
-        return result;
-      }
-
-      final ip = _ipFrom(userInfo);
-      if (ip.isEmpty) {
-        return _failed(
-          '无法获取本机 IP',
-          reason: AuthenticationReason.networkUnavailable,
-        );
-      }
-
-      final candidate = await _selectCandidate(
-        config: config,
-        reality: reality,
-        useManualAcid: useManualAcid,
-        server: server,
-        generation: generation,
-      );
-      if (candidate == null) {
-        return _failed('无法确定 ACID', reason: AuthenticationReason.invalidAcid);
-      }
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-
-      final diagnosticEnc = await protocol.detectEnc(server);
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-
-      final parameters = AuthParameters(
-        server: server,
-        username: config.authenticatedUsername,
-        ip: ip,
-        acid: candidate.value,
-        enc: supportedEnc,
-      );
-      _emit(
-        AuthenticationState(
-          status: AuthenticationStatus.authenticating,
-          parameters: parameters,
+      final result = await _attempt.run(
+        AuthenticationAttemptContext(
+          config: config,
+          server: server,
+          generation: generation,
+          useManualAcid: manual ?? !config.autoAcid,
+          protocol: protocol,
+          configSource: configSource,
+          isCurrent: () => _isCurrent(server, generation),
+          emit: _emit,
+          cancellation: cancellation,
         ),
-      );
-
-      final challenge = await protocol.getChallenge(
-        server: server,
-        username: parameters.username,
-        ip: parameters.ip,
-      );
-      if (!challenge.isSuccess || challenge.challenge.isEmpty) {
-        return _failed(
-          '获取认证令牌失败',
-          reason: AuthenticationReason.serverUnavailable,
-        );
-      }
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-
-      final loginResult = await protocol.login(
-        server: server,
-        parameters: parameters,
-        password: config.password,
-        challenge: challenge.challenge,
-      );
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-      if (!loginResult.success) {
-        return _failed(
-          '登录失败: ${loginResult.message}',
-          reason: _loginFailureReason(loginResult.errorType),
-        );
-      }
-
-      final confirmed = await protocol.getUserInfo(server);
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-      if (!confirmed.isOnline) {
-        return _failed(
-          '登录后在线确认失败',
-          reason: AuthenticationReason.serverUnavailable,
-        );
-      }
-
-      if (!await _serverStillCurrent(server)) return _staleResult();
-
-      var persistenceFailed = false;
-      if (loginResult.errorType != LoginErrorType.alreadyOnline) {
-        try {
-          persistenceFailed = !await configSource.update(
-            ConfigUpdate(acid: candidate.value),
-            canPersist: () =>
-                !_cancelled(cancellation) && _isCurrent(server, generation),
-          );
-        } catch (_) {
-          await LogUtil.warning('ACID 持久化失败，可重试');
-          persistenceFailed = true;
-        }
-      }
-      if (_cancelled(cancellation)) return _cancelledResult();
-      if (!_isCurrent(server, generation)) return _staleResult();
-
-      final result = AuthenticationResult(
-        status: loginResult.errorType == LoginErrorType.alreadyOnline
-            ? AuthenticationStatus.alreadyOnline
-            : AuthenticationStatus.online,
-        message: persistenceFailed ? '登录成功，但 ACID 保存失败' : '登录成功',
-        userInfo: confirmed,
-        parameters: parameters,
-        candidate: loginResult.errorType == LoginErrorType.alreadyOnline
-            ? null
-            : candidate,
-        diagnosticEnc: diagnosticEnc == supportedEnc ? null : diagnosticEnc,
-        persistenceFailed: persistenceFailed,
       );
       _emit(result.state);
       return result;
@@ -745,52 +622,6 @@ class AuthenticationCoordinator {
       LogUtil.error('认证流程异常', null, stackTrace);
       return _failed('认证流程异常，请重试');
     }
-  }
-
-  Future<bool> _serverStillCurrent(String server) async {
-    try {
-      final current = await configSource.loadFacts();
-      return current != null &&
-          normalizeAuthServer(current.authServer) == server;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<AcidCandidate?> _selectCandidate({
-    required AuthConfig config,
-    required RealityProbeResult reality,
-    required bool useManualAcid,
-    required String server,
-    required String generation,
-  }) async {
-    if (useManualAcid) {
-      return _candidate(config.acid, AcidCandidateSource.saved, generation);
-    }
-
-    if (reality.acid != null && reality.acid!.trim().isNotEmpty) {
-      return _candidate(reality.acid!, AcidCandidateSource.reality, generation);
-    }
-
-    if (config.hasExplicitAcid && config.acid.trim().isNotEmpty) {
-      return _candidate(config.acid, AcidCandidateSource.saved, generation);
-    }
-
-    final rootAcid = await protocol.detectAcid(server);
-    return _candidate(rootAcid, AcidCandidateSource.rootProbe, generation);
-  }
-
-  AcidCandidate? _candidate(
-    String? value,
-    AcidCandidateSource source,
-    String generation,
-  ) {
-    if (value == null || value.trim().isEmpty) return null;
-    return AcidCandidate(
-      value: value.trim(),
-      source: source,
-      networkGeneration: generation,
-    );
   }
 
   bool _isCurrent(String server, String generation) {
@@ -808,7 +639,7 @@ class AuthenticationCoordinator {
   }
 
   AuthenticationResult _stoppedResult() {
-    return const AuthenticationResult(
+    return AuthenticationResult(
       status: AuthenticationStatus.stopped,
       message: '认证监控已停止',
     );
@@ -838,7 +669,7 @@ class AuthenticationCoordinator {
   }
 
   AuthenticationResult _cancelledResult() {
-    const result = AuthenticationResult(
+    final result = AuthenticationResult(
       status: AuthenticationStatus.cancelled,
       message: '认证已取消',
     );
@@ -847,7 +678,7 @@ class AuthenticationCoordinator {
   }
 
   AuthenticationResult _staleResult() {
-    const result = AuthenticationResult(
+    final result = AuthenticationResult(
       status: AuthenticationStatus.stale,
       message: '网络环境已变化，请重试',
     );

@@ -102,4 +102,40 @@ void main() {
     expect(first.client.host, '10.0.0.9');
     expect(second.client.host, '10.0.0.2');
   });
+
+  test('Portal 错误分类保留账号和 ACID 两种可操作原因', () async {
+    for (final (response, expected) in [
+      (
+        '{"error":"fail","error_msg":"","res":"E2901"}',
+        LoginErrorType.authFailed,
+      ),
+      (
+        '{"error":"fail","error_msg":"invalid ac_id","res":""}',
+        LoginErrorType.acIdError,
+      ),
+    ]) {
+      final login = SrunLogin(
+        client: SrunClient(
+          client: MockClient(
+            (_) async => http.Response('testCallback($response)', 200),
+          ),
+          host: '10.0.0.1',
+        ),
+      );
+      final result = await login.login(
+        parameters: AuthParameters(
+          server: '10.0.0.1',
+          username: _fixtureUsername,
+          ip: '10.0.0.8',
+          acid: '143',
+          callback: 'testCallback',
+        ),
+        password: _fixturePassword,
+        challenge: _fixtureChallenge,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.errorType, expected);
+    }
+  });
 }
