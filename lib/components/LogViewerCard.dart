@@ -49,25 +49,32 @@ class _LogViewerCardState extends State<LogViewerCard> {
             ],
           ),
           const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              Icons.visibility_outlined,
-              color: colorScheme.primary,
+          // 玻璃卡自带不透明背景，ListTile 往上找祖先时会先撞上它，框架于是断言「背景
+          // 或墨迹可能被遮住」。框架给的办法（list_tile.dart 的 ErrorHint）是把 ListTile
+          // 包进自己的 Material。clipBehavior 要显式关掉：Material 默认会硬裁子树。
+          Material(
+            type: MaterialType.transparency,
+            clipBehavior: Clip.none,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.visibility_outlined,
+                color: colorScheme.primary,
+              ),
+              title: const Text('查看日志文件'),
+              subtitle: Text(
+                '查看应用运行日志和错误记录',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              trailing: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isLoading ? null : _showLogViewer,
             ),
-            title: const Text('查看日志文件'),
-            subtitle: Text(
-              '查看应用运行日志和错误记录',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            trailing: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.chevron_right),
-            onTap: _isLoading ? null : _showLogViewer,
           ),
         ],
       ),

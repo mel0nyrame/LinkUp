@@ -183,36 +183,52 @@ class _SystemSettingsCardState extends State<SystemSettingsCard> {
           const SizedBox(height: 12),
 
           // 保留后台
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('保留后台运行'),
-            subtitle: Text(
-              _keepAlive ? '由常驻通知的前台服务持续认证，离开应用后仍会重连' : '只在应用打开时认证，退出后不再自动重连',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            value: _keepAlive,
-            onChanged: _setKeepAlive,
-            secondary: Icon(
-              _keepAlive ? Icons.memory : Icons.memory_outlined,
-              color: colorScheme.primary,
+          // 玻璃卡自带不透明背景，ListTile 往上找祖先时会先撞上它，框架于是断言「背景
+          // 或墨迹可能被遮住」。框架给的办法（list_tile.dart 的 ErrorHint）是把 ListTile
+          // 包进自己的 Material。clipBehavior 要显式关掉：Material 默认会硬裁子树。
+          Material(
+            type: MaterialType.transparency,
+            clipBehavior: Clip.none,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('保留后台运行'),
+              subtitle: Text(
+                _keepAlive ? '由常驻通知的前台服务持续认证，离开应用后仍会重连' : '只在应用打开时认证，退出后不再自动重连',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              value: _keepAlive,
+              onChanged: _setKeepAlive,
+              secondary: Icon(
+                _keepAlive ? Icons.memory : Icons.memory_outlined,
+                color: colorScheme.primary,
+              ),
             ),
           ),
 
           const Divider(height: 8),
 
           // 开机自启
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('开机自启动'),
-            subtitle: Text(
-              _autoStart ? '重启后自动恢复认证（需同时开启“保留后台运行”并已保存账号）' : '需要手动打开应用',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            value: _autoStart,
-            onChanged: _setAutoStart,
-            secondary: Icon(
-              _autoStart ? Icons.power_settings_new : Icons.power_off_outlined,
-              color: _autoStart ? Colors.green : Colors.grey,
+          // 玻璃卡自带不透明背景，ListTile 往上找祖先时会先撞上它，框架于是断言「背景
+          // 或墨迹可能被遮住」。框架给的办法（list_tile.dart 的 ErrorHint）是把 ListTile
+          // 包进自己的 Material。clipBehavior 要显式关掉：Material 默认会硬裁子树。
+          Material(
+            type: MaterialType.transparency,
+            clipBehavior: Clip.none,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('开机自启动'),
+              subtitle: Text(
+                _autoStart ? '重启后自动恢复认证（需同时开启“保留后台运行”并已保存账号）' : '需要手动打开应用',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              value: _autoStart,
+              onChanged: _setAutoStart,
+              secondary: Icon(
+                _autoStart
+                    ? Icons.power_settings_new
+                    : Icons.power_off_outlined,
+                color: _autoStart ? Colors.green : Colors.grey,
+              ),
             ),
           ),
 

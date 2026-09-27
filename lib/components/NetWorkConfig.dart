@@ -125,23 +125,30 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           ),
           const SizedBox(height: 12),
 
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('自动获取 ACID'),
-            subtitle: Text(
-              _autoAcid ? '系统将自动尝试可用接入点' : '手动指定接入点 ID',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            value: _autoAcid,
-            onChanged: (value) {
-              setState(() {
-                _autoAcid = value;
-              });
-              _saveAutoAcid();
-            },
-            secondary: Icon(
-              _autoAcid ? Icons.auto_fix_high : Icons.edit,
-              color: colorScheme.primary,
+          // 玻璃卡自带不透明背景，ListTile 往上找祖先时会先撞上它，框架于是断言「背景
+          // 或墨迹可能被遮住」。框架给的办法（list_tile.dart 的 ErrorHint）是把 ListTile
+          // 包进自己的 Material。clipBehavior 要显式关掉：Material 默认会硬裁子树。
+          Material(
+            type: MaterialType.transparency,
+            clipBehavior: Clip.none,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('自动获取 ACID'),
+              subtitle: Text(
+                _autoAcid ? '系统将自动尝试可用接入点' : '手动指定接入点 ID',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              value: _autoAcid,
+              onChanged: (value) {
+                setState(() {
+                  _autoAcid = value;
+                });
+                _saveAutoAcid();
+              },
+              secondary: Icon(
+                _autoAcid ? Icons.auto_fix_high : Icons.edit,
+                color: colorScheme.primary,
+              ),
             ),
           ),
 
