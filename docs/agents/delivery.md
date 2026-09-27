@@ -1,6 +1,6 @@
 # 交付
 
-本文件是 LinkUp 仓库的交付契约：`AGENTS.md` 的变更流程在验证通过后指向这里。通用 Git 规范（提交拆分、命名、push/PR 授权边界）见 `talang-git` skill 的 `references/CONVENTIONS.md` 与 `references/REVIEW-AND-TRACKER.md`；本文件只写这个仓库自己的约定。
+本文件是 LinkUp 仓库的交付契约：`AGENTS.md` 的变更流程在验证通过后指向这里。分支、提交命名与拆分见 `talang-git` skill 的 `references/CONVENTIONS.md`；commit、push 的授权边界见该 skill 的主文件，PR 操作由 `talang-pr` 负责。本文件只写这个仓库自己的约定。
 
 ## 触发
 
@@ -29,6 +29,8 @@
 | 风险与回滚 | 可逆性、影响范围、回滚是否只需 revert 代码 | 局部低风险改动的风险段落 |
 
 完成标准：五节都在，没有占位文本，`base`/`head`/commit 范围/链接真实有效；变更轮廓里没有文件清单式的源码复述，每条行为变化都带贴邻证据。
+
+`.github/workflows/pr-body.yml` 在 PR 创建、重新打开、同步和正文编辑时检查这五个二级标题及顺序；正文事实与证据仍按下文预审。
 
 写变更轮廓先问评审要回答什么问题，再选表示：既有结构里的行为变化用语义 `diff`，全新内容用目标形状，一句话能说清就说一句话。**表示形式由认知成本决定，不由 diff 大小决定**——三行的条件 step 也该画 diff，改动小不是写散文段落的理由。
 

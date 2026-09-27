@@ -3,8 +3,8 @@ name: CI
 on:
   push:
     branches: [master]
+  # 叠放 PR 的 base 也是功能分支，需要同一套检查。
   pull_request:
-    branches: [master]
   workflow_dispatch:
 
 jobs:
