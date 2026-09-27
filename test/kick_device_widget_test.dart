@@ -11,7 +11,6 @@ import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 被踢的设备。本机是 10.0.0.9，所以列表里 10.0.0.8 那一行才会显示「踢」。
@@ -125,9 +124,7 @@ Future<void> _flushMainNavigator(WidgetTester tester) async {
 
 /// 踢被踢的那一行，读下用户看到的提示文案和颜色。
 ///
-/// [verifyAfterKick] 在刷新发生之后、widget 树被冲掉之前调用，用来断言用户看得见
-/// 的结果。SnackBar 必须在轮询之前读：轮询每轮推进 300 毫秒假时间，跑满上限会比
-/// SnackBar 的显示时长还长，文案到时候已经消失。
+/// [verifyAfterKick] 在 widget 树被冲掉之前调用，用来断言用户看得见的结果。
 Future<({String message, Color? color})> _kickAndReadSnackBar(
   WidgetTester tester,
   _FakeAuthRuntimeClient client, {
@@ -153,50 +150,13 @@ Future<({String message, Color? color})> _kickAndReadSnackBar(
 
   final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
   final message = (snackBar.content as Text).data ?? '';
-  await _settleAfterKick(tester, client, expectedRefreshes);
+  // 刷新分支在结果日志写盘之前执行；提示已显示时，这次命令应已决定是否刷新。
+  expect(client.manualCheckCalls, expectedRefreshes);
   if (verifyAfterKick != null) {
     await verifyAfterKick(tester);
   }
   await _flushMainNavigator(tester);
   return (message: message, color: snackBar.backgroundColor);
-}
-
-/// 踢完到刷新之间隔着一次真实的日志写盘（`LogUtil` 走文件 I/O，只有离开 fake-async
-/// 才推进），而它排在刷新之前。固定睡眠在整套测试连跑时会偶发不够——机器一忙，写盘
-/// 还没落地就被断言看成了「没刷新」——所以改成有界轮询。
-///
-/// [expectedRefreshes] 大于 0 时转到刷新真的发生为止，跑满 [maxRounds] 还没发生就
-/// 失败并报出实际次数。等于 0 时没有事件可等，于是把 [maxRounds] 轮全部跑完再补
-/// [quietRounds] 轮，好让「本不该刷新却晚到」的刷新也暴露出来（合计 68 轮）。
-Future<void> _settleAfterKick(
-  WidgetTester tester,
-  _FakeAuthRuntimeClient client,
-  int expectedRefreshes, {
-  int maxRounds = 60,
-  int quietRounds = 8,
-}) async {
-  for (var round = 0; round < maxRounds; round++) {
-    if (expectedRefreshes > 0 && client.manualCheckCalls >= expectedRefreshes) {
-      return;
-    }
-    await _tick(tester);
-  }
-  if (expectedRefreshes > 0) {
-    fail(
-      '轮询 $maxRounds 轮后仍未发生刷新：'
-      'manualCheckCalls=${client.manualCheckCalls}，期望 $expectedRefreshes',
-    );
-  }
-  for (var round = 0; round < quietRounds; round++) {
-    await _tick(tester);
-  }
-}
-
-Future<void> _tick(WidgetTester tester) async {
-  await tester.runAsync(
-    () => Future<void>.delayed(const Duration(milliseconds: 10)),
-  );
-  await _pumpFrames(tester, 1);
 }
 
 void main() {
@@ -302,8 +262,7 @@ void main() {
     // 切到设置页。ListTile 一旦被包在自带背景色的 DecoratedBox 里，框架就会报
     // 「背景或墨迹可能被遮住」，测试随之失败，所以这里断言四个入口都建出来了
     // 就等于守住这个回归。
-    final nav = tester.getRect(find.byType(GlassSurface).last);
-    await tester.tapAt(Offset(nav.right - 24, nav.center.dy));
+    await tester.tap(find.text('设置'));
     await _pumpFrames(tester);
 
     expect(find.text('保留后台运行'), findsOneWidget);
