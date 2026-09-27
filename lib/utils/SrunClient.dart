@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/ChallengeResponse.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SrunEncrypt.dart';
 
@@ -25,7 +26,7 @@ class SrunClient {
 
   SrunClient({
     http.Client? client,
-    this.host = "10.129.1.1",
+    this.host = defaultAuthServer,
     this.requestTimeout = const Duration(seconds: 10),
   }) : _client = client ?? http.Client();
 

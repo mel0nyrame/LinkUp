@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:LinkUp/utils/AuthParameters.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunEncrypt.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
@@ -103,7 +106,15 @@ void main() {
     expect(second.client.host, '10.0.0.2');
   });
 
-  test('Portal 错误分类保留账号和 ACID 两种可操作原因', () async {
+  test('SrunClient 默认服务器跟随配置常量', () {
+    final client = SrunClient(
+      client: MockClient((_) async => http.Response('testCallback({})', 200)),
+    );
+    expect(client.host, defaultAuthServer);
+    client.dispose();
+  });
+
+  test('Portal 错误分类保留可操作原因', () async {
     for (final (response, expected) in [
       (
         '{"error":"fail","error_msg":"","res":"E2901"}',
@@ -113,11 +124,37 @@ void main() {
         '{"error":"fail","error_msg":"invalid ac_id","res":""}',
         LoginErrorType.acIdError,
       ),
+      for (final code in ['E2905', 'E3001'])
+        (
+          '{"error":"fail","error_msg":"","res":"$code"}',
+          LoginErrorType.paymentRequired,
+        ),
+      (
+        '{"error":"fail","error_msg":"账号欠费","res":"E2905"}',
+        LoginErrorType.paymentRequired,
+      ),
+      for (final code in ['E2902', 'E2606'])
+        (
+          '{"error":"fail","error_msg":"","res":"$code"}',
+          LoginErrorType.accountUnavailable,
+        ),
+      (
+        '{"error":"fail","error_msg":"账号已停用","res":"E2902"}',
+        LoginErrorType.accountUnavailable,
+      ),
+      (
+        '{"error":"fail","error_msg":"","res":"E2620"}',
+        LoginErrorType.deviceLimit,
+      ),
     ]) {
       final login = SrunLogin(
         client: SrunClient(
           client: MockClient(
-            (_) async => http.Response('testCallback($response)', 200),
+            (_) async => http.Response.bytes(
+              utf8.encode('testCallback($response)'),
+              200,
+              headers: {'content-type': 'text/javascript; charset=utf-8'},
+            ),
           ),
           host: '10.0.0.1',
         ),
@@ -135,7 +172,11 @@ void main() {
       );
 
       expect(result.success, isFalse);
-      expect(result.errorType, expected);
+      expect(
+        result.errorType,
+        expected,
+        reason: '$response → ${result.message}',
+      );
     }
   });
 }

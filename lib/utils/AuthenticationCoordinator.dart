@@ -52,6 +52,9 @@ enum AuthenticationReason {
   wifiUnavailable,
   missingConfig,
   invalidCredentials,
+  accountUnavailable,
+  paymentRequired,
+  deviceLimit,
   invalidAcid,
   networkUnavailable,
   serverUnavailable,
@@ -62,6 +65,12 @@ AuthenticationReason _loginFailureReason(LoginErrorType errorType) {
   switch (errorType) {
     case LoginErrorType.authFailed:
       return AuthenticationReason.invalidCredentials;
+    case LoginErrorType.accountUnavailable:
+      return AuthenticationReason.accountUnavailable;
+    case LoginErrorType.paymentRequired:
+      return AuthenticationReason.paymentRequired;
+    case LoginErrorType.deviceLimit:
+      return AuthenticationReason.deviceLimit;
     case LoginErrorType.acIdError:
       return AuthenticationReason.invalidAcid;
     case LoginErrorType.ipNotAllowed:
@@ -252,43 +261,32 @@ class TimerAuthenticationScheduler implements AuthenticationScheduler {
   }
 }
 
-/// 统一编排一次检查、候选选择、登录和在线确认。
+/// 统一编排认证轮次的单飞、网络世代和监控调度。
 ///
-/// [protocolFactory] 用于停止、注销或网络变化后重建 HTTP 资源。
+/// Srun 单轮实现通过 [protocolFactory] 在停止或网络变化后重建 HTTP 资源。
 class AuthenticationCoordinator {
   AuthenticationCoordinator({
     required this.configSource,
-    required AuthenticationProtocol protocol,
     required this.networkState,
+    AuthenticationProtocol? protocol,
     AuthenticationProtocol Function()? protocolFactory,
     AuthenticationScheduler? scheduler,
     AuthenticationAttempt? attempt,
-  }) : _protocolInstance = protocol,
-       // ignore: prefer_initializing_formals
-       _protocolFactory = protocolFactory,
+  }) : assert(attempt != null || protocol != null),
        _scheduler = scheduler ?? TimerAuthenticationScheduler(),
-       _attempt = attempt ?? SrunAuthenticationAttempt();
-
-  static const String supportedEnc = AuthParameters.supportedEnc;
+       _attempt =
+           attempt ??
+           SrunAuthenticationAttempt(
+             protocol: protocol!,
+             protocolFactory: protocolFactory,
+           );
 
   final AuthenticationConfigSource configSource;
   final AuthenticationNetworkState networkState;
-  final AuthenticationProtocol Function()? _protocolFactory;
   final AuthenticationScheduler _scheduler;
   final AuthenticationAttempt _attempt;
-  AuthenticationProtocol? _protocolInstance;
 
-  bool get _canRun => _protocolInstance != null || _protocolFactory != null;
-
-  AuthenticationProtocol get protocol {
-    final current = _protocolInstance;
-    if (current != null) return current;
-    final factory = _protocolFactory;
-    if (factory == null) {
-      throw StateError('认证协议已释放且没有可用的重建工厂');
-    }
-    return _protocolInstance = factory();
-  }
+  bool get _canRun => _attempt.canRun;
 
   final StreamController<AuthenticationState> _stateController =
       StreamController<AuthenticationState>.broadcast(sync: true);
@@ -383,12 +381,8 @@ class AuthenticationCoordinator {
 
   void invalidateNetwork() {
     networkState.invalidate();
-    if (_protocolFactory != null) {
-      // Android 切换 Wi-Fi 路由后必须丢弃旧 HTTP 连接池。
-      _releaseProtocol();
-    } else {
-      _protocolInstance?.reset();
-    }
+    // Android 切换 Wi-Fi 路由后由单轮实现丢弃旧 HTTP 连接池。
+    _attempt.invalidateNetwork();
   }
 
   /// 响应平台网络可用性变化。
@@ -444,22 +438,10 @@ class AuthenticationCoordinator {
     try {
       await _quiesce();
       if (!_canRun) return false;
-      _protocolInstance?.reset();
 
       final config = await configSource.load();
       if (config == null) return false;
-
-      final server = normalizeAuthServer(config.authServer);
-      final currentProtocol = protocol;
-      final info = await currentProtocol.getUserInfo(server);
-      final ip = _ipFrom(info);
-      if (ip.isEmpty) return false;
-
-      return await currentProtocol.logout(
-        server: server,
-        username: config.authenticatedUsername,
-        ip: ip,
-      );
+      return await _attempt.logout(config);
     } finally {
       _finishStop();
     }
@@ -471,12 +453,7 @@ class AuthenticationCoordinator {
     if (active != null) await active;
     final config = await configSource.load();
     if (config == null) return false;
-    final server = normalizeAuthServer(config.authServer);
-    return protocol.logout(
-      server: server,
-      username: config.authenticatedUsername,
-      ip: targetIp,
-    );
+    return _attempt.kickDevice(config, targetIp);
   }
 
   Future<void> stop() async {
@@ -511,7 +488,7 @@ class AuthenticationCoordinator {
 
   void _finishStop() {
     _platformWifiConnected = null;
-    _releaseProtocol();
+    _attempt.stop();
     _activeServer = null;
     _emit(const AuthenticationState(status: AuthenticationStatus.stopped));
     _stopping = false;
@@ -522,14 +499,6 @@ class AuthenticationCoordinator {
     await stop();
     _disposed = true;
     await _stateController.close();
-  }
-
-  void _releaseProtocol() {
-    final current = _protocolInstance;
-    _protocolInstance = null;
-    if (current == null) return;
-    current.reset();
-    current.dispose();
   }
 
   void _scheduleNext(AuthenticationResult result) {
@@ -590,7 +559,7 @@ class AuthenticationCoordinator {
 
       final server = normalizeAuthServer(config.authServer);
       if (_activeServer != server) {
-        protocol.reset();
+        _attempt.reset();
         _activeServer = server;
       }
       final generation = networkState.generation;
@@ -605,8 +574,7 @@ class AuthenticationCoordinator {
           config: config,
           server: server,
           generation: generation,
-          useManualAcid: manual ?? !config.autoAcid,
-          protocol: protocol,
+          manual: manual,
           configSource: configSource,
           isCurrent: () => _isCurrent(server, generation),
           emit: _emit,
@@ -630,12 +598,6 @@ class AuthenticationCoordinator {
 
   bool _cancelled(AuthenticationCancellationToken? token) {
     return token?.isCancelled == true;
-  }
-
-  String _ipFrom(RadUserInfo info) {
-    final clientIp = info.clientIp;
-    if (clientIp != null && clientIp.isNotEmpty) return clientIp;
-    return info.onlineIp ?? '';
   }
 
   AuthenticationResult _stoppedResult() {

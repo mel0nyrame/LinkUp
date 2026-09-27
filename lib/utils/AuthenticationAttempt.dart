@@ -1,8 +1,20 @@
 part of 'AuthenticationCoordinator.dart';
 
-/// 一轮认证的边界；协调器只处理单飞、网络世代和下一轮调度。
+/// 单轮认证及协议资源的边界；协调器只处理单飞、网络世代和调度。
 abstract class AuthenticationAttempt {
   Future<AuthenticationResult> run(AuthenticationAttemptContext context);
+
+  bool get canRun => true;
+
+  void reset() {}
+
+  void invalidateNetwork() => reset();
+
+  void stop() {}
+
+  Future<bool> logout(AuthConfig config);
+
+  Future<bool> kickDevice(AuthConfig config, String targetIp);
 }
 
 class AuthenticationAttemptContext {
@@ -10,8 +22,7 @@ class AuthenticationAttemptContext {
     required this.config,
     required this.server,
     required this.generation,
-    required this.useManualAcid,
-    required this.protocol,
+    required this.manual,
     required this.configSource,
     required this.isCurrent,
     required this.emit,
@@ -21,8 +32,7 @@ class AuthenticationAttemptContext {
   final AuthConfig config;
   final String server;
   final String generation;
-  final bool useManualAcid;
-  final AuthenticationProtocol protocol;
+  final bool? manual;
   final AuthenticationConfigSource configSource;
   final bool Function() isCurrent;
   final void Function(AuthenticationState) emit;
@@ -31,21 +41,90 @@ class AuthenticationAttemptContext {
   bool get cancelled => cancellation?.isCancelled == true;
 }
 
-class SrunAuthenticationAttempt implements AuthenticationAttempt {
+class SrunAuthenticationAttempt extends AuthenticationAttempt {
+  SrunAuthenticationAttempt({
+    required AuthenticationProtocol protocol,
+    AuthenticationProtocol Function()? protocolFactory,
+  }) : _protocolInstance = protocol,
+       // ignore: prefer_initializing_formals
+       _protocolFactory = protocolFactory;
+
+  AuthenticationProtocol? _protocolInstance;
+  final AuthenticationProtocol Function()? _protocolFactory;
+
+  @override
+  bool get canRun => _protocolInstance != null || _protocolFactory != null;
+
+  AuthenticationProtocol get _protocol {
+    final current = _protocolInstance;
+    if (current != null) return current;
+    final factory = _protocolFactory;
+    if (factory == null) {
+      throw StateError('认证协议已释放且没有可用的重建工厂');
+    }
+    return _protocolInstance = factory();
+  }
+
+  @override
+  void reset() => _protocolInstance?.reset();
+
+  @override
+  void invalidateNetwork() {
+    if (_protocolFactory != null) {
+      _releaseProtocol();
+    } else {
+      reset();
+    }
+  }
+
+  @override
+  void stop() => _releaseProtocol();
+
+  void _releaseProtocol() {
+    final current = _protocolInstance;
+    _protocolInstance = null;
+    if (current == null) return;
+    current.reset();
+    current.dispose();
+  }
+
+  @override
+  Future<bool> logout(AuthConfig config) async {
+    reset();
+    final server = normalizeAuthServer(config.authServer);
+    final protocol = _protocol;
+    final info = await protocol.getUserInfo(server);
+    final ip = _ipFrom(info);
+    if (ip.isEmpty) return false;
+    return protocol.logout(
+      server: server,
+      username: config.authenticatedUsername,
+      ip: ip,
+    );
+  }
+
+  @override
+  Future<bool> kickDevice(AuthConfig config, String targetIp) {
+    return _protocol.logout(
+      server: normalizeAuthServer(config.authServer),
+      username: config.authenticatedUsername,
+      ip: targetIp,
+    );
+  }
+
   @override
   Future<AuthenticationResult> run(AuthenticationAttemptContext context) async {
     try {
       _guard(context);
+      final protocol = _protocol;
+      final useManualAcid = context.manual ?? !context.config.autoAcid;
       final reality = await _step(
         context,
-        () => context.protocol.reality(
-          context.server,
-          getAcid: !context.useManualAcid,
-        ),
+        () => protocol.reality(context.server, getAcid: !useManualAcid),
       );
       final userInfo = await _step(
         context,
-        () => context.protocol.getUserInfo(context.server),
+        () => protocol.getUserInfo(context.server),
       );
       if (userInfo.isOnline) {
         return AuthenticationResult(
@@ -64,7 +143,12 @@ class SrunAuthenticationAttempt implements AuthenticationAttempt {
         );
       }
 
-      final candidate = await _selectCandidate(context, reality);
+      final candidate = await _selectCandidate(
+        context,
+        reality,
+        protocol,
+        useManualAcid,
+      );
       _guard(context);
       if (candidate == null) {
         return AuthenticationResult(
@@ -79,7 +163,7 @@ class SrunAuthenticationAttempt implements AuthenticationAttempt {
         username: context.config.authenticatedUsername,
         ip: ip,
         acid: candidate.value,
-        enc: AuthenticationCoordinator.supportedEnc,
+        enc: AuthParameters.supportedEnc,
       );
       context.emit(
         AuthenticationState(
@@ -90,7 +174,7 @@ class SrunAuthenticationAttempt implements AuthenticationAttempt {
 
       final challenge = await _step(
         context,
-        () => context.protocol.getChallenge(
+        () => protocol.getChallenge(
           server: context.server,
           username: parameters.username,
           ip: parameters.ip,
@@ -106,7 +190,7 @@ class SrunAuthenticationAttempt implements AuthenticationAttempt {
 
       final loginResult = await _step(
         context,
-        () => context.protocol.login(
+        () => protocol.login(
           server: context.server,
           parameters: parameters,
           password: context.config.password,
@@ -124,7 +208,7 @@ class SrunAuthenticationAttempt implements AuthenticationAttempt {
       // Portal 的 error == ok 不代表在线，必须再次查询 rad_user_info。
       final confirmed = await _step(
         context,
-        () => context.protocol.getUserInfo(context.server),
+        () => protocol.getUserInfo(context.server),
       );
       if (!confirmed.isOnline) {
         return AuthenticationResult(
@@ -197,10 +281,12 @@ class SrunAuthenticationAttempt implements AuthenticationAttempt {
   Future<AcidCandidate?> _selectCandidate(
     AuthenticationAttemptContext context,
     RealityProbeResult reality,
+    AuthenticationProtocol protocol,
+    bool useManualAcid,
   ) async {
     final config = context.config;
     final generation = context.generation;
-    if (context.useManualAcid) {
+    if (useManualAcid) {
       return _candidate(config.acid, AcidCandidateSource.saved, generation);
     }
     if (reality.acid != null && reality.acid!.trim().isNotEmpty) {
@@ -211,7 +297,7 @@ class SrunAuthenticationAttempt implements AuthenticationAttempt {
     }
     final rootAcid = await _step(
       context,
-      () => context.protocol.detectAcid(context.server),
+      () => protocol.detectAcid(context.server),
     );
     return _candidate(rootAcid, AcidCandidateSource.rootProbe, generation);
   }

@@ -14,15 +14,10 @@ final _fixtureChallenge = List.filled(9, 'c').join();
 
 void main() {
   test('调度器通过单轮接口消费结果，不编排协议步骤', () async {
-    final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(),
-      userInfo: const [],
-    );
     final attempt = _FakeAuthenticationAttempt();
     final scheduler = _FakeAuthenticationScheduler();
     final coordinator = AuthenticationCoordinator(
       configSource: _FakeConfigSource(_config()),
-      protocol: protocol,
       networkState: _FakeNetworkState(),
       scheduler: scheduler,
       attempt: attempt,
@@ -32,7 +27,6 @@ void main() {
 
     expect(result.status, AuthenticationStatus.online);
     expect(attempt.calls, 1);
-    expect(protocol.realityCalls, 0);
     expect(scheduler.lastDelay, const Duration(seconds: 30));
     await coordinator.dispose();
   });
@@ -190,27 +184,37 @@ void main() {
     expect(config.updates, isEmpty);
   });
 
-  test('登录失败时不保存本轮 ACID', () async {
-    final protocol = _FakeAuthenticationProtocol(
-      realityResult: const RealityProbeResult(acid: '143'),
-      userInfo: [RadUserInfo(clientIp: '10.0.0.8', error: '')],
-      loginSuccess: false,
-      loginErrorType: LoginErrorType.authFailed,
-    );
-    final config = _FakeConfigSource(_config());
-    final coordinator = AuthenticationCoordinator(
-      configSource: config,
-      protocol: protocol,
-      networkState: _FakeNetworkState(),
-    );
+  for (final (errorType, reason) in [
+    (LoginErrorType.authFailed, AuthenticationReason.invalidCredentials),
+    (LoginErrorType.paymentRequired, AuthenticationReason.paymentRequired),
+    (
+      LoginErrorType.accountUnavailable,
+      AuthenticationReason.accountUnavailable,
+    ),
+    (LoginErrorType.deviceLimit, AuthenticationReason.deviceLimit),
+  ]) {
+    test('登录失败 $errorType 保留原因且不保存本轮 ACID', () async {
+      final protocol = _FakeAuthenticationProtocol(
+        realityResult: const RealityProbeResult(acid: '143'),
+        userInfo: [RadUserInfo(clientIp: '10.0.0.8', error: '')],
+        loginSuccess: false,
+        loginErrorType: errorType,
+      );
+      final config = _FakeConfigSource(_config());
+      final coordinator = AuthenticationCoordinator(
+        configSource: config,
+        protocol: protocol,
+        networkState: _FakeNetworkState(),
+      );
 
-    final result = await coordinator.check();
+      final result = await coordinator.check();
 
-    expect(result.status, AuthenticationStatus.failed);
-    expect(result.reason, AuthenticationReason.invalidCredentials);
-    expect(coordinator.state.reason, AuthenticationReason.invalidCredentials);
-    expect(config.updates, isEmpty);
-  });
+      expect(result.status, AuthenticationStatus.failed);
+      expect(result.reason, reason);
+      expect(coordinator.state.reason, reason);
+      expect(config.updates, isEmpty);
+    });
+  }
 
   test('认证参数只使用已验证的 Enc', () async {
     final protocol = _FakeAuthenticationProtocol(
@@ -1230,7 +1234,7 @@ class _FakeAuthenticationScheduler implements AuthenticationScheduler {
   }
 }
 
-class _FakeAuthenticationAttempt implements AuthenticationAttempt {
+class _FakeAuthenticationAttempt extends AuthenticationAttempt {
   int calls = 0;
 
   @override
@@ -1238,6 +1242,12 @@ class _FakeAuthenticationAttempt implements AuthenticationAttempt {
     calls++;
     return AuthenticationResult(status: AuthenticationStatus.online);
   }
+
+  @override
+  Future<bool> logout(AuthConfig config) async => false;
+
+  @override
+  Future<bool> kickDevice(AuthConfig config, String targetIp) async => false;
 }
 
 class _FakeAuthenticationProtocol implements AuthenticationProtocol {

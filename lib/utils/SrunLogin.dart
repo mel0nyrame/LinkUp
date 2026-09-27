@@ -10,6 +10,9 @@ enum LoginErrorType {
   networkError, // 网络错误
   parseError, // 解析错误
   authFailed, // 认证失败（账号密码错误）
+  accountUnavailable, // 账号停用或被禁用
+  paymentRequired, // 欠费或流量用尽
+  deviceLimit, // 同时在线设备数超限
   alreadyOnline, // 已经在线
   ipNotAllowed, // IP 不允许
   acIdError, // ACID 错误
@@ -51,6 +54,22 @@ class SrunLogin {
     // 注意：alreadyOnline 检测已移至 login 成功路径 (error == 'ok' 时先判断)，
     // _analyzeErrorType 仅在失败分支被调用，已不可能进入 error == 'ok' 的分支
 
+    if (res.contains('E2905') ||
+        res.contains('E3001') ||
+        msgLower.contains('欠费') ||
+        msgLower.contains('流量用尽') ||
+        msgLower.contains('时长用尽')) {
+      return LoginErrorType.paymentRequired;
+    }
+
+    if (res.contains('E2902') || res.contains('E2606')) {
+      return LoginErrorType.accountUnavailable;
+    }
+
+    if (res.contains('E2620')) {
+      return LoginErrorType.deviceLimit;
+    }
+
     // 账号密码错误 - 包含常见错误码
     if (msgLower.contains('password') ||
         msgLower.contains('账号') ||
@@ -59,17 +78,7 @@ class SrunLogin {
         msgLower.contains('username') ||
         resLower.contains('password') ||
         res.contains('E2901') || // 密码错误或账号不存在
-        res.contains('E2902') || // 账号不存在或已停用
-        res.contains('E2553') || // 密码错误（加密方式不对）
-        res.contains('E2606')) {
-      // 用户被禁用
-      return LoginErrorType.authFailed;
-    }
-
-    // 账号欠费/流量用尽
-    if (res.contains('E2905') || // 账号已欠费停机
-        res.contains('E3001')) {
-      // 流量或时长已用尽
+        res.contains('E2553')) {
       return LoginErrorType.authFailed;
     }
 

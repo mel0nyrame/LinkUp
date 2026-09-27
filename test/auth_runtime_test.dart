@@ -171,6 +171,24 @@ void main() {
       expect(notificationContentFor(restored).text, '请在设置中检查账号和密码');
     });
 
+    test('欠费、停用和设备数限制提供对应处理指引', () {
+      for (final (reason, hint) in [
+        (AuthenticationReason.paymentRequired, '请充值或购买流量包后重试'),
+        (AuthenticationReason.accountUnavailable, '请联系校园网络中心'),
+        (AuthenticationReason.deviceLimit, '请先下线其他设备后重试'),
+      ]) {
+        final restored = AuthRuntimeState.fromMap(
+          AuthRuntimeState(
+            status: AuthenticationStatus.failed,
+            reason: reason,
+          ).toMap(),
+        );
+        expect(restored.reason, reason);
+        expect(restored.presentation.actionHint, hint);
+        expect(notificationContentFor(restored).text, hint);
+      }
+    });
+
     test('跨语言在线布尔值不覆盖状态枚举的判定', () {
       final snapshot = AuthRuntimeState.fromMap({
         RuntimeContract.keyStatus: AuthenticationStatus.offline.name,

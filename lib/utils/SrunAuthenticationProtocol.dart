@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:LinkUp/utils/AcidDetector.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ChallengeResponse.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
@@ -11,7 +12,7 @@ import 'package:LinkUp/utils/SrunLogin.dart';
 class SrunAuthenticationProtocol implements AuthenticationProtocol {
   SrunAuthenticationProtocol({
     http.Client? httpClient,
-    String initialServer = '10.129.1.1',
+    String initialServer = defaultAuthServer,
   }) : _httpClient = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null,
        _server = initialServer {
