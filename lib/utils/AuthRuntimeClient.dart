@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:LinkUp/utils/AuthRuntimeController.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
+import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
 
@@ -64,11 +65,20 @@ class AuthRuntimeClient {
       await _command(AuthRuntimeController.commandLogout) == true;
 
   /// 踢设备结果决定 UI 提示，因此需要命令回传值。
-  Future<bool> kickDevice(String ip) async =>
-      await _command(AuthRuntimeController.commandKickDevice, <String, Object?>{
-        RuntimeContract.keyIp: ip,
-      }) ==
-      true;
+  ///
+  /// 运行时回传 [DmOutcome] 的名字。无法识别时如实报「已受理但未确认」，因为此时既
+  /// 不能声称踢掉了，也不能断言服务器拒绝了请求。
+  Future<DmOutcome> kickDevice(String ip) async {
+    final value = await _command(
+      AuthRuntimeController.commandKickDevice,
+      <String, Object?>{RuntimeContract.keyIp: ip},
+    );
+    for (final outcome in DmOutcome.values) {
+      if (outcome.name == value) return outcome;
+    }
+    await LogUtil.warning('认证运行时回传了无法识别的踢设备结果');
+    return DmOutcome.accepted;
+  }
 
   Future<void> _fire(String name, [Map<String, Object?>? args]) async {
     await _invoke(RuntimeContract.methodFireCommand, <String, Object?>{

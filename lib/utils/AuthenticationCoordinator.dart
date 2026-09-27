@@ -203,6 +203,23 @@ class AuthenticationCancellationToken {
   void cancel() => _cancelled = true;
 }
 
+/// 下线请求的结果。
+///
+/// 深澜的 `rad_user_dm` 只回答「请求是否被受理」，不回答目标会话是否已断开，
+/// 因此把「确认断开」和「已受理但未确认」分成两级，避免把受理当成踢掉。
+enum DmOutcome {
+  /// 复查确认目标已不在线。
+  kicked,
+
+  /// 服务器受理了请求，但复查没能确认目标已断开。
+  ///
+  /// 目标仍留在账号在线设备表里，或者复查本身拿不到设备表，都归到这里。
+  accepted,
+
+  /// 服务器拒绝了请求，或请求根本没发出（目标地址非法）。
+  rejected,
+}
+
 /// 认证协议的可替换边界。生产实现连接 Srun 客户端，测试实现使用确定性 fake。
 abstract class AuthenticationProtocol {
   Future<RealityProbeResult> reality(String server, {bool getAcid = true});
@@ -447,12 +464,12 @@ class AuthenticationCoordinator {
     }
   }
 
-  Future<bool> kickDevice(String targetIp) async {
-    if (!_canRun) return false;
+  Future<DmOutcome> kickDevice(String targetIp) async {
+    if (!_canRun) return DmOutcome.rejected;
     final active = _inFlight;
     if (active != null) await active;
     final config = await configSource.load();
-    if (config == null) return false;
+    if (config == null) return DmOutcome.rejected;
     return _attempt.kickDevice(config, targetIp);
   }
 

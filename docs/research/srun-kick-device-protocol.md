@@ -450,7 +450,7 @@ if !identity.MatchesExpected && prepared.intent != auth.IntentManual {
 | `online_device_detail` 的刷新延迟 / TTL / 僵尸记录清理策略 | **未找到任何资料** |
 | 深澜是否有「DM 后禁止重连」机制 | **未找到**，证据倾向「没有」【推测】 |
 | 是否存在部署在 Web 侧（`/v1/*`）限权但保留 `/cgi-bin/rad_user_dm` | **未找到** |
-| `CREATER.useOnlineDeviceMgr` 在各校的实际取值 | **未找到**（无 `creater.js` 快照） |
+| `CREATER.useOnlineDeviceMgr` 在各校的实际取值 | **未找到**（公开的 Portal 部署快照里不含这一个字段） |
 | 管理端 `drop_type` 枚举含义 | **未找到**（官方 apifox 文档需密码） |
 | `8800` 端口自助 Web 应用的内部下线接口 | **未取证**（Portal 内置面板走同 origin 的 `/v1/*`，不经过 8800） |
 | DM 端点是否支持 IPv6 目标、或接受 `mac` 作键 | **未找到** |

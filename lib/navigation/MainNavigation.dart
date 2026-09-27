@@ -7,6 +7,7 @@ import 'package:LinkUp/main.dart';
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
+import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
@@ -235,16 +236,16 @@ class _MainNavigatorState extends State<MainNavigator> {
   // 踢设备下线 — 通过 DM 接口强制解绑账号下的指定 IP
   Future<bool> _kickDevice(String targetIp) async {
     try {
-      final success = await _client.kickDevice(targetIp);
-      if (!mounted) return success;
+      final outcome = await _client.kickDevice(targetIp);
+      if (!mounted) return outcome == DmOutcome.kicked;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? '已踢 $targetIp' : '踢人失败：服务器返回错误'),
-          backgroundColor: success ? MyApp.iosGreen : MyApp.iosRed,
-        ),
-      );
-      return success;
+      _showKickOutcome(targetIp, outcome);
+      await LogUtil.info('踢设备 $targetIp 结果：${outcome.name}');
+      if (outcome == DmOutcome.kicked) {
+        // 踢掉的那一行就是复查的依据，本地这份列表仍是旧的，重新拉一次。
+        await _manualLogin();
+      }
+      return outcome == DmOutcome.kicked;
     } on AuthRuntimeUnavailableException {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -252,7 +253,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       }
       return false;
     } catch (error, stackTrace) {
-      LogUtil.error('踢设备异常', error, stackTrace);
+      LogUtil.error('踢设备 $targetIp 异常', error, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -263,6 +264,17 @@ class _MainNavigatorState extends State<MainNavigator> {
       }
       return false;
     }
+  }
+
+  void _showKickOutcome(String targetIp, DmOutcome outcome) {
+    final (message, color) = switch (outcome) {
+      DmOutcome.kicked => ('已踢掉 $targetIp', MyApp.iosGreen),
+      // 服务器受理了请求但目标仍在线：既不能报成功，也不该报失败。
+      DmOutcome.accepted => ('已要求 $targetIp 下线，但该设备仍显示在线', MyApp.iosOrange),
+      DmOutcome.rejected => ('踢人失败：服务器返回错误', MyApp.iosRed),
+    };
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   // 手动触发检查（下拉刷新）

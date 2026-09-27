@@ -14,7 +14,7 @@ abstract class AuthenticationAttempt {
 
   Future<bool> logout(AuthConfig config);
 
-  Future<bool> kickDevice(AuthConfig config, String targetIp);
+  Future<DmOutcome> kickDevice(AuthConfig config, String targetIp);
 }
 
 class AuthenticationAttemptContext {
@@ -45,9 +45,20 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   SrunAuthenticationAttempt({
     required AuthenticationProtocol protocol,
     AuthenticationProtocol Function()? protocolFactory,
+    this.confirmAttempts = 3,
+    this.confirmInterval = const Duration(seconds: 1),
   }) : _protocolInstance = protocol,
        // ignore: prefer_initializing_formals
        _protocolFactory = protocolFactory;
+
+  /// 复查目标是否下线时的最大尝试次数，含第一次立即发出的那次。
+  final int confirmAttempts;
+
+  /// 两次复查之间的等待时间。
+  ///
+  /// 认证服务器回收会话和刷新在线设备表不是原子的，第一次复查很可能仍看到目标，
+  /// 所以需要重试；值由测试注入为 [Duration.zero] 以避免真实等待。
+  final Duration confirmInterval;
 
   AuthenticationProtocol? _protocolInstance;
   final AuthenticationProtocol Function()? _protocolFactory;
@@ -104,12 +115,51 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   }
 
   @override
-  Future<bool> kickDevice(AuthConfig config, String targetIp) {
-    return _protocol.logout(
-      server: normalizeAuthServer(config.authServer),
+  Future<DmOutcome> kickDevice(AuthConfig config, String targetIp) async {
+    final target = targetIp.trim();
+    if (target.isEmpty) return DmOutcome.rejected;
+    final server = normalizeAuthServer(config.authServer);
+    final protocol = _protocol;
+    final accepted = await protocol.logout(
+      server: server,
       username: config.authenticatedUsername,
-      ip: targetIp,
+      ip: target,
     );
+    if (!accepted) return DmOutcome.rejected;
+    return _confirmOffline(protocol, server, target);
+  }
+
+  /// 复查目标是否真的下线。
+  ///
+  /// 判据是账号的在线设备表里不再有目标地址，也就是 UI 那一行会不会消失——同一个
+  /// 事实，不用新增协议面。设备表是账号级数据，因此按本机照常调用即可。
+  ///
+  /// 比对的是每条记录自己的 `ip`/`ip6` 字段，不是 map 的键：键是 `rad_online_id`，
+  /// 它和 IP 的关系没有资料能确认，拿它当 IP 比会永远判定成「已踢掉」。
+  Future<DmOutcome> _confirmOffline(
+    AuthenticationProtocol protocol,
+    String server,
+    String target,
+  ) async {
+    final attempts = confirmAttempts < 1 ? 1 : confirmAttempts;
+    for (var i = 0; i < attempts; i++) {
+      if (i > 0) await Future<void>.delayed(confirmInterval);
+      Map<String, OnlineDevice>? devices;
+      try {
+        devices = (await protocol.getUserInfo(server)).onlineDeviceDetail;
+      } catch (error, stackTrace) {
+        // 这一次没有判据，继续重试；次数用尽后如实报未确认。
+        await LogUtil.error('踢设备复查失败', error, stackTrace);
+        continue;
+      }
+      // 拿不到设备表同样没有判据；能拿到且其中没有目标地址才算确认断开。
+      if (devices == null) continue;
+      final stillOnline = devices.values.any(
+        (device) => device.getIp == target || device.getIp6 == target,
+      );
+      if (!stillOnline) return DmOutcome.kicked;
+    }
+    return DmOutcome.accepted;
   }
 
   @override

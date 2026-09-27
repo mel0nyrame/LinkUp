@@ -71,8 +71,9 @@ class AuthRuntimeController {
         return coordinator.logout();
       case commandKickDevice:
         final ip = args?[RuntimeContract.keyIp];
-        if (ip is! String || ip.isEmpty) return false;
-        return coordinator.kickDevice(ip);
+        if (ip is! String || ip.isEmpty) return DmOutcome.rejected.name;
+        // 结果按名字而不是枚举序号过桥：序号会随枚举成员增删而改绑，名字不会。
+        return (await coordinator.kickDevice(ip)).name;
       case commandConfigurationChanged:
         await coordinator.configurationChanged();
         return null;

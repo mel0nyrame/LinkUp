@@ -1247,7 +1247,8 @@ class _FakeAuthenticationAttempt extends AuthenticationAttempt {
   Future<bool> logout(AuthConfig config) async => false;
 
   @override
-  Future<bool> kickDevice(AuthConfig config, String targetIp) async => false;
+  Future<DmOutcome> kickDevice(AuthConfig config, String targetIp) async =>
+      DmOutcome.rejected;
 }
 
 class _FakeAuthenticationProtocol implements AuthenticationProtocol {

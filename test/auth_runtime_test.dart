@@ -103,9 +103,10 @@ void main() {
       );
 
       expect(logout, isTrue);
-      expect(kicked, isTrue);
+      // 过桥的是结果的名字；这个替身没有在线设备表，复查拿不到判据，因此未确认。
+      expect(kicked, 'accepted');
       expect(protocol.kickedIps, <String>['10.0.0.8', '10.0.0.9']);
-      expect(rejected, isFalse);
+      expect(rejected, 'rejected');
     });
 
     test('配置变化命令在删除配置后保持停止', () async {
@@ -339,7 +340,7 @@ void main() {
     test('手动检查、注销和踢设备命令原样路由到宿主', () async {
       host.commandResults
         ..[AuthRuntimeController.commandManualCheck] = true
-        ..[AuthRuntimeController.commandKickDevice] = true
+        ..[AuthRuntimeController.commandKickDevice] = DmOutcome.kicked.name
         ..[AuthRuntimeController.commandConfigurationChanged] = true;
       final client = AuthRuntimeClient(channel: uiChannel);
       addTearDown(client.dispose);
@@ -352,7 +353,7 @@ void main() {
       await client.configurationChanged();
 
       expect(loggedOut, isFalse);
-      expect(kicked, isTrue);
+      expect(kicked, DmOutcome.kicked);
       expect(
         calls
             .where(
@@ -380,6 +381,20 @@ void main() {
         ],
       );
       expect(calls.where((call) => call.method == 'fireCommand'), hasLength(2));
+    });
+
+    test('踢设备回传无法识别的结果时降级为未确认而不是失败', () async {
+      // 契约漂移的表现是收到一个不认识的值。此时既不能声称踢掉了，也不能断言
+      // 服务器拒绝了请求，只能报未确认。
+      host.commandResults[AuthRuntimeController.commandKickDevice] =
+          'retired_outcome';
+      final client = AuthRuntimeClient(channel: uiChannel);
+      addTearDown(client.dispose);
+      await client.attach();
+
+      final outcome = await client.kickDevice('10.0.0.9');
+
+      expect(outcome, DmOutcome.accepted);
     });
 
     test('运行时通道失败与业务失败分别返回', () async {

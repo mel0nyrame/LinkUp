@@ -31,6 +31,7 @@ class MyApp extends StatelessWidget {
 
   static const Color iosBlue = Color(0xFF007AFF);
   static const Color iosGreen = Color(0xFF34C759);
+  static const Color iosOrange = Color(0xFFFF9500);
   static const Color iosRed = Color(0xFFFF3B30);
   static const Color iosSecondaryText = Color(0xFF8E8E93);
 
