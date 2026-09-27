@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:LinkUp/authRuntimeMain.dart';
 import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 import 'package:LinkUp/utils/AuthRuntimeController.dart';
 import 'package:LinkUp/utils/AuthRuntimeHost.dart';
@@ -42,14 +43,25 @@ void main() {
       expect(host.ready, isFalse, reason: '就绪通知由入口单独发布');
     });
 
-    test('命令处理器注册完成后通知宿主', () async {
+    test('就绪通知发出时命令处理器已能接收消息', () async {
       final host = _FakeAuthRuntimeHost();
       final controller = _onlineController(host: host);
+      addTearDown(resetAuthRuntimeForTest);
+      ByteData? reply;
+      host.onReady = () async {
+        await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .handlePlatformMessage(
+              MethodChannelAuthRuntimeHost.hostChannelName,
+              const StandardMethodCodec().encodeMethodCall(MethodCall('probe')),
+              (response) => reply = response,
+            );
+      };
 
-      await host.publishReady();
+      await startAuthRuntimeController(controller);
 
       expect(host.ready, isTrue);
-      expect(controller.host, same(host));
+      expect(reply, isNotNull);
+      expect(const StandardMethodCodec().decodeEnvelope(reply!), isNull);
     });
 
     test('停止命令取消调度并释放协议资源', () async {
@@ -534,6 +546,7 @@ AuthRuntimeController _controller({
 class _FakeAuthRuntimeHost implements AuthRuntimeHost {
   final List<AuthRuntimeState> states = <AuthRuntimeState>[];
   bool ready = false;
+  Future<void> Function()? onReady;
 
   /// 模拟 Kotlin 侧 `AuthRuntimeBridge` 的状态转发：已注册客户端时推送到 UI 通道。
   void Function(AuthRuntimeState state)? onState;
@@ -541,6 +554,7 @@ class _FakeAuthRuntimeHost implements AuthRuntimeHost {
   @override
   Future<void> publishReady() async {
     ready = true;
+    await onReady?.call();
   }
 
   @override

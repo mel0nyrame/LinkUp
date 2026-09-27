@@ -154,15 +154,6 @@ void main() {
       });
     });
 
-    test('命令处理器先注册，随后发布就绪通知', () {
-      final registration = entrypoint.indexOf(
-        'setMethodCallHandler(_dispatch)',
-      );
-      final ready = entrypoint.indexOf('controller.host.publishReady()');
-      expect(registration, greaterThanOrEqualTo(0));
-      expect(ready, greaterThan(registration));
-    });
-
     test('无需回包的命令交给宿主后立即完成 UI 调用', () {
       final handler = _methodBody(
         mainActivity,
@@ -443,6 +434,10 @@ void main() {
       expect(onReceive, contains('isAccountConfigured'));
       expect(onReceive, contains('isKeepAliveEnabled'));
       expect(onReceive, contains('isAutoStartEnabled'));
+      expect(
+        onReceive,
+        contains('if (!keepAlive || !autoStart || !configured) return'),
+      );
       expect(onReceive, contains('AuthRuntimeService.start(context)'));
     });
 

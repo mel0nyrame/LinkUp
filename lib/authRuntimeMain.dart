@@ -48,6 +48,13 @@ Future<void> _bootstrap() async {
     ),
     host: MethodChannelAuthRuntimeHost(),
   );
+  await startAuthRuntimeController(controller);
+}
+
+/// 注册命令处理器并发布就绪状态；宿主可在就绪回调中立即发送命令。
+Future<void> startAuthRuntimeController(
+  AuthRuntimeController controller,
+) async {
   _controller = controller;
   const MethodChannel(MethodChannelAuthRuntimeHost.hostChannelName)
       .setMethodCallHandler(_dispatch);
