@@ -11,12 +11,23 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
+    SystemSettingsUtil.resetForTest();
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
   test('保留后台运行默认开启，开机自启默认关闭', () {
     expect(SystemSettingsUtil.getKeepAlive(), isTrue);
     expect(SystemSettingsUtil.getAutoStart(), isFalse);
+  });
+
+  test('测试重置会清除已加载的静态偏好快照', () async {
+    await SystemSettingsUtil.init();
+    await SystemSettingsUtil.setAccountConfigured(true);
+    expect(SystemSettingsUtil.getAccountConfiguredHint(), isTrue);
+
+    SystemSettingsUtil.resetForTest();
+
+    expect(SystemSettingsUtil.getAccountConfiguredHint(), isNull);
   });
 
   test('配置存在标记跟随保存与删除，开机侧读到同一份事实', () async {

@@ -109,6 +109,15 @@ object AuthRuntimeBridge {
         failPendingResults()
     }
 
+    /** 清除测试进程中的桥状态；服务生命周期使用 [detachEngine]。 */
+    internal fun resetForTest() {
+        detachEngine()
+        onState = null
+        latestState = null
+        nextRequestId = 0L
+        clients.clear()
+    }
+
     /** 注册一个可见 UI 的通道，并立即补发最新状态。 */
     fun registerClient(channel: MethodChannel) {
         clients.add(channel)

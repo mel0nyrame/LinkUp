@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
@@ -26,9 +27,15 @@ class SystemSettingsUtil {
     _prefs = await SharedPreferences.getInstance();
   }
 
+  /// 让测试用例在共享 isolate 中重新读取偏好。
+  @visibleForTesting
+  static void resetForTest() {
+    _prefs = null;
+  }
+
   /// 读取“是否存在已保存的认证配置”提示。
   ///
-  /// 这只是首帧就能读到的**提示**，权威事实是 `ConfigUtil.configExists` 对配置
+  /// 这只是首帧就能读到的**提示**，权威事实是 `configManager.exists` 对配置
   /// 文件的真实检查。键不存在时返回 null 而不是 false：没有可信事实时调用方必须
   /// 当作未知处理，不许当成“未配置”跳过首次配置。
   static bool? getAccountConfiguredHint() =>

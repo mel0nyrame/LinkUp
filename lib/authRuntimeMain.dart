@@ -22,6 +22,15 @@ void linkupAuthRuntimeDispatcher() {
 
 AuthRuntimeController? _controller;
 
+/// 清除测试 isolate 中的后台入口状态；生产环境由 FlutterEngine 销毁 isolate。
+Future<void> resetAuthRuntimeForTest() async {
+  final current = _controller;
+  _controller = null;
+  const MethodChannel(MethodChannelAuthRuntimeHost.hostChannelName)
+      .setMethodCallHandler(null);
+  await current?.coordinator.dispose();
+}
+
 /// 构建后台运行时并在命令处理器就绪后通知宿主。
 ///
 /// 宿主在同一轮主线程任务里完成插件与 MethodChannel 注册；Dart isolate 要等
