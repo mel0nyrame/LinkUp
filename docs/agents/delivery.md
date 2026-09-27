@@ -1,6 +1,6 @@
 # 交付
 
-本文件是 LinkUp 仓库的交付契约：`AGENTS.md` 的变更流程在验证通过后指向这里。通用 Git 规范（提交拆分、命名、push/PR 授权边界）见 `talang-git` skill 的 `references/CONVENTIONS.md` 与 `references/REVIEW-AND-TRACKER.md`；本文件只写这个仓库自己的约定。
+本文件是 LinkUp 仓库的交付契约：`AGENTS.md` 的变更流程在验证通过后指向这里。分支、提交命名与拆分见 `talang-git` skill 的 `references/CONVENTIONS.md`；commit、push 的授权边界见该 skill 的主文件，PR 操作由 `talang-pr` 负责。本文件只写这个仓库自己的约定。
 
 ## 触发
 
