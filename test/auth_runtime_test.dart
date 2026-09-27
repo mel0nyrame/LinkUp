@@ -13,6 +13,7 @@ import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
@@ -102,10 +103,15 @@ void main() {
         <String, Object?>{'ip': ''},
       );
 
-      expect(logout, isTrue);
-      expect(kicked, isTrue);
+      // 过桥的是结果包：状态按枚举名字走，序号会随成员增删改绑。
+      expect(logout, <String, Object?>{'status': 'accepted'});
+      // 这个替身没有在线设备表，复查拿不到判据，因此未确认。
+      expect(kicked, <String, Object?>{'status': 'accepted'});
       expect(protocol.kickedIps, <String>['10.0.0.8', '10.0.0.9']);
-      expect(rejected, isFalse);
+      expect(rejected, <String, Object?>{
+        'status': 'rejected',
+        'reason': '目标地址为空',
+      });
     });
 
     test('配置变化命令在删除配置后保持停止', () async {
@@ -339,7 +345,10 @@ void main() {
     test('手动检查、注销和踢设备命令原样路由到宿主', () async {
       host.commandResults
         ..[AuthRuntimeController.commandManualCheck] = true
-        ..[AuthRuntimeController.commandKickDevice] = true
+        ..[AuthRuntimeController.commandKickDevice] = <String, Object?>{
+          RuntimeContract.keyStatus: DmOutcome.kicked.name,
+          RuntimeContract.keyReason: null,
+        }
         ..[AuthRuntimeController.commandConfigurationChanged] = true;
       final client = AuthRuntimeClient(channel: uiChannel);
       addTearDown(client.dispose);
@@ -351,8 +360,8 @@ void main() {
       final kicked = await client.kickDevice('10.0.0.9');
       await client.configurationChanged();
 
-      expect(loggedOut, isFalse);
-      expect(kicked, isTrue);
+      expect(loggedOut.accepted, isFalse);
+      expect(kicked.outcome, DmOutcome.kicked);
       expect(
         calls
             .where(
@@ -382,12 +391,26 @@ void main() {
       expect(calls.where((call) => call.method == 'fireCommand'), hasLength(2));
     });
 
+    test('踢设备回传无法识别的状态名时降级为未确认而不是失败', () async {
+      // 契约漂移的表现是结果包里装着一个不认识的状态名。此时既不能声称踢掉了，
+      // 也不能断言服务器拒绝了请求，只能报未确认。
+      host.commandResults[AuthRuntimeController.commandKickDevice] =
+          <String, Object?>{'status': 'retired_outcome'};
+      final client = AuthRuntimeClient(channel: uiChannel);
+      addTearDown(client.dispose);
+      await client.attach();
+
+      final outcome = await client.kickDevice('10.0.0.9');
+
+      expect(outcome.outcome, DmOutcome.accepted);
+    });
+
     test('运行时通道失败与业务失败分别返回', () async {
       final client = AuthRuntimeClient(channel: uiChannel);
       addTearDown(client.dispose);
       await client.attach();
 
-      expect(await client.logout(), isFalse);
+      expect((await client.logout()).accepted, isFalse);
       host.commandError = PlatformException(code: 'runtime_gone');
       await expectLater(
         client.logout(),
@@ -792,7 +815,7 @@ class _FakeProtocol implements AuthenticationProtocol {
   Future<String?> detectAcid(String server) async => null;
 
   @override
-  Future<bool> logout({
+  Future<DmResult> logout({
     required String server,
     required String username,
     required String ip,
@@ -801,7 +824,7 @@ class _FakeProtocol implements AuthenticationProtocol {
     loggedOutIps.add(ip);
     _online = false;
     _userInfoCalls = 0;
-    return true;
+    return const DmResult(accepted: true);
   }
 
   @override

@@ -12,9 +12,10 @@ abstract class AuthenticationAttempt {
 
   void stop() {}
 
-  Future<bool> logout(AuthConfig config);
+  Future<DmResult> logout(AuthConfig config);
 
-  Future<bool> kickDevice(AuthConfig config, String targetIp);
+  /// 踢掉 [targetIp] 这台设备，并复查它是否真的从账号在线设备表里消失。
+  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp);
 }
 
 class AuthenticationAttemptContext {
@@ -45,9 +46,21 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   SrunAuthenticationAttempt({
     required AuthenticationProtocol protocol,
     AuthenticationProtocol Function()? protocolFactory,
+    this.confirmInterval = const Duration(seconds: 1),
   }) : _protocolInstance = protocol,
        // ignore: prefer_initializing_formals
        _protocolFactory = protocolFactory;
+
+  /// 复查目标是否下线时的最大尝试次数，含第一次立即发出的那次。
+  ///
+  /// 服务器回收会话和刷新在线设备表不是原子的，第一次复查很可能仍看到目标，
+  /// 所以需要有界重试而不是单次判定。
+  static const int confirmAttempts = 3;
+
+  /// 两次复查之间的等待时间。
+  ///
+  /// 值由测试注入为 [Duration.zero] 以避免真实等待。
+  final Duration confirmInterval;
 
   AuthenticationProtocol? _protocolInstance;
   final AuthenticationProtocol Function()? _protocolFactory;
@@ -89,13 +102,13 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   }
 
   @override
-  Future<bool> logout(AuthConfig config) async {
+  Future<DmResult> logout(AuthConfig config) async {
     reset();
     final server = normalizeAuthServer(config.authServer);
     final protocol = _protocol;
     final info = await protocol.getUserInfo(server);
     final ip = _ipFrom(info);
-    if (ip.isEmpty) return false;
+    if (ip.isEmpty) return const DmResult(accepted: false);
     return protocol.logout(
       server: server,
       username: config.authenticatedUsername,
@@ -104,12 +117,63 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   }
 
   @override
-  Future<bool> kickDevice(AuthConfig config, String targetIp) {
-    return _protocol.logout(
-      server: normalizeAuthServer(config.authServer),
+  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp) async {
+    final target = targetIp.trim();
+    if (target.isEmpty) {
+      return const DmKickResult(DmOutcome.rejected, '目标地址为空');
+    }
+    final server = normalizeAuthServer(config.authServer);
+    final protocol = _protocol;
+    final result = await protocol.logout(
+      server: server,
       username: config.authenticatedUsername,
-      ip: targetIp,
+      ip: target,
     );
+    if (!result.accepted) {
+      return DmKickResult(DmOutcome.rejected, result.reason);
+    }
+    return DmKickResult(await _confirmOffline(protocol, server, target));
+  }
+
+  /// 复查目标是否真的下线。
+  ///
+  /// 判据是账号的在线设备表里不再有目标地址，也就是 UI 那一行会不会消失——同一个
+  /// 事实，不用新增协议面。设备表是账号级数据，因此按本机照常调用即可。
+  ///
+  /// 比对的是每条记录自己的 `ip`/`ip6` 字段，不是 map 的键：键是 `rad_online_id`，
+  /// 它和 IP 的关系没有资料能确认，拿它当 IP 比会永远判定成「已踢掉」。
+  ///
+  /// 只在用户信息查询成功、设备表非空且每条记录都有地址，并且其中没有目标地址时
+  /// 才判定踢掉。其余情况没有完整判据，此时宁可报未确认也不报已踢掉。
+  Future<DmOutcome> _confirmOffline(
+    AuthenticationProtocol protocol,
+    String server,
+    String target,
+  ) async {
+    for (var i = 0; i < confirmAttempts; i++) {
+      if (i > 0) await Future<void>.delayed(confirmInterval);
+      final RadUserInfo info;
+      try {
+        info = await protocol.getUserInfo(server);
+      } catch (error, stackTrace) {
+        // 这一次没有判据，继续重试；次数用尽后如实报未确认。
+        await LogUtil.error('踢设备复查失败', error, stackTrace);
+        continue;
+      }
+      if (!info.isOnline) continue;
+      final devices = info.onlineDeviceDetail;
+      if (devices == null || devices.isEmpty) continue;
+      if (devices.values.any(
+        (device) => device.getIp.trim().isEmpty && device.getIp6.trim().isEmpty,
+      )) {
+        continue;
+      }
+      final stillOnline = devices.values.any(
+        (device) => device.getIp == target || device.getIp6 == target,
+      );
+      if (!stillOnline) return DmOutcome.kicked;
+    }
+    return DmOutcome.accepted;
   }
 
   @override

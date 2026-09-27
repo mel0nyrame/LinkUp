@@ -49,25 +49,30 @@ class _LogViewerCardState extends State<LogViewerCard> {
             ],
           ),
           const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              Icons.visibility_outlined,
-              color: colorScheme.primary,
+          // 玻璃卡有背景色；ListTile 需要自己的 Material 祖先以显示背景和墨迹。
+          Material(
+            type: MaterialType.transparency,
+            clipBehavior: Clip.none,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.visibility_outlined,
+                color: colorScheme.primary,
+              ),
+              title: const Text('查看日志文件'),
+              subtitle: Text(
+                '查看应用运行日志和错误记录',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              trailing: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isLoading ? null : _showLogViewer,
             ),
-            title: const Text('查看日志文件'),
-            subtitle: Text(
-              '查看应用运行日志和错误记录',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            trailing: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.chevron_right),
-            onTap: _isLoading ? null : _showLogViewer,
           ),
         ],
       ),

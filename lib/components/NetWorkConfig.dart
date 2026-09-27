@@ -125,23 +125,28 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
           ),
           const SizedBox(height: 12),
 
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('自动获取 ACID'),
-            subtitle: Text(
-              _autoAcid ? '系统将自动尝试可用接入点' : '手动指定接入点 ID',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            value: _autoAcid,
-            onChanged: (value) {
-              setState(() {
-                _autoAcid = value;
-              });
-              _saveAutoAcid();
-            },
-            secondary: Icon(
-              _autoAcid ? Icons.auto_fix_high : Icons.edit,
-              color: colorScheme.primary,
+          // 玻璃卡有背景色；ListTile 需要自己的 Material 祖先以显示背景和墨迹。
+          Material(
+            type: MaterialType.transparency,
+            clipBehavior: Clip.none,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('自动获取 ACID'),
+              subtitle: Text(
+                _autoAcid ? '系统将自动尝试可用接入点' : '手动指定接入点 ID',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              value: _autoAcid,
+              onChanged: (value) {
+                setState(() {
+                  _autoAcid = value;
+                });
+                _saveAutoAcid();
+              },
+              secondary: Icon(
+                _autoAcid ? Icons.auto_fix_high : Icons.edit,
+                color: colorScheme.primary,
+              ),
             ),
           ),
 

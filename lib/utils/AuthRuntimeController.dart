@@ -5,6 +5,7 @@ import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 
 /// 后台认证运行时在 Dart 侧的唯一 owner。
 ///
@@ -68,11 +69,13 @@ class AuthRuntimeController {
         await coordinator.manualCheck();
         return null;
       case commandLogout:
-        return coordinator.logout();
+        return _resultPayload(await coordinator.logout());
       case commandKickDevice:
         final ip = args?[RuntimeContract.keyIp];
-        if (ip is! String || ip.isEmpty) return false;
-        return coordinator.kickDevice(ip);
+        if (ip is! String || ip.isEmpty) {
+          return _kickPayload(const DmKickResult(DmOutcome.rejected, '目标地址为空'));
+        }
+        return _kickPayload(await coordinator.kickDevice(ip));
       case commandConfigurationChanged:
         await coordinator.configurationChanged();
         return null;
@@ -86,5 +89,27 @@ class AuthRuntimeController {
         await LogUtil.warning('收到未知的认证运行时命令');
         return null;
     }
+  }
+
+  /// 下线命令的结果包。
+  ///
+  /// 状态按 [DmOutcome] 的成员名字过桥而不是序号：序号会随枚举成员增删而改绑，名字
+  /// 不会。原因单独放一个键，被拒绝时 UI 才说得清为什么。
+  Map<String, Object?> _kickPayload(DmKickResult result) {
+    return <String, Object?>{
+      RuntimeContract.keyStatus: result.outcome.name,
+      if (result.reason != null) RuntimeContract.keyReason: result.reason,
+    };
+  }
+
+  /// 注销命令的结果包，和 [_kickPayload] 用同一套键，状态名取 [DmOutcome] 的
+  /// `accepted` / `rejected`，因为注销自己同样只有「受理」和「拒绝」两种回答。
+  Map<String, Object?> _resultPayload(DmResult result) {
+    return _kickPayload(
+      DmKickResult(
+        result.accepted ? DmOutcome.accepted : DmOutcome.rejected,
+        result.reason,
+      ),
+    );
   }
 }

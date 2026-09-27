@@ -6,11 +6,15 @@ import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/NetworkUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 export 'package:LinkUp/utils/AuthParameters.dart';
 
 part 'AuthenticationAttempt.dart';
+
+/// 运行时不可用时的统一提示。注销与踢设备两条命令都可能出现这个状态。
+const _runtimeNotReady = '认证运行时未就绪';
 
 enum AcidCandidateSource { reality, saved, rootProbe }
 
@@ -224,7 +228,8 @@ abstract class AuthenticationProtocol {
 
   Future<String?> detectAcid(String server);
 
-  Future<bool> logout({
+  /// 下线请求的应答。协议层只回答受理与否，目标是否真断开由调用方复查。
+  Future<DmResult> logout({
     required String server,
     required String username,
     required String ip,
@@ -431,28 +436,32 @@ class AuthenticationCoordinator {
     return start();
   }
 
-  Future<bool> logout() async {
-    if (_disposed || _stopping) return false;
+  Future<DmResult> logout() async {
+    if (_disposed || _stopping) return const DmResult(accepted: false);
     _beginStop();
 
     try {
       await _quiesce();
-      if (!_canRun) return false;
+      if (!_canRun) return const DmResult(accepted: false);
 
       final config = await configSource.load();
-      if (config == null) return false;
+      if (config == null) return const DmResult(accepted: false);
       return await _attempt.logout(config);
     } finally {
       _finishStop();
     }
   }
 
-  Future<bool> kickDevice(String targetIp) async {
-    if (!_canRun) return false;
+  Future<DmKickResult> kickDevice(String targetIp) async {
+    if (!_canRun) {
+      return const DmKickResult(DmOutcome.rejected, _runtimeNotReady);
+    }
     final active = _inFlight;
     if (active != null) await active;
     final config = await configSource.load();
-    if (config == null) return false;
+    if (config == null) {
+      return const DmKickResult(DmOutcome.rejected, '没有可用的账号配置');
+    }
     return _attempt.kickDevice(config, targetIp);
   }
 

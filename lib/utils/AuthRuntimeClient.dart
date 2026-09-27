@@ -5,6 +5,7 @@ import 'package:LinkUp/utils/AuthRuntimeController.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 
 class AuthRuntimeUnavailableException implements Exception {
   const AuthRuntimeUnavailableException();
@@ -60,15 +61,46 @@ class AuthRuntimeClient {
       _fire(AuthRuntimeController.commandConfigurationChanged);
 
   /// 注销结果决定 UI 提示，因此需要命令回传值。
-  Future<bool> logout() async =>
-      await _command(AuthRuntimeController.commandLogout) == true;
+  Future<DmResult> logout() async {
+    final result = _resultOf(
+      await _command(AuthRuntimeController.commandLogout),
+    );
+    return DmResult(
+      accepted: result.status == DmOutcome.accepted.name,
+      errorMessage: result.reason,
+    );
+  }
 
   /// 踢设备结果决定 UI 提示，因此需要命令回传值。
-  Future<bool> kickDevice(String ip) async =>
+  ///
+  /// 运行时回传 [DmOutcome] 的名字和被拒绝时的原因。无法识别状态名时如实报
+  /// 「已受理但未确认」，因为此时既不能声称踢掉了，也不能断言服务器拒绝了请求。
+  Future<DmKickResult> kickDevice(String ip) async {
+    final result = _resultOf(
       await _command(AuthRuntimeController.commandKickDevice, <String, Object?>{
         RuntimeContract.keyIp: ip,
-      }) ==
-      true;
+      }),
+    );
+    for (final outcome in DmOutcome.values) {
+      if (outcome.name == result.status) {
+        return DmKickResult(outcome, result.reason);
+      }
+    }
+    await LogUtil.warning('认证运行时回传了无法识别的踢设备结果');
+    return const DmKickResult(DmOutcome.accepted);
+  }
+
+  /// 拆出命令结果包里的状态名和原因。
+  ///
+  /// 状态按名字匹配而不是序号，序号会随枚举成员增删而改绑。结果包不是 Map 时按没有
+  /// 状态处理，由调用方走「无法识别」分支。
+  ({String? status, String? reason}) _resultOf(Object? payload) {
+    if (payload is! Map) return (status: null, reason: null);
+    return (
+      status: payload[RuntimeContract.keyStatus] as String?,
+      reason: payload[RuntimeContract.keyReason] as String?,
+    );
+  }
 
   Future<void> _fire(String name, [Map<String, Object?>? args]) async {
     await _invoke(RuntimeContract.methodFireCommand, <String, Object?>{

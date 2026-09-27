@@ -17,6 +17,16 @@ final _fixtureChallenge = List.filled(9, 'c').join();
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('Sha1 按 Latin-1 字节摘要并输出小写十六进制', () {
+    // 期望值由仓库外的 `printf '%s' <串> | sha1sum` 独立算出，不复用被测实现推导。
+    expect(SrunEnrypt.Sha1('abc'), 'a9993e364706816aba3e25717850c26c9cd0d89d');
+    // 深澜 DM 签名的输入串：time+username+ip+unbind+time，无分隔符。
+    expect(
+      SrunEnrypt.Sha1('1700000000${_fixtureUsername}10.0.0.91700000000'),
+      '3e3e1066c0e621b7deaeb7d1cd8e59e8d7d69201',
+    );
+  });
+
   test('SrunLogin 使用实例 HTTP client，并从同一组参数构造登录字段', () async {
     final requests = <http.Request>[];
     final httpClient = MockClient((request) async {

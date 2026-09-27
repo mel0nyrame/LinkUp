@@ -275,14 +275,20 @@ class SrunLogin {
 
   /// DM 注销 — 使用 /cgi-bin/rad_user_dm 端点。
   /// 签名格式 sha1(time + username + ip + 1 + time)，与登录加密链完全不同。
-  Future<bool> dmLogout({required String username, required String ip}) async {
+  Future<DmResult> dmLogout({
+    required String username,
+    required String ip,
+  }) async {
     try {
       final result = await client.dmLogout(username: username, ip: ip);
-      LogUtil.info('DM 注销结果: $result');
+      // 注销自己和踢别人共用这个端点，日志必须带目标地址才分得清是哪一次。
+      await LogUtil.info(
+        'DM 注销 $ip 结果: ${result.accepted ? '已受理' : result.reason ?? '被拒绝'}',
+      );
       return result;
     } catch (e, stackTrace) {
-      LogUtil.error('DM 注销异常', e, stackTrace);
-      return false;
+      await LogUtil.error('DM 注销 $ip 异常', e, stackTrace);
+      return const DmResult(accepted: false, errorMessage: '请求未完成');
     }
   }
 

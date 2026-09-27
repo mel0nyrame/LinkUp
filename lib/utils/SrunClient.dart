@@ -11,6 +11,86 @@ import 'dart:convert';
 
 import 'package:LinkUp/utils/RadUserInfo.dart';
 
+/// `/cgi-bin/rad_user_dm` 的应答。
+///
+/// 深澜的 DM 接口只回答请求是否被受理，不回答目标会话是否已断开；受理之后的确认
+/// 不在这里做。失败时用 `ecode`、`error_msg` 和 `error` 给出原因，但三者都可能
+/// 缺失，部署之间也不一致，所以不假设其中任何一个必然存在。
+class DmResult {
+  const DmResult({
+    required this.accepted,
+    this.error,
+    this.ecode,
+    this.errorMessage,
+  });
+
+  factory DmResult.fromJson(Map<String, dynamic> json) {
+    return DmResult(
+      accepted: json['error'] == 'ok',
+      error: _text(json['error']),
+      ecode: _text(json['ecode']),
+      errorMessage: _text(json['error_msg']),
+    );
+  }
+
+  /// 服务器是否受理了这次下线请求。
+  final bool accepted;
+
+  /// 原始 `error` 字段。成功时是 `ok`，失败时可能装错误码也可能装可读原因。
+  final String? error;
+
+  /// `ecode` 字段，形如 `E6502`。
+  final String? ecode;
+
+  /// `error_msg` 字段，服务器给的中文原因。
+  final String? errorMessage;
+
+  /// 面向人的一句话原因；服务器和本地都没给原因时为 null。
+  ///
+  /// 优先级按官方 `translate()` 的做法，`error_msg` 与 `ecode` 比 `error` 更具体。
+  String? get reason {
+    final code = ecode ?? (error == 'ok' ? null : error);
+    final detail = errorMessage;
+    if (code != null && detail != null) return '$code $detail';
+    return detail ?? code;
+  }
+
+  static String? _text(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+}
+
+/// 下线请求的结果。
+///
+/// 深澜的 `rad_user_dm` 只回答「请求是否被受理」，不回答目标会话是否已断开，
+/// 因此把「确认断开」和「已受理但未确认」分成两级，避免把受理当成踢掉。
+enum DmOutcome {
+  /// 复查确认目标已不在线。
+  kicked,
+
+  /// 服务器受理了请求，但复查没能确认目标已断开。
+  ///
+  /// 目标仍留在账号在线设备表里，或者复查本身拿不到可信的设备表，都归到这里。
+  /// 这些情况都没有「已断开」的证据，所以界面不能说它已断开。
+  accepted,
+
+  /// 服务器拒绝了请求，或请求根本没发出（目标地址非法）。
+  rejected,
+}
+
+/// 一次踢设备的判定结果。
+///
+/// [outcome] 决定提示的颜色，[reason] 补上被拒绝时服务器给出的原因。两者一起过桥，
+/// 因为只回传枚举名的话，被拒绝时用户仍然不知道为什么。
+class DmKickResult {
+  const DmKickResult(this.outcome, [this.reason]);
+
+  final DmOutcome outcome;
+  final String? reason;
+}
+
 class SrunClient {
   String host;
   String get baseURL => "http://" + host + "/cgi-bin";
@@ -232,7 +312,10 @@ class SrunClient {
   }
 
   // DM 注销 — 调用 /cgi-bin/rad_user_dm，签名格式与登录不同
-  Future<bool> dmLogout({required String username, required String ip}) async {
+  Future<DmResult> dmLogout({
+    required String username,
+    required String ip,
+  }) async {
     final time = (DateTime.now().millisecondsSinceEpoch / 1000).floor();
     const unbind = 1;
     final signStr = '$time$username$ip$unbind$time';
@@ -255,15 +338,27 @@ class SrunClient {
     try {
       final response = await _get(uri, {'User-Agent': userAgent});
       if (response.statusCode != 200) {
-        throw Exception('HTTP error: ${response.statusCode}');
+        // 状态码本身不含凭据，可以原样带回，作为可诊断的原因。
+        return DmResult(
+          accepted: false,
+          errorMessage: 'HTTP ${response.statusCode}',
+        );
       }
       final jsonStr = _extractJsonFromJsonp(response.body, callback);
       final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
-      LogUtil.info('[SrunClient] DM 注销响应已解析');
-      return jsonData['error'] == 'ok';
+      final result = DmResult.fromJson(jsonData);
+      await LogUtil.info('[SrunClient] DM 注销响应已解析');
+      if (!result.accepted) {
+        // 只记服务器给的原因，不记 username / ip / sign。
+        await LogUtil.warning(
+          '[SrunClient] DM 注销被拒绝: ${result.reason ?? '服务器未给出原因'}',
+        );
+      }
+      return result;
     } catch (e) {
-      LogUtil.error('[SrunClient] DM 注销失败', e);
-      return false;
+      await LogUtil.error('[SrunClient] DM 注销失败', e);
+      // 不把异常原文带进结果：ClientException 会带上完整查询串，里面有账号和签名。
+      return const DmResult(accepted: false, errorMessage: '请求未完成');
     }
   }
 
