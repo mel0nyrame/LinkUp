@@ -6,6 +6,7 @@ import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ChallengeResponse.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
@@ -1014,9 +1015,9 @@ void main() {
     );
 
     await coordinator.start();
-    final success = await coordinator.logout();
+    final result = await coordinator.logout();
 
-    expect(success, isTrue);
+    expect(result.accepted, isTrue);
     expect(protocol.logoutCalls, 1);
     expect(protocol.disposeCalls, 1);
     expect(scheduler.hasPending, isFalse);
@@ -1244,10 +1245,12 @@ class _FakeAuthenticationAttempt extends AuthenticationAttempt {
   }
 
   @override
-  Future<bool> logout(AuthConfig config) async => false;
+  Future<DmResult> logout(AuthConfig config) async =>
+      const DmResult(accepted: false);
 
   @override
-  Future<bool> kickDevice(AuthConfig config, String targetIp) async => false;
+  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp) async =>
+      const DmKickResult(DmOutcome.rejected);
 }
 
 class _FakeAuthenticationProtocol implements AuthenticationProtocol {
@@ -1362,13 +1365,13 @@ class _FakeAuthenticationProtocol implements AuthenticationProtocol {
   }
 
   @override
-  Future<bool> logout({
+  Future<DmResult> logout({
     required String server,
     required String username,
     required String ip,
   }) async {
     logoutCalls++;
-    return true;
+    return const DmResult(accepted: true);
   }
 
   @override

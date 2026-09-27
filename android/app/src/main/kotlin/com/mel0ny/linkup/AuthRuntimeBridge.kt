@@ -37,6 +37,8 @@ object AuthRuntimeBridge {
 
     const val KEY_NAME = "name"
     const val KEY_ARGS = "args"
+    // KEY_STATUS 的取值是 Dart 侧 DmOutcome 的成员名字，不是它在枚举里的序号：
+    // 序号会随成员增删而改绑，名字不会。这里的 Any? 结果值不需要类型声明。
     const val KEY_STATUS = "status"
     const val KEY_IS_ONLINE = "isOnline"
     const val KEY_MESSAGE = "message"

@@ -4,6 +4,7 @@ import 'package:LinkUp/navigation/MainNavigation.dart';
 import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lightweight_liquid_glass/lightweight_liquid_glass.dart';
@@ -23,10 +24,38 @@ class _FakeAuthRuntimeClient extends AuthRuntimeClient {
   Future<void> start() async {}
 
   @override
+  Future<DmResult> logout() async => const DmResult(accepted: true);
+
+  @override
   Future<void> dispose() => _states.close();
 }
 
 void main() {
+  testWidgets('DM 受理注销时只提示已要求注销', (tester) async {
+    final client = _FakeAuthRuntimeClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MainNavigator.test(
+          client: client,
+          pages: const [SizedBox(), SizedBox()],
+        ),
+      ),
+    );
+    client.emit(const AuthRuntimeState(status: AuthenticationStatus.online));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.logout));
+    await tester.pump();
+    expect(find.text('确认注销'), findsOneWidget);
+    await tester.tap(find.text('注销').last);
+    await tester.pump();
+
+    expect(find.text('已要求注销'), findsOneWidget);
+    expect(find.text('已成功注销'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
   testWidgets('认证状态推送不重建导航和隐藏设置页', (tester) async {
     final client = _FakeAuthRuntimeClient();
     var overviewBuilds = 0;
