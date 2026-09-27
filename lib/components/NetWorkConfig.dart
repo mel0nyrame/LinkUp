@@ -127,7 +127,7 @@ class _NetworkConfigCardState extends State<NetworkConfigCard> {
 
           // 玻璃卡自带不透明背景，ListTile 往上找祖先时会先撞上它，框架于是断言「背景
           // 或墨迹可能被遮住」。框架给的办法（list_tile.dart 的 ErrorHint）是把 ListTile
-          // 包进自己的 Material。clipBehavior 要显式关掉：Material 默认会硬裁子树。
+          // 包进自己的 Material。clipBehavior 显式写出来是为了不依赖默认值。
           Material(
             type: MaterialType.transparency,
             clipBehavior: Clip.none,

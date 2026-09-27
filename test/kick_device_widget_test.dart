@@ -39,6 +39,25 @@ RadUserInfo _userInfo() => RadUserInfo.fromJson({
   }),
 });
 
+/// 刷新之后的状态：复查是靠「目标不在设备表里」判定断开的，所以这份表里已经没有
+/// 被踢的那台，只有本机。它让「踢后刷新」能断言到用户看得见的结果，而不只是断言
+/// 刷新这个调用发生过。
+RadUserInfo _userInfoAfterRefresh() => RadUserInfo.fromJson({
+  'error': 'ok',
+  'user_name': List.filled(8, 'u').join(),
+  'client_ip': '10.0.0.9',
+  'online_ip': '10.0.0.9',
+  'online_device_total': '1',
+  'online_device_detail': jsonEncode({
+    '101': {
+      'class_name': 'PC',
+      'ip': '10.0.0.9',
+      'os_name': 'macOS',
+      'rad_online_id': '101',
+    },
+  }),
+});
+
 class _FakeAuthRuntimeClient extends AuthRuntimeClient {
   _FakeAuthRuntimeClient(this._kickResult);
 
@@ -65,6 +84,13 @@ class _FakeAuthRuntimeClient extends AuthRuntimeClient {
   @override
   Future<void> manualCheck() async {
     manualCheckCalls++;
+    emit(
+      AuthRuntimeState(
+        status: AuthenticationStatus.online,
+        userInfo: _userInfoAfterRefresh(),
+        acid: 'test-acid',
+      ),
+    );
   }
 
   @override
@@ -98,10 +124,15 @@ Future<void> _flushMainNavigator(WidgetTester tester) async {
 }
 
 /// 踢被踢的那一行，读下用户看到的提示文案和颜色。
+///
+/// [verifyAfterKick] 在刷新发生之后、widget 树被冲掉之前调用，用来断言用户看得见
+/// 的结果。SnackBar 必须在轮询之前读：轮询每轮推进 300 毫秒假时间，跑满上限会比
+/// SnackBar 的显示时长还长，文案到时候已经消失。
 Future<({String message, Color? color})> _kickAndReadSnackBar(
   WidgetTester tester,
   _FakeAuthRuntimeClient client, {
   required int expectedRefreshes,
+  Future<void> Function(WidgetTester tester)? verifyAfterKick,
 }) async {
   await tester.pumpWidget(MaterialApp(home: MainNavigator(client: client)));
   client.emit(
@@ -123,6 +154,9 @@ Future<({String message, Color? color})> _kickAndReadSnackBar(
   final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
   final message = (snackBar.content as Text).data ?? '';
   await _settleAfterKick(tester, client, expectedRefreshes);
+  if (verifyAfterKick != null) {
+    await verifyAfterKick(tester);
+  }
   await _flushMainNavigator(tester);
   return (message: message, color: snackBar.backgroundColor);
 }
@@ -131,8 +165,9 @@ Future<({String message, Color? color})> _kickAndReadSnackBar(
 /// 才推进），而它排在刷新之前。固定睡眠在整套测试连跑时会偶发不够——机器一忙，写盘
 /// 还没落地就被断言看成了「没刷新」——所以改成有界轮询。
 ///
-/// [expectedRefreshes] 大于 0 时转到刷新真的发生为止；等于 0 时不等待，但仍跑满
-/// [quietRounds] 轮，好让「本不该刷新却晚到」的刷新也暴露出来。
+/// [expectedRefreshes] 大于 0 时转到刷新真的发生为止，跑满 [maxRounds] 还没发生就
+/// 失败并报出实际次数。等于 0 时没有事件可等，于是把 [maxRounds] 轮全部跑完再补
+/// [quietRounds] 轮，好让「本不该刷新却晚到」的刷新也暴露出来（合计 68 轮）。
 Future<void> _settleAfterKick(
   WidgetTester tester,
   _FakeAuthRuntimeClient client,
@@ -177,12 +212,22 @@ void main() {
       tester,
       client,
       expectedRefreshes: 1,
+      verifyAfterKick: (tester) async {
+        // 不只断言刷新被调用过，还要断言那一行真的从界面上消失了：踢之前它和
+        // 「2 台」都在，刷新之后只剩本机和「1 台」。
+        expect(find.text(_targetIp), findsNothing);
+        expect(find.text('2 台'), findsNothing);
+        expect(find.text('1 台'), findsOneWidget);
+        // 本机地址既在状态卡上也在自己的那一行里，所以是两处而不是一处。
+        expect(find.text('10.0.0.9'), findsWidgets);
+        // 目标那一行连带它的「踢」按钮一起没了。
+        expect(find.text('踢'), findsNothing);
+      },
     );
 
     expect(result.message, '已踢掉 $_targetIp');
     expect(result.color, MyApp.iosGreen);
     expect(client.kickedIps, <String>[_targetIp]);
-    // 复查是靠「目标不在设备表里」判定的，那一行刚消失，本地这份还是旧的。
     expect(client.manualCheckCalls, 1);
   });
 
@@ -195,6 +240,11 @@ void main() {
       tester,
       client,
       expectedRefreshes: 0,
+      verifyAfterKick: (tester) async {
+        // 不刷新的可见后果就是那一行原样留着，用户得等下一轮监控才看得到变化。
+        expect(find.text(_targetIp), findsOneWidget);
+        expect(find.text('2 台'), findsOneWidget);
+      },
     );
 
     expect(result.message, '已要求 $_targetIp 下线，但未能确认它已断开');
