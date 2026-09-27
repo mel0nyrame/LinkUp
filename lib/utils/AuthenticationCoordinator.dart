@@ -13,6 +13,9 @@ export 'package:LinkUp/utils/AuthParameters.dart';
 
 part 'AuthenticationAttempt.dart';
 
+/// 运行时不可用时的统一提示。注销与踢设备两条命令都可能出现这个状态。
+const _runtimeNotReady = '认证运行时未就绪';
+
 enum AcidCandidateSource { reality, saved, rootProbe }
 
 class AcidCandidate {
@@ -202,34 +205,6 @@ class AuthenticationCancellationToken {
   bool get isCancelled => _cancelled;
 
   void cancel() => _cancelled = true;
-}
-
-/// 下线请求的结果。
-///
-/// 深澜的 `rad_user_dm` 只回答「请求是否被受理」，不回答目标会话是否已断开，
-/// 因此把「确认断开」和「已受理但未确认」分成两级，避免把受理当成踢掉。
-enum DmOutcome {
-  /// 复查确认目标已不在线。
-  kicked,
-
-  /// 服务器受理了请求，但复查没能确认目标已断开。
-  ///
-  /// 目标仍留在账号在线设备表里，或者复查本身拿不到设备表，都归到这里。
-  accepted,
-
-  /// 服务器拒绝了请求，或请求根本没发出（目标地址非法）。
-  rejected,
-}
-
-/// 一次踢设备的判定结果。
-///
-/// [outcome] 决定提示的颜色，[reason] 补上被拒绝时服务器给出的原因。两者一起过桥，
-/// 因为只回传枚举名的话，被拒绝时用户仍然不知道为什么。
-class DmKickResult {
-  const DmKickResult(this.outcome, [this.reason]);
-
-  final DmOutcome outcome;
-  final String? reason;
 }
 
 /// 认证协议的可替换边界。生产实现连接 Srun 客户端，测试实现使用确定性 fake。
@@ -463,14 +438,14 @@ class AuthenticationCoordinator {
 
   Future<DmResult> logout() async {
     if (_disposed || _stopping) {
-      return const DmResult(accepted: false, errorMessage: '认证运行时未就绪');
+      return const DmResult(accepted: false, errorMessage: _runtimeNotReady);
     }
     _beginStop();
 
     try {
       await _quiesce();
       if (!_canRun) {
-        return const DmResult(accepted: false, errorMessage: '认证运行时未就绪');
+        return const DmResult(accepted: false, errorMessage: _runtimeNotReady);
       }
 
       final config = await configSource.load();
@@ -484,14 +459,24 @@ class AuthenticationCoordinator {
   }
 
   Future<DmKickResult> kickDevice(String targetIp) async {
-    if (!_canRun) return const DmKickResult(DmOutcome.rejected, '认证运行时未就绪');
+    if (!_canRun) {
+      return const DmKickResult(DmOutcome.rejected, _runtimeNotReady);
+    }
     final active = _inFlight;
     if (active != null) await active;
     final config = await configSource.load();
     if (config == null) {
       return const DmKickResult(DmOutcome.rejected, '没有可用的账号配置');
     }
-    return _attempt.kickDevice(config, targetIp);
+    // 复查要连着发几次请求，途中可能停监控或换网。把世代判定传下去，复查就能在
+    // 判据失效时停下来如实报「未确认」，而不是拿一个过期网络世代的答复去确认断开。
+    final server = _activeServer;
+    final generation = networkState.generation;
+    return _attempt.kickDevice(
+      config,
+      targetIp,
+      isCurrent: () => server != null && _isCurrent(server, generation),
+    );
   }
 
   Future<void> stop() async {

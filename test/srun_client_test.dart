@@ -63,7 +63,7 @@ void main() {
     );
 
     final result = await client.dmLogout(
-      username: '2021000100000',
+      username: _fixtureUsername,
       ip: '10.0.0.9',
     );
 
@@ -71,13 +71,15 @@ void main() {
     expect(requested!.path, '/cgi-bin/rad_user_dm');
     final query = requested!.queryParameters;
     expect(query['ip'], '10.0.0.9');
-    expect(query['username'], '2021000100000');
+    expect(query['username'], _fixtureUsername);
     expect(query['unbind'], '1');
     // 签名是 time+username+ip+unbind+time 的无分隔符拼接；摘要算法本身由
     // test/srun_login_request_test.dart 的外部向量固定，这里只固定拼接形状。
     expect(
       query['sign'],
-      SrunEnrypt.Sha1('${query['time']}202100010000010.0.0.91${query['time']}'),
+      SrunEnrypt.Sha1(
+        '${query['time']}${_fixtureUsername}10.0.0.91${query['time']}',
+      ),
     );
   });
 
@@ -92,7 +94,7 @@ void main() {
     );
 
     final result = await client.dmLogout(
-      username: '2021000100000',
+      username: _fixtureUsername,
       ip: '10.0.0.9',
     );
 
@@ -110,7 +112,7 @@ void main() {
     );
 
     final result = await client.dmLogout(
-      username: '2021000100000',
+      username: _fixtureUsername,
       ip: '10.0.0.9',
     );
 

@@ -391,11 +391,24 @@ void main() {
       expect(calls.where((call) => call.method == 'fireCommand'), hasLength(2));
     });
 
-    test('踢设备回传无法识别的结果时降级为未确认而不是失败', () async {
-      // 契约漂移的表现是收到一个不认识的值。此时既不能声称踢掉了，也不能断言
-      // 服务器拒绝了请求，只能报未确认。
+    test('踢设备回传无法识别的状态名时降级为未确认而不是失败', () async {
+      // 契约漂移的表现是结果包里装着一个不认识的状态名。此时既不能声称踢掉了，
+      // 也不能断言服务器拒绝了请求，只能报未确认。
       host.commandResults[AuthRuntimeController.commandKickDevice] =
-          'retired_outcome';
+          <String, Object?>{'status': 'retired_outcome'};
+      final client = AuthRuntimeClient(channel: uiChannel);
+      addTearDown(client.dispose);
+      await client.attach();
+
+      final outcome = await client.kickDevice('10.0.0.9');
+
+      expect(outcome.outcome, DmOutcome.accepted);
+    });
+
+    test('踢设备回传的不是结果包时也降级为未确认', () async {
+      // 发信端与收信端是同一个 bundle，不该出现形状不对的回传值；但真出现了也不能
+      // 让硬转型把降级路径本身变成崩点。
+      host.commandResults[AuthRuntimeController.commandKickDevice] = true;
       final client = AuthRuntimeClient(channel: uiChannel);
       addTearDown(client.dispose);
       await client.attach();

@@ -7,7 +7,6 @@ import 'package:LinkUp/main.dart';
 import 'package:flutter/material.dart';
 import 'package:LinkUp/utils/AuthRuntimeClient.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
-import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
@@ -235,10 +234,10 @@ class _MainNavigatorState extends State<MainNavigator> {
   }
 
   // 踢设备下线 — 通过 DM 接口强制解绑账号下的指定 IP
-  Future<bool> _kickDevice(String targetIp) async {
+  Future<void> _kickDevice(String targetIp) async {
     try {
       final result = await _client.kickDevice(targetIp);
-      if (!mounted) return result.outcome == DmOutcome.kicked;
+      if (!mounted) return;
 
       _showKickOutcome(targetIp, result);
       await LogUtil.info('踢设备 $targetIp 结果：${result.outcome.name}');
@@ -246,13 +245,11 @@ class _MainNavigatorState extends State<MainNavigator> {
         // 踢掉的那一行就是复查的依据，本地这份列表仍是旧的，重新拉一次。
         await _manualLogin();
       }
-      return result.outcome == DmOutcome.kicked;
     } on AuthRuntimeUnavailableException {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('后台认证运行时不可用，请稍后重试')));
       }
-      return false;
     } catch (error, stackTrace) {
       LogUtil.error('踢设备 $targetIp 异常', error, stackTrace);
       if (mounted) {
@@ -263,7 +260,6 @@ class _MainNavigatorState extends State<MainNavigator> {
           ),
         );
       }
-      return false;
     }
   }
 
@@ -277,8 +273,9 @@ class _MainNavigatorState extends State<MainNavigator> {
   void _showKickOutcome(String targetIp, DmKickResult result) {
     final (message, color) = switch (result.outcome) {
       DmOutcome.kicked => ('已踢掉 $targetIp', MyApp.iosGreen),
-      // 服务器受理了请求但目标仍在线：既不能报成功，也不该报失败。
-      DmOutcome.accepted => ('已要求 $targetIp 下线，但该设备仍显示在线', MyApp.iosOrange),
+      // 服务器受理了请求，但复查没能确认断开。这条也覆盖复查中途拿不到设备表的
+      // 情况，所以措辞只能说「未能确认」，不能说它仍在线——我们没有那个证据。
+      DmOutcome.accepted => ('已要求 $targetIp 下线，但未能确认它已断开', MyApp.iosOrange),
       DmOutcome.rejected => (
         result.reason == null ? '踢人失败：服务器返回错误' : '踢人失败：${result.reason}',
         MyApp.iosRed,

@@ -22,8 +22,8 @@ void main() {
     expect(SrunEnrypt.Sha1('abc'), 'a9993e364706816aba3e25717850c26c9cd0d89d');
     // 深澜 DM 签名的输入串：time+username+ip+unbind+time，无分隔符。
     expect(
-      SrunEnrypt.Sha1('1700000000202100010000010.0.0.91700000000'),
-      'bbf4b0ba15687ff31329b161005a229b9b8db681',
+      SrunEnrypt.Sha1('1700000000${_fixtureUsername}10.0.0.91700000000'),
+      '3e3e1066c0e621b7deaeb7d1cd8e59e8d7d69201',
     );
   });
 

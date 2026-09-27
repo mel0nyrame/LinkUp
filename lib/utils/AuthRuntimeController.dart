@@ -105,10 +105,11 @@ class AuthRuntimeController {
   /// 注销命令的结果包，和 [_kickPayload] 用同一套键，状态名取 [DmOutcome] 的
   /// `accepted` / `rejected`，因为注销自己同样只有「受理」和「拒绝」两种回答。
   Map<String, Object?> _resultPayload(DmResult result) {
-    return <String, Object?>{
-      RuntimeContract.keyStatus:
-          (result.accepted ? DmOutcome.accepted : DmOutcome.rejected).name,
-      if (result.reason != null) RuntimeContract.keyReason: result.reason,
-    };
+    return _kickPayload(
+      DmKickResult(
+        result.accepted ? DmOutcome.accepted : DmOutcome.rejected,
+        result.reason,
+      ),
+    );
   }
 }

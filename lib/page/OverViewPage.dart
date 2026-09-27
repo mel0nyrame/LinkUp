@@ -18,7 +18,7 @@ class OverviewPage extends StatefulWidget {
   final ValueListenable<RadUserInfo?> userInfo;
   final ValueListenable<OverviewOperation> operation;
   final Future<void> Function()? onRefresh;
-  final Future<bool> Function(String targetIp)? onKickDevice;
+  final Future<void> Function(String targetIp)? onKickDevice;
 
   const OverviewPage({
     super.key,

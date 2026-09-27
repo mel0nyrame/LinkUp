@@ -14,7 +14,15 @@ abstract class AuthenticationAttempt {
 
   Future<DmResult> logout(AuthConfig config);
 
-  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp);
+  /// 踢掉 [targetIp] 这台设备。
+  ///
+  /// [isCurrent] 是网络世代判据：复查要连着发几次请求，途中可能停监控或换网，
+  /// 判据失效后就不该再拿答复去确认断开。为 null 表示调用方不提供这道守卫。
+  Future<DmKickResult> kickDevice(
+    AuthConfig config,
+    String targetIp, {
+    bool Function()? isCurrent,
+  });
 }
 
 class AuthenticationAttemptContext {
@@ -117,7 +125,11 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   }
 
   @override
-  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp) async {
+  Future<DmKickResult> kickDevice(
+    AuthConfig config,
+    String targetIp, {
+    bool Function()? isCurrent,
+  }) async {
     final target = targetIp.trim();
     if (target.isEmpty) {
       return const DmKickResult(DmOutcome.rejected, '目标地址为空');
@@ -132,7 +144,9 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
     if (!result.accepted) {
       return DmKickResult(DmOutcome.rejected, result.reason);
     }
-    return DmKickResult(await _confirmOffline(protocol, server, target));
+    return DmKickResult(
+      await _confirmOffline(protocol, server, target, isCurrent),
+    );
   }
 
   /// 复查目标是否真的下线。
@@ -142,30 +156,59 @@ class SrunAuthenticationAttempt extends AuthenticationAttempt {
   ///
   /// 比对的是每条记录自己的 `ip`/`ip6` 字段，不是 map 的键：键是 `rad_online_id`，
   /// 它和 IP 的关系没有资料能确认，拿它当 IP 比会永远判定成「已踢掉」。
+  ///
+  /// 「表里没有目标」要成立，这份表本身得先像个表。表为空却还声称有设备在线、或
+  /// 表里一条地址都读不出来，都是字段名或解析对不上的表现，此时没有判据可用，
+  /// 照「已踢掉」报就是假绿。
   Future<DmOutcome> _confirmOffline(
     AuthenticationProtocol protocol,
     String server,
     String target,
+    bool Function()? isCurrent,
   ) async {
     final attempts = confirmAttempts < 1 ? 1 : confirmAttempts;
     for (var i = 0; i < attempts; i++) {
       if (i > 0) await Future<void>.delayed(confirmInterval);
-      Map<String, OnlineDevice>? devices;
+      final RadUserInfo info;
       try {
-        devices = (await protocol.getUserInfo(server)).onlineDeviceDetail;
+        info = await protocol.getUserInfo(server);
       } catch (error, stackTrace) {
         // 这一次没有判据，继续重试；次数用尽后如实报未确认。
         await LogUtil.error('踢设备复查失败', error, stackTrace);
+        if (!_stillCurrent(isCurrent)) return DmOutcome.accepted;
         continue;
       }
+      if (!_stillCurrent(isCurrent)) return DmOutcome.accepted;
+      final devices = info.onlineDeviceDetail;
       // 拿不到设备表同样没有判据；能拿到且其中没有目标地址才算确认断开。
       if (devices == null) continue;
+      if (!_isUsableDeviceTable(info, devices)) continue;
       final stillOnline = devices.values.any(
         (device) => device.getIp == target || device.getIp6 == target,
       );
       if (!stillOnline) return DmOutcome.kicked;
     }
     return DmOutcome.accepted;
+  }
+
+  /// 判据是否还有效。网络世代变了说明拿到的是另一个网络的答复，不能用来确认断开。
+  bool _stillCurrent(bool Function()? isCurrent) => isCurrent?.call() ?? true;
+
+  /// 这份设备表能不能当作判据用。
+  ///
+  /// 两种「读不出地址」的情况会让「表里没有目标」失去意义：表是空的，但响应还声称
+  /// 账号有设备在线；或者表非空，却每条记录的 `ip`/`ip6` 都是空。前者是总数与明细
+  /// 自相矛盾，后者是字段名对不上——两种都按「没有判据」处理，宁可报未确认。
+  bool _isUsableDeviceTable(
+    RadUserInfo info,
+    Map<String, OnlineDevice> devices,
+  ) {
+    if (devices.isEmpty) {
+      return (int.tryParse(info.getOnlineDeviceTotal) ?? 0) <= 0;
+    }
+    return devices.values.any(
+      (device) => device.getIp.isNotEmpty || device.getIp6.isNotEmpty,
+    );
   }
 
   @override

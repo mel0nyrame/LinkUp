@@ -62,6 +62,35 @@ class DmResult {
   }
 }
 
+/// 下线请求的结果。
+///
+/// 深澜的 `rad_user_dm` 只回答「请求是否被受理」，不回答目标会话是否已断开，
+/// 因此把「确认断开」和「已受理但未确认」分成两级，避免把受理当成踢掉。
+enum DmOutcome {
+  /// 复查确认目标已不在线。
+  kicked,
+
+  /// 服务器受理了请求，但复查没能确认目标已断开。
+  ///
+  /// 目标仍留在账号在线设备表里，复查中途网络世代变了，或者复查本身拿不到设备表，
+  /// 都归到这里。这几种情况都没有「已断开」的证据，所以界面不能说它已断开。
+  accepted,
+
+  /// 服务器拒绝了请求，或请求根本没发出（目标地址非法）。
+  rejected,
+}
+
+/// 一次踢设备的判定结果。
+///
+/// [outcome] 决定提示的颜色，[reason] 补上被拒绝时服务器给出的原因。两者一起过桥，
+/// 因为只回传枚举名的话，被拒绝时用户仍然不知道为什么。
+class DmKickResult {
+  const DmKickResult(this.outcome, [this.reason]);
+
+  final DmOutcome outcome;
+  final String? reason;
+}
+
 class SrunClient {
   String host;
   String get baseURL => "http://" + host + "/cgi-bin";

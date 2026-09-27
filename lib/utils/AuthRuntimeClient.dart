@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:LinkUp/utils/AuthRuntimeController.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
-import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
@@ -93,16 +92,15 @@ class AuthRuntimeClient {
 
   /// 拆出命令结果包里的状态名和原因。
   ///
-  /// 状态按名字匹配而不是序号，序号会随枚举成员增删而改绑。回传值不是结果包时
-  /// （只回传状态名的旧运行时）按裸字符串处理。
+  /// 状态按名字匹配而不是序号，序号会随枚举成员增删而改绑。结果包不是 Map 时读出
+  /// 空状态，由调用方按「无法识别」处理——发信端与收信端是同一个 bundle，不存在
+  /// 只回传状态名的旧运行时，硬转型反而会把降级路径本身变成崩点。
   ({String? status, String? reason}) _resultOf(Object? payload) {
-    if (payload is Map) {
-      return (
-        status: payload[RuntimeContract.keyStatus] as String?,
-        reason: payload[RuntimeContract.keyReason] as String?,
-      );
-    }
-    return (status: payload as String?, reason: null);
+    if (payload is! Map) return (status: null, reason: null);
+    return (
+      status: payload[RuntimeContract.keyStatus] as String?,
+      reason: payload[RuntimeContract.keyReason] as String?,
+    );
   }
 
   Future<void> _fire(String name, [Map<String, Object?>? args]) async {

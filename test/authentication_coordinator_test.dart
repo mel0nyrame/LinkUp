@@ -1249,8 +1249,11 @@ class _FakeAuthenticationAttempt extends AuthenticationAttempt {
       const DmResult(accepted: false);
 
   @override
-  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp) async =>
-      const DmKickResult(DmOutcome.rejected);
+  Future<DmKickResult> kickDevice(
+    AuthConfig config,
+    String targetIp, {
+    bool Function()? isCurrent,
+  }) async => const DmKickResult(DmOutcome.rejected);
 }
 
 class _FakeAuthenticationProtocol implements AuthenticationProtocol {
