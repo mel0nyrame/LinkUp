@@ -62,6 +62,7 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
   Stream<bool> get wifiStates => _wifiStates.stream;
   AuthRuntimeState get state => _state;
   bool get wifiConnected => wifiState?.connected ?? false;
+  String? get wifiName => wifiState?.name;
   bool get monitoringEnabled => _monitoringEnabled;
 
   Future<void> initialize() => _initializing ??= _initialize();

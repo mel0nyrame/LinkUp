@@ -26,6 +26,7 @@ class WindowsTrayApp extends StatefulWidget {
 class _WindowsTrayAppState extends State<WindowsTrayApp> {
   late AuthRuntimeState _state = widget.runtime.state;
   late bool _wifiConnected = widget.runtime.wifiConnected;
+  late String? _wifiName = widget.runtime.wifiName;
   late bool _monitoringEnabled = widget.runtime.monitoringEnabled;
   int _selectedDestination = 0;
   StreamSubscription<AuthRuntimeState>? _stateSubscription;
@@ -45,7 +46,12 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
       unawaited(widget.tray.setTooltip(_tooltipFor(state)));
     });
     _wifiSubscription = widget.runtime.wifiStates.listen((connected) {
-      if (mounted) setState(() => _wifiConnected = connected);
+      if (mounted) {
+        setState(() {
+          _wifiConnected = connected;
+          _wifiName = widget.runtime.wifiName;
+        });
+      }
     });
     unawaited(widget.tray.setTooltip(_tooltipFor(_state)));
     unawaited(_attachTray());
@@ -124,6 +130,7 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
           states: widget.runtime.states,
           compact: popupVisible,
           wifiConnected: _wifiConnected,
+          wifiName: _wifiName,
           monitoringEnabled: _monitoringEnabled,
           checkForUpdatesOnStartup: widget.checkForUpdatesOnStartup,
           onManualCheck: widget.runtime.manualCheck,

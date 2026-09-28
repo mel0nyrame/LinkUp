@@ -19,6 +19,7 @@ class WindowsHome extends StatefulWidget {
     required this.onManualCheck,
     this.compact = false,
     this.wifiConnected = false,
+    this.wifiName,
     this.monitoringEnabled = false,
     this.onOpenDetails,
     this.selectedDestination = 0,
@@ -35,6 +36,7 @@ class WindowsHome extends StatefulWidget {
   final Future<void> Function() onManualCheck;
   final bool compact;
   final bool wifiConnected;
+  final String? wifiName;
   final bool monitoringEnabled;
   final VoidCallback? onOpenDetails;
   final int selectedDestination;
@@ -92,6 +94,12 @@ class _WindowsHomeState extends State<WindowsHome> {
     } else {
       setState(() => _selectedDestination = destination);
     }
+  }
+
+  String _wifiLabel() {
+    if (!widget.wifiConnected) return '未连接 Wi-Fi';
+    final name = widget.wifiName?.trim() ?? '';
+    return name.isEmpty ? 'Wi-Fi 已连接' : 'Wi-Fi · $name';
   }
 
   Future<void> _checkForUpdate() async {
@@ -285,10 +293,7 @@ class _WindowsHomeState extends State<WindowsHome> {
               spacing: 10,
               runSpacing: 8,
               children: [
-                _StatusChip(
-                  icon: Icons.wifi,
-                  label: widget.wifiConnected ? 'Wi-Fi 已连接' : '未连接 Wi-Fi',
-                ),
+                _StatusChip(icon: Icons.wifi, label: _wifiLabel()),
                 _StatusChip(
                   icon: Icons.monitor_heart_outlined,
                   label: widget.monitoringEnabled ? '正在监控' : '未监控',
@@ -702,7 +707,13 @@ class _WindowsHomeState extends State<WindowsHome> {
                     children: [
                       const Icon(Icons.wifi, size: 18),
                       const SizedBox(width: 8),
-                      Text(widget.wifiConnected ? 'Wi-Fi 已连接' : '未连接 Wi-Fi'),
+                      Expanded(
+                        child: Text(
+                          _wifiLabel(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       const Spacer(),
                       Text(widget.monitoringEnabled ? '正在监控' : '未监控'),
                     ],

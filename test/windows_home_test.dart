@@ -311,6 +311,31 @@ void main() {
     expect(find.text('已连接'), findsOneWidget);
   });
 
+  testWidgets('托盘浮层显示可读取的当前 Wi-Fi 名称', (tester) async {
+    tester.view.physicalSize = const Size(380, 340);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WindowsHome(
+          initialState: const AuthRuntimeState(
+            status: AuthenticationStatus.checking,
+          ),
+          states: const Stream<AuthRuntimeState>.empty(),
+          compact: true,
+          wifiConnected: true,
+          wifiName: 'Campus Wi-Fi',
+          monitoringEnabled: true,
+          onManualCheck: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('Wi-Fi · Campus Wi-Fi'), findsOneWidget);
+  });
+
   testWidgets('没有读取到 Wi-Fi 时只显示通用离线提示', (tester) async {
     tester.view.physicalSize = const Size(380, 340);
     tester.view.devicePixelRatio = 1;
