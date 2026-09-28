@@ -123,6 +123,48 @@ std::wstring Utf8ToWide(const std::string& text) {
 int ScaleForDpi(int logical_size, UINT dpi) {
   return MulDiv(logical_size, static_cast<int>(dpi), 96);
 }
+
+std::string WideToUtf8(const wchar_t* value) {
+  if (value == nullptr || value[0] == L'\0') return {};
+  const int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value,
+                                         -1, nullptr, 0, nullptr, nullptr);
+  if (length <= 1) return {};
+  std::string result(length, '\0');
+  if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value, -1,
+                          result.data(), length, nullptr, nullptr) != length) {
+    return {};
+  }
+  result.pop_back();
+  return result;
+}
+
+std::string DecodeSsid(const DOT11_SSID& ssid) {
+  if (ssid.uSSIDLength == 0 || ssid.uSSIDLength > DOT11_SSID_MAX_LENGTH) {
+    return {};
+  }
+  const auto* bytes = reinterpret_cast<const char*>(ssid.ucSSID);
+  const int length = static_cast<int>(ssid.uSSIDLength);
+  const int wide_length =
+      MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, length, nullptr,
+                          0);
+  if (wide_length <= 0) return {};
+  std::wstring wide(wide_length, L'\0');
+  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, length,
+                          wide.data(), wide_length) != wide_length) {
+    return {};
+  }
+  const int utf8_length = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, wide.data(), wide_length, nullptr, 0,
+      nullptr, nullptr);
+  if (utf8_length <= 0) return {};
+  std::string result(utf8_length, '\0');
+  if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide.data(),
+                          wide_length, result.data(), utf8_length, nullptr,
+                          nullptr) != utf8_length) {
+    return {};
+  }
+  return result;
+}
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project,
@@ -689,6 +731,21 @@ FlutterWindow::WifiSnapshot FlutterWindow::ReadWifiSnapshot() {
           snapshot.adapter = std::to_string(luid.Value);
           snapshot.address = text.data();
           snapshot.interface_index = adapter->IfIndex;
+          DWORD connection_size = 0;
+          PWLAN_CONNECTION_ATTRIBUTES connection = nullptr;
+          if (WlanQueryInterface(
+                  wlan_handle_, &wlan_info.InterfaceGuid,
+                  wlan_intf_opcode_current_connection, nullptr,
+                  &connection_size, reinterpret_cast<PVOID*>(&connection),
+                  nullptr) == ERROR_SUCCESS &&
+              connection != nullptr) {
+            snapshot.name = DecodeSsid(
+                connection->wlanAssociationAttributes.dot11Ssid);
+            if (snapshot.name.empty()) {
+              snapshot.name = WideToUtf8(connection->strProfileName);
+            }
+            WlanFreeMemory(connection);
+          }
           break;
         }
         if (!snapshot.address.empty()) break;
@@ -718,6 +775,8 @@ flutter::EncodableMap FlutterWindow::WifiPayload(
            flutter::EncodableValue(snapshot.address)},
           {flutter::EncodableValue("adapter"),
            flutter::EncodableValue(snapshot.adapter)},
+          {flutter::EncodableValue("name"),
+           flutter::EncodableValue(snapshot.name)},
           {flutter::EncodableValue("revision"),
            flutter::EncodableValue(snapshot.revision)}};
 }

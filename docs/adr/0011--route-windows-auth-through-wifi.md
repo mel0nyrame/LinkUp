@@ -10,7 +10,7 @@ Windows 上以太网或 VPN 可以是默认路由，已连接的校园 Wi-Fi 仍
 
 ## Decision
 
-Windows 宿主通过 WLAN ACM 连接、断开通知和 IPv4 单播地址变化通知读取网络快照。快照只选择 WLAN 报告为已连接且拥有 IPv4 地址的网卡；用接口 GUID 对应 IP 适配器，不读取 SSID，也不设白名单。无线关联事件增加世代标记，因此即使地址未变化，切换 Wi-Fi 仍会通知 Dart。相同快照去重后传给现有 `AuthenticationCoordinator.networkChanged`；协调器继续独占单飞、状态、调度与旧结果失效。
+Windows 宿主通过 WLAN ACM 连接、断开通知和 IPv4 单播地址变化通知读取网络快照。快照只选择 WLAN 报告为已连接且拥有 IPv4 地址的网卡；用接口 GUID 对应 IP 适配器，并读取当前 SSID 供状态浮层显示，不据此选择网卡或设白名单。无线关联事件增加世代标记，因此即使地址未变化，切换 Wi-Fi 仍会通知 Dart。相同快照去重后传给现有 `AuthenticationCoordinator.networkChanged`；协调器继续独占单飞、状态、调度与旧结果失效。
 
 认证协议继续使用 Dart `http.Client`。Windows 原生层为每条认证 TCP 连接创建一次本地回环隧道：主机名通过指定 Wi-Fi 接口的 `DnsQueryEx` 解析；远端 socket 同时绑定所选 Wi-Fi 的 IPv4 地址，并设置 Windows `IP_UNICAST_IF` 指向该接口。回环端口使用 `SO_EXCLUSIVEADDRUSE`；Dart `HttpClient.connectionFactory` 连接该端口，并在传输 HTTP 数据前提交原生层生成的一次性随机令牌，避免其他本地进程抢占端口读取认证流量。Reality、ACID、Portal 与在线确认复用同一注入的客户端。网络变化时协调器释放旧客户端，下一轮重新建立隧道。没有可用 Wi-Fi IPv4 地址时不发起认证连接。此绑定只作用于认证流量，不改变其他应用流量或系统路由。
 

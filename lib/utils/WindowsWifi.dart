@@ -12,18 +12,21 @@ class WindowsWifiSnapshot {
     required this.address,
     required this.adapter,
     required this.revision,
+    this.name = '',
   });
 
   factory WindowsWifiSnapshot.fromMap(Map<Object?, Object?> value) {
     final address = value['address'];
     final adapter = value['adapter'];
     final revision = value['revision'];
+    final name = value['name'];
     return WindowsWifiSnapshot(
       connected:
           value['connected'] == true && address is String && address.isNotEmpty,
       address: address is String ? address : '',
       adapter: adapter is String ? adapter : '',
       revision: revision is int ? revision : 0,
+      name: name is String ? name : '',
     );
   }
 
@@ -31,6 +34,7 @@ class WindowsWifiSnapshot {
   final String address;
   final String adapter;
   final int revision;
+  final String name;
 }
 
 abstract class WindowsWifiEvents {
@@ -104,8 +108,10 @@ class WindowsWifiNetworkState implements AuthenticationNetworkState {
   int _revision = -1;
   bool _connected = false;
   String? _address;
+  String? _name;
 
   String? get sourceAddress => _address;
+  String? get name => _name;
   bool get connected => _connected;
 
   bool apply(WindowsWifiSnapshot snapshot) {
@@ -113,6 +119,9 @@ class WindowsWifiNetworkState implements AuthenticationNetworkState {
     _revision = snapshot.revision;
     _connected = snapshot.connected;
     _address = snapshot.connected ? snapshot.address : null;
+    _name = snapshot.connected && snapshot.name.trim().isNotEmpty
+        ? snapshot.name.trim()
+        : null;
     return true;
   }
 

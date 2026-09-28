@@ -36,12 +36,14 @@ class FlutterWindow : public Win32Window {
   struct WifiSnapshot {
     std::string adapter;
     std::string address;
+    std::string name;
     unsigned int interface_index = 0;
     int64_t association_epoch = 0;
     int64_t revision = 0;
 
     bool operator==(const WifiSnapshot& other) const {
       return adapter == other.adapter && address == other.address &&
+             name == other.name &&
              interface_index == other.interface_index &&
              association_epoch == other.association_epoch;
     }

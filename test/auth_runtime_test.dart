@@ -106,10 +106,12 @@ void main() {
           address: '192.0.2.10',
           adapter: 'wifi-a',
           revision: 2,
+          name: 'Campus Wi-Fi',
         ),
       );
       await _pump();
       expect(runtime.wifiConnected, isTrue);
+      expect(runtime.wifiName, 'Campus Wi-Fi');
       expect(attempt.calls, 1);
       expect(runtime.state.isOnline, isTrue);
       expect(scheduler.lastDelay, const Duration(seconds: 30));

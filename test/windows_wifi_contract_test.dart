@@ -23,6 +23,10 @@ void main() {
     expect(window, contains('wlan_notification_acm_disconnected'));
     expect(window, contains('++association_epoch_'));
     expect(window, contains('WlanEnumInterfaces'));
+    expect(window, contains('WlanQueryInterface'));
+    expect(window, contains('wlan_intf_opcode_current_connection'));
+    expect(window, contains('dot11Ssid'));
+    expect(window, contains('flutter::EncodableValue("name")'));
     expect(window, contains('ConvertInterfaceGuidToLuid'));
     expect(window, contains('adapter->IfIndex'));
     expect(window, contains('CancelMibChangeNotify2'));
@@ -55,6 +59,7 @@ void main() {
         'connected': false,
         'address': '',
         'adapter': '',
+        'name': '',
         'revision': 1,
       };
     });
@@ -65,6 +70,7 @@ void main() {
 
     final initial = await events.start(received.add);
     expect(initial.connected, isFalse);
+    expect(initial.name, '');
     await messenger.handlePlatformMessage(
       channel.name,
       const StandardMethodCodec().encodeMethodCall(
@@ -72,6 +78,7 @@ void main() {
           'connected': true,
           'address': '192.0.2.10',
           'adapter': 'wifi-a',
+          'name': 'Campus Wi-Fi',
           'revision': 2,
         }),
       ),
@@ -81,6 +88,7 @@ void main() {
     expect(received, hasLength(1));
     expect(received.single.connected, isTrue);
     expect(received.single.address, '192.0.2.10');
+    expect(received.single.name, 'Campus Wi-Fi');
     expect(received.single.revision, 2);
   });
 
