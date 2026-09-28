@@ -6,6 +6,7 @@ import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 
 class WindowsHome extends StatefulWidget {
   const WindowsHome({
@@ -20,6 +21,8 @@ class WindowsHome extends StatefulWidget {
     this.selectedDestination = 0,
     this.onDestinationChanged,
     this.configuration,
+    this.onLogout,
+    this.onKickDevice,
   });
 
   final AuthRuntimeState initialState;
@@ -32,6 +35,8 @@ class WindowsHome extends StatefulWidget {
   final int selectedDestination;
   final ValueChanged<int>? onDestinationChanged;
   final ConfigManager? configuration;
+  final Future<DmResult> Function()? onLogout;
+  final Future<DmKickResult> Function(String ip)? onKickDevice;
 
   @override
   State<WindowsHome> createState() => _WindowsHomeState();
@@ -41,6 +46,7 @@ class _WindowsHomeState extends State<WindowsHome> {
   late AuthRuntimeState _state = widget.initialState;
   late int _selectedDestination = widget.selectedDestination;
   StreamSubscription<AuthRuntimeState>? _subscription;
+  bool _deviceOperationInProgress = false;
 
   @override
   void initState() {
@@ -297,6 +303,12 @@ class _WindowsHomeState extends State<WindowsHome> {
   Widget _buildDevicesCard(BuildContext context, RadUserInfo? userInfo) {
     final devices =
         userInfo?.onlineDeviceDetail?.values.toList() ?? const <OnlineDevice>[];
+    final currentAddresses = userInfo == null
+        ? const <String>{}
+        : _currentDeviceAddresses(userInfo);
+    final canKickDevices =
+        widget.onKickDevice != null && currentAddresses.isNotEmpty;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
@@ -310,19 +322,54 @@ class _WindowsHomeState extends State<WindowsHome> {
               const Text('设备信息将在认证确认后显示。')
             else if (devices.isEmpty)
               const Text('认证已确认，服务端暂未提供设备明细。')
-            else
+            else ...[
+              if (currentAddresses.isEmpty) ...[
+                Text(
+                  '无法识别本机设备，已隐藏踢下线操作。',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+              ],
               for (final device in devices) ...[
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.devices_outlined),
-                  title: Text(_deviceName(device)),
-                  subtitle: Text(_deviceAddress(device)),
-                  trailing: device.ip != null && device.ip == userInfo.clientIp
-                      ? const Chip(label: Text('本机'))
-                      : null,
+                Builder(
+                  builder: (context) {
+                    final addresses = _deviceAddresses(device);
+                    final isCurrent = addresses.any(currentAddresses.contains);
+                    final targetAddress = addresses.isEmpty
+                        ? null
+                        : addresses.first;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.devices_outlined),
+                      title: Text(_deviceName(device)),
+                      subtitle: Text(_deviceAddress(device)),
+                      trailing: isCurrent
+                          ? const Chip(label: Text('本机'))
+                          : canKickDevices && targetAddress != null
+                          ? TextButton(
+                              onPressed: _deviceOperationInProgress
+                                  ? null
+                                  : () => _confirmKickDevice(targetAddress),
+                              child: const Text('踢下线'),
+                            )
+                          : null,
+                    );
+                  },
                 ),
                 if (device != devices.last) const Divider(height: 1),
               ],
+            ],
+            if (userInfo != null && widget.onLogout != null) ...[
+              const Divider(height: 24),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: _deviceOperationInProgress ? null : _confirmLogout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text('注销当前连接'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -337,11 +384,148 @@ class _WindowsHomeState extends State<WindowsHome> {
   }
 
   String _deviceAddress(OnlineDevice device) {
-    final addresses = <String>[
-      if (device.ip?.trim().isNotEmpty == true) device.ip!.trim(),
-      if (device.ip6?.trim().isNotEmpty == true) device.ip6!.trim(),
-    ];
+    final addresses = _deviceAddresses(device);
     return addresses.isEmpty ? '暂无地址信息' : addresses.join(' · ');
+  }
+
+  List<String> _deviceAddresses(OnlineDevice device) {
+    final ip = _networkValue(device.ip);
+    final ip6 = _networkValue(device.ip6);
+    return <String>[if (ip != null) ip, if (ip6 != null) ip6];
+  }
+
+  Set<String> _currentDeviceAddresses(RadUserInfo userInfo) {
+    final addresses = <String>{};
+    for (final value in <String?>[
+      userInfo.clientIp,
+      userInfo.onlineIp,
+      userInfo.onlineIp6,
+    ]) {
+      final address = _networkValue(value);
+      if (address != null) addresses.add(address);
+    }
+    return addresses;
+  }
+
+  Future<void> _confirmKickDevice(String targetAddress) async {
+    final kickDevice = widget.onKickDevice;
+    if (_deviceOperationInProgress || kickDevice == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认踢设备'),
+        content: Text('确定要将设备 $targetAddress 下线吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('确认踢'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deviceOperationInProgress = true);
+    try {
+      final result = await kickDevice(targetAddress);
+      if (!mounted) return;
+      _showKickOutcome(targetAddress, result);
+      if (result.outcome == DmOutcome.kicked) {
+        try {
+          await widget.onManualCheck();
+        } catch (_) {
+          if (mounted) {
+            _showOperationMessage(
+              '已踢掉 $targetAddress，但刷新设备状态失败',
+              Theme.of(context).colorScheme.tertiary,
+            );
+          }
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        _showOperationMessage('踢设备失败，请重试', Theme.of(context).colorScheme.error);
+      }
+    } finally {
+      if (mounted) setState(() => _deviceOperationInProgress = false);
+    }
+  }
+
+  Future<void> _confirmLogout() async {
+    final logout = widget.onLogout;
+    if (_deviceOperationInProgress || logout == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认注销'),
+        content: const Text('确定要注销当前校园网连接吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('确认注销'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deviceOperationInProgress = true);
+    try {
+      final result = await logout();
+      if (!mounted) return;
+      final colorScheme = Theme.of(context).colorScheme;
+      _showOperationMessage(
+        result.accepted
+            ? '已要求注销'
+            : result.reason == null
+            ? '注销失败，请重试'
+            : '注销失败：${result.reason}',
+        result.accepted ? colorScheme.tertiary : colorScheme.error,
+      );
+    } catch (_) {
+      if (mounted) {
+        _showOperationMessage('注销失败，请重试', Theme.of(context).colorScheme.error);
+      }
+    } finally {
+      if (mounted) setState(() => _deviceOperationInProgress = false);
+    }
+  }
+
+  void _showKickOutcome(String targetAddress, DmKickResult result) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final (message, color) = switch (result.outcome) {
+      DmOutcome.kicked => ('已踢掉 $targetAddress', colorScheme.primary),
+      DmOutcome.accepted => (
+        '已要求 $targetAddress 下线，但未能确认它已断开',
+        colorScheme.tertiary,
+      ),
+      DmOutcome.rejected => (
+        result.reason == null ? '踢人失败：服务器返回错误' : '踢人失败：${result.reason}',
+        colorScheme.error,
+      ),
+    };
+    _showOperationMessage(message, color);
+  }
+
+  void _showOperationMessage(String message, Color color) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   String? _networkValue(String? value) {

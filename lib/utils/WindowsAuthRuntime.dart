@@ -5,7 +5,9 @@ import 'package:LinkUp/utils/AuthRuntimeHost.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/SrunAuthenticationProtocol.dart';
+import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/WindowsWifi.dart';
 
 /// Windows 进程内唯一认证运行时。界面只读状态并发送命令。
@@ -102,6 +104,42 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
       return;
     }
     await _controller.execute(AuthRuntimeController.commandManualCheck);
+  }
+
+  Future<DmResult> logout() async {
+    await initialize();
+    final result = _commandResult(
+      await _controller.execute(AuthRuntimeController.commandLogout),
+    );
+    return DmResult(
+      accepted: result.status == DmOutcome.accepted.name,
+      errorMessage: result.reason,
+    );
+  }
+
+  Future<DmKickResult> kickDevice(String ip) async {
+    await initialize();
+    final result = _commandResult(
+      await _controller.execute(
+        AuthRuntimeController.commandKickDevice,
+        <String, Object?>{RuntimeContract.keyIp: ip},
+      ),
+    );
+    for (final outcome in DmOutcome.values) {
+      if (outcome.name == result.status) {
+        return DmKickResult(outcome, result.reason);
+      }
+    }
+    await LogUtil.warning('Windows 认证运行时回传了无法识别的踢设备结果');
+    return const DmKickResult(DmOutcome.accepted);
+  }
+
+  ({String? status, String? reason}) _commandResult(Object? response) {
+    if (response is! Map) return (status: null, reason: null);
+    return (
+      status: response[RuntimeContract.keyStatus] as String?,
+      reason: response[RuntimeContract.keyReason] as String?,
+    );
   }
 
   Future<void> configurationChanged() async {

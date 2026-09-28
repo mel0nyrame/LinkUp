@@ -10,6 +10,7 @@ import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/SecretStore.dart';
+import 'package:LinkUp/utils/SrunClient.dart';
 
 class _MemorySecretStore implements SecretStore {
   final values = <String, String>{};
@@ -134,6 +135,93 @@ class _WindowTestConfigManager extends ConfigManager {
 String _testSecret() => String.fromCharCodes(
   List<int>.generate(24, (_) => 65 + Random.secure().nextInt(26)),
 );
+
+AuthRuntimeState _onlineDeviceState({
+  bool includeDeviceDetail = true,
+  bool includeOtherDevice = true,
+  bool includeCurrentAddress = true,
+}) {
+  final devices = <String, Map<String, String>>{
+    'current': <String, String>{'ip': '192.0.2.10', 'os_name': 'Windows'},
+    if (includeOtherDevice)
+      'other': <String, String>{'ip': '192.0.2.20', 'os_name': 'Android'},
+  };
+  return AuthRuntimeState(
+    status: AuthenticationStatus.online,
+    userInfo: RadUserInfo(
+      error: 'ok',
+      clientIp: includeCurrentAddress ? '192.0.2.10' : '',
+      onlineIp: includeCurrentAddress ? '192.0.2.10' : '',
+      onlineDeviceTotal: includeOtherDevice ? '2' : '1',
+      onlineDeviceDetailRaw: includeDeviceDetail ? jsonEncode(devices) : null,
+    ),
+  );
+}
+
+void _useWindowsOperationViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1200, 1800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Future<String> _showKickFeedback(
+  WidgetTester tester,
+  DmKickResult result,
+) async {
+  _useWindowsOperationViewport(tester);
+  var manualChecks = 0;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: WindowsHome(
+        initialState: _onlineDeviceState(),
+        states: const Stream<AuthRuntimeState>.empty(),
+        onManualCheck: () async => manualChecks++,
+        onKickDevice: (_) async => result,
+      ),
+    ),
+  );
+  await tester.ensureVisible(find.text('踢下线'));
+  await tester.tap(find.text('踢下线'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('确认踢'));
+  await tester.pumpAndSettle();
+
+  final message =
+      tester.widget<SnackBar>(find.byType(SnackBar)).content as Text;
+  final value = message.data ?? '';
+  expect(manualChecks, result.outcome == DmOutcome.kicked ? 1 : 0);
+  await tester.pumpWidget(const SizedBox());
+  await tester.pumpAndSettle();
+  return value;
+}
+
+Future<String> _showLogoutFeedback(WidgetTester tester, DmResult result) async {
+  _useWindowsOperationViewport(tester);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: WindowsHome(
+        initialState: _onlineDeviceState(),
+        states: const Stream<AuthRuntimeState>.empty(),
+        onManualCheck: () async {},
+        onLogout: () async => result,
+      ),
+    ),
+  );
+  await tester.ensureVisible(find.text('注销当前连接'));
+  await tester.tap(find.text('注销当前连接'));
+  await tester.pumpAndSettle();
+  expect(find.text('确认注销'), findsNWidgets(2));
+  await tester.tap(find.text('确认注销').last);
+  await tester.pumpAndSettle();
+
+  final message =
+      tester.widget<SnackBar>(find.byType(SnackBar)).content as Text;
+  final value = message.data ?? '';
+  await tester.pumpWidget(const SizedBox());
+  await tester.pumpAndSettle();
+  return value;
+}
 
 Finder _textInput(String key) => find.descendant(
   of: find.byKey(ValueKey<String>(key)),
@@ -396,6 +484,147 @@ void main() {
     expect(find.text('0 分钟'), findsOneWidget);
     expect(find.text('0 台'), findsOneWidget);
     expect(find.text('认证服务器未提供此项数据'), findsNothing);
+  });
+
+  testWidgets('离线或缺少设备明细时不展示可操作设备', (tester) async {
+    final states = StreamController<AuthRuntimeState>.broadcast();
+    addTearDown(states.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WindowsHome(
+          initialState: const AuthRuntimeState(
+            status: AuthenticationStatus.offline,
+          ),
+          states: states.stream,
+          onManualCheck: () async {},
+          onLogout: () async => const DmResult(accepted: true),
+          onKickDevice: (_) async => const DmKickResult(DmOutcome.kicked),
+        ),
+      ),
+    );
+
+    expect(find.text('踢下线'), findsNothing);
+    expect(find.text('注销当前连接'), findsNothing);
+    expect(find.text('本机'), findsNothing);
+
+    states.add(_onlineDeviceState(includeDeviceDetail: false));
+    await tester.pump();
+
+    expect(find.text('注销当前连接'), findsOneWidget);
+    expect(find.text('踢下线'), findsNothing);
+    expect(find.text('认证已确认，服务端暂未提供设备明细。'), findsOneWidget);
+
+    states.add(_onlineDeviceState(includeCurrentAddress: false));
+    await tester.pump();
+
+    expect(find.text('本机'), findsNothing);
+    expect(find.text('踢下线'), findsNothing);
+    expect(find.text('无法识别本机设备，已隐藏踢下线操作。'), findsOneWidget);
+  });
+
+  testWidgets('标记本机并在确认后踢设备，确认成功后刷新列表', (tester) async {
+    _useWindowsOperationViewport(tester);
+    final states = StreamController<AuthRuntimeState>.broadcast();
+    addTearDown(states.close);
+    final kickedAddresses = <String>[];
+    var manualChecks = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WindowsHome(
+          initialState: _onlineDeviceState(),
+          states: states.stream,
+          onManualCheck: () async {
+            manualChecks++;
+            states.add(_onlineDeviceState(includeOtherDevice: false));
+          },
+          onKickDevice: (address) async {
+            kickedAddresses.add(address);
+            return const DmKickResult(DmOutcome.kicked);
+          },
+        ),
+      ),
+    );
+
+    expect(find.text('本机'), findsOneWidget);
+    expect(find.text('踢下线'), findsOneWidget);
+    await tester.tap(find.text('踢下线'));
+    await tester.pumpAndSettle();
+    expect(find.text('确认踢设备'), findsOneWidget);
+    expect(kickedAddresses, isEmpty);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(kickedAddresses, isEmpty);
+
+    await tester.tap(find.text('踢下线'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认踢'));
+    await tester.pumpAndSettle();
+
+    expect(kickedAddresses, <String>['192.0.2.20']);
+    expect(manualChecks, 1);
+    expect(find.text('已踢掉 192.0.2.20'), findsOneWidget);
+    expect(find.text('192.0.2.20'), findsNothing);
+    expect(find.text('本机'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('踢设备的受理和拒绝提示不声称已踢掉', (tester) async {
+    expect(
+      await _showKickFeedback(tester, const DmKickResult(DmOutcome.accepted)),
+      '已要求 192.0.2.20 下线，但未能确认它已断开',
+    );
+    expect(
+      await _showKickFeedback(
+        tester,
+        const DmKickResult(DmOutcome.rejected, 'E6504: 设备不在线'),
+      ),
+      '踢人失败：E6504: 设备不在线',
+    );
+  });
+
+  testWidgets('注销当前连接需要确认并区分受理和拒绝', (tester) async {
+    _useWindowsOperationViewport(tester);
+    var logoutCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WindowsHome(
+          initialState: _onlineDeviceState(),
+          states: const Stream<AuthRuntimeState>.empty(),
+          onManualCheck: () async {},
+          onLogout: () async {
+            logoutCalls++;
+            return const DmResult(accepted: true);
+          },
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.text('注销当前连接'));
+    await tester.tap(find.text('注销当前连接'));
+    await tester.pumpAndSettle();
+    expect(find.text('确认注销'), findsNWidgets(2));
+    expect(logoutCalls, 0);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(logoutCalls, 0);
+    await tester.tap(find.text('注销当前连接'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认注销').last);
+    await tester.pumpAndSettle();
+    expect(logoutCalls, 1);
+    expect(find.text('已要求注销'), findsOneWidget);
+    expect(find.text('已成功注销'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    expect(
+      await _showLogoutFeedback(
+        tester,
+        const DmResult(accepted: false, errorMessage: '账号不存在'),
+      ),
+      '注销失败：账号不存在',
+    );
   });
 
   testWidgets('Windows 设置保存账号和网络参数并支持修改、删除', (tester) async {

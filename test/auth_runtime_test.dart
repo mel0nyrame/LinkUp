@@ -332,6 +332,34 @@ void main() {
       );
       expect(runtime.state.isOnline, isTrue);
     });
+
+    test('Windows 在线设备操作经运行时命令进入唯一协调器', () async {
+      final config = _FakeConfigSource();
+      final protocol = _FakeProtocol();
+      final runtime = WindowsAuthRuntime(
+        coordinator: AuthenticationCoordinator(
+          configSource: config,
+          protocol: protocol,
+          protocolFactory: () => protocol,
+          networkState: _FakeNetworkState(),
+          scheduler: _FakeAuthenticationScheduler(),
+        ),
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.manualCheck();
+      final kicked = await runtime.kickDevice('10.0.0.9');
+      // 夹具不提供可用的设备明细，运行时必须把结果保持为「已受理但未确认」。
+      expect(kicked.outcome, DmOutcome.accepted);
+      expect(protocol.kickedIps, contains('10.0.0.9'));
+      expect(runtime.state.isOnline, isTrue);
+
+      final loggedOut = await runtime.logout();
+      expect(loggedOut.accepted, isTrue);
+      expect(protocol.logoutCalls, 2);
+      expect(runtime.state.status, AuthenticationStatus.stopped);
+    });
   });
 
   group('认证运行时宿主桥', () {
