@@ -25,6 +25,38 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Windows 认证运行时', () {
+    test('配置读取失败仍能启动并显示安全错误，手动检查不发请求', () async {
+      final config = _FailingConfigSource();
+      final protocol = _FakeProtocol();
+      final controller = _controller(
+        host: _FakeAuthRuntimeHost(),
+        scheduler: _FakeAuthenticationScheduler(),
+        protocol: protocol,
+        configSource: config,
+      );
+      final runtime = WindowsAuthRuntime(
+        coordinator: controller.coordinator,
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.initialize();
+      expect(runtime.state.status, AuthenticationStatus.failed);
+      expect(runtime.state.message, '读取认证配置失败，请检查本地配置');
+      expect(
+        runtime.state.toMap().toString(),
+        isNot(contains('raw error marker')),
+      );
+
+      await runtime.manualCheck();
+      expect(protocol.realityCalls, 0);
+
+      config.fail = false;
+      await runtime.manualCheck();
+      expect(runtime.state.isOnline, isTrue);
+      expect(protocol.realityCalls, 1);
+    });
+
     test('发布状态时不转发服务器原始错误文本', () async {
       final config = _FakeConfigSource();
       final controller = _controller(
@@ -764,6 +796,16 @@ class _FakeConfigSource extends AuthenticationConfigSource {
   }) async {
     if (canPersist != null && !canPersist()) return false;
     return true;
+  }
+}
+
+class _FailingConfigSource extends _FakeConfigSource {
+  bool fail = true;
+
+  @override
+  Future<AuthConfigFacts?> loadFacts() async {
+    if (fail) throw const ConfigStorageException('raw error marker');
+    return super.loadFacts();
   }
 }
 

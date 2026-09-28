@@ -40,15 +40,16 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
     if (_initialized) return;
     _initialized = true;
     _controller.subscribe();
-    if (await configSource.loadFacts() == null) {
+    if (await _configurationPresent() == false) {
       _publishMissingConfig();
     }
   }
 
   Future<void> manualCheck() async {
     await initialize();
-    if (await configSource.loadFacts() == null) {
-      _publishMissingConfig();
+    final present = await _configurationPresent();
+    if (present != true) {
+      if (present == false) _publishMissingConfig();
       return;
     }
     await _controller.execute(AuthRuntimeController.commandManualCheck);
@@ -59,7 +60,22 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
     await _controller.execute(
       AuthRuntimeController.commandConfigurationChanged,
     );
-    if (await configSource.loadFacts() == null) _publishMissingConfig();
+    if (await _configurationPresent() == false) _publishMissingConfig();
+  }
+
+  /// null 表示读取失败，已经发布安全的失败状态。
+  Future<bool?> _configurationPresent() async {
+    try {
+      return await configSource.loadFacts() != null;
+    } catch (_) {
+      _emit(
+        const AuthRuntimeState(
+          status: AuthenticationStatus.failed,
+          message: '读取认证配置失败，请检查本地配置',
+        ),
+      );
+      return null;
+    }
   }
 
   void _publishMissingConfig() {
@@ -77,13 +93,19 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
   @override
   Future<void> publishState(AuthRuntimeState state) async {
     // Portal 错误文本可能回显请求字段；Windows 状态只发布结构化结果。
-    _state = AuthRuntimeState(
-      status: state.status,
-      reason: state.reason,
-      retryAfterSeconds: state.retryAfterSeconds,
-      acid: state.acid,
-      userInfo: state.userInfo,
+    _emit(
+      AuthRuntimeState(
+        status: state.status,
+        reason: state.reason,
+        retryAfterSeconds: state.retryAfterSeconds,
+        acid: state.acid,
+        userInfo: state.userInfo,
+      ),
     );
+  }
+
+  void _emit(AuthRuntimeState state) {
+    _state = state;
     if (!_states.isClosed) _states.add(_state);
   }
 
