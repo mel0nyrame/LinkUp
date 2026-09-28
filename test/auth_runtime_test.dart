@@ -15,6 +15,8 @@ import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
+import 'package:LinkUp/utils/WindowsAuthRuntime.dart';
+import 'package:LinkUp/utils/WindowsWifi.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
 final _fixturePassword = List.filled(8, 'p').join();
@@ -22,6 +24,345 @@ final _fixtureChallenge = List.filled(9, 'c').join();
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Windows 认证运行时', () {
+    test('无配置时 Wi-Fi 事件不启动认证', () async {
+      final config = _FakeConfigSource()..config = null;
+      final wifi = WindowsWifiNetworkState();
+      final events = _FakeWindowsWifiEvents(
+        const WindowsWifiSnapshot(
+          connected: false,
+          address: '',
+          adapter: '',
+          revision: 1,
+        ),
+      );
+      final attempt = _WifiAttempt();
+      final runtime = WindowsAuthRuntime(
+        coordinator: AuthenticationCoordinator(
+          configSource: config,
+          networkState: wifi,
+          attempt: attempt,
+          scheduler: _FakeAuthenticationScheduler(),
+        ),
+        configSource: config,
+        wifiEvents: events,
+        wifiState: wifi,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.initialize();
+      events.emit(
+        const WindowsWifiSnapshot(
+          connected: true,
+          address: '192.0.2.10',
+          adapter: 'wifi-a',
+          revision: 2,
+        ),
+      );
+      await _pump();
+
+      expect(attempt.calls, 0);
+      expect(runtime.wifiConnected, isTrue);
+      expect(runtime.monitoringEnabled, isFalse);
+      expect(runtime.state.reason, AuthenticationReason.missingConfig);
+    });
+
+    test('仅有有线网络时等待 Wi-Fi，连接后唤醒且相同事件去重', () async {
+      final config = _FakeConfigSource();
+      final wifi = WindowsWifiNetworkState();
+      final events = _FakeWindowsWifiEvents(
+        const WindowsWifiSnapshot(
+          connected: false,
+          address: '',
+          adapter: '',
+          revision: 1,
+        ),
+      );
+      final attempt = _WifiAttempt();
+      final scheduler = _FakeAuthenticationScheduler();
+      final runtime = WindowsAuthRuntime(
+        coordinator: AuthenticationCoordinator(
+          configSource: config,
+          networkState: wifi,
+          attempt: attempt,
+          scheduler: scheduler,
+        ),
+        configSource: config,
+        wifiEvents: events,
+        wifiState: wifi,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.initialize();
+      expect(runtime.wifiConnected, isFalse);
+      expect(runtime.monitoringEnabled, isTrue);
+      expect(runtime.state.reason, AuthenticationReason.wifiUnavailable);
+      expect(attempt.calls, 0);
+
+      events.emit(
+        const WindowsWifiSnapshot(
+          connected: true,
+          address: '192.0.2.10',
+          adapter: 'wifi-a',
+          revision: 2,
+          name: 'Campus Wi-Fi',
+        ),
+      );
+      await _pump();
+      expect(runtime.wifiConnected, isTrue);
+      expect(runtime.wifiName, 'Campus Wi-Fi');
+      expect(attempt.calls, 1);
+      expect(runtime.state.isOnline, isTrue);
+      expect(scheduler.lastDelay, const Duration(seconds: 30));
+      final generation = wifi.generation;
+
+      events.emit(
+        const WindowsWifiSnapshot(
+          connected: true,
+          address: '192.0.2.10',
+          adapter: 'wifi-a',
+          revision: 2,
+        ),
+      );
+      await _pump();
+      expect(wifi.generation, generation);
+      expect(attempt.calls, 1);
+
+      // 同类 Wi-Fi 切换由原生关联事件递增 revision，即使地址未变化。
+      events.emit(
+        const WindowsWifiSnapshot(
+          connected: true,
+          address: '192.0.2.10',
+          adapter: 'wifi-a',
+          revision: 3,
+        ),
+      );
+      await _pump();
+      expect(wifi.generation, isNot(generation));
+      expect(attempt.calls, 2);
+    });
+
+    test('Wi-Fi 断开后离线且停止调度，重复断开不重试', () async {
+      final config = _FakeConfigSource();
+      final wifi = WindowsWifiNetworkState();
+      final events = _FakeWindowsWifiEvents(
+        const WindowsWifiSnapshot(
+          connected: true,
+          address: '192.0.2.10',
+          adapter: 'wifi-a',
+          revision: 1,
+        ),
+      );
+      final attempt = _WifiAttempt();
+      final scheduler = _FakeAuthenticationScheduler();
+      final runtime = WindowsAuthRuntime(
+        coordinator: AuthenticationCoordinator(
+          configSource: config,
+          networkState: wifi,
+          attempt: attempt,
+          scheduler: scheduler,
+        ),
+        configSource: config,
+        wifiEvents: events,
+        wifiState: wifi,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.initialize();
+      expect(attempt.calls, 1);
+      expect(scheduler.hasPending, isTrue);
+
+      events.emit(
+        const WindowsWifiSnapshot(
+          connected: false,
+          address: '',
+          adapter: '',
+          revision: 2,
+        ),
+      );
+      await _pump();
+      expect(runtime.state.status, AuthenticationStatus.offline);
+      expect(wifi.sourceAddress, isNull);
+      expect(scheduler.hasPending, isFalse);
+      expect(attempt.calls, 1);
+    });
+
+    test('Wi-Fi 切换使在途旧结果失效，再用新世代检查', () async {
+      final config = _FakeConfigSource();
+      final wifi = WindowsWifiNetworkState();
+      final events = _FakeWindowsWifiEvents(
+        const WindowsWifiSnapshot(
+          connected: true,
+          address: '192.0.2.10',
+          adapter: 'wifi-a',
+          revision: 1,
+        ),
+      );
+      final gate = Completer<void>();
+      final attempt = _WifiAttempt(firstGate: gate);
+      final runtime = WindowsAuthRuntime(
+        coordinator: AuthenticationCoordinator(
+          configSource: config,
+          networkState: wifi,
+          attempt: attempt,
+          scheduler: _FakeAuthenticationScheduler(),
+        ),
+        configSource: config,
+        wifiEvents: events,
+        wifiState: wifi,
+      );
+      addTearDown(runtime.dispose);
+      final statuses = <AuthenticationStatus>[];
+      runtime.states.listen((state) => statuses.add(state.status));
+
+      final initializing = runtime.initialize();
+      await attempt.firstStarted.future;
+      events.emit(
+        const WindowsWifiSnapshot(
+          connected: true,
+          address: '192.0.2.11',
+          adapter: 'wifi-b',
+          revision: 2,
+        ),
+      );
+      await _pump();
+      gate.complete();
+      await initializing;
+      await _pump();
+
+      expect(attempt.calls, 2);
+      expect(attempt.invalidations, 1);
+      expect(wifi.sourceAddress, '192.0.2.11');
+      expect(statuses, contains(AuthenticationStatus.stale));
+      expect(
+        statuses.where((status) => status == AuthenticationStatus.online),
+        hasLength(1),
+      );
+    });
+
+    test('配置读取失败仍能启动并显示安全错误，手动检查不发请求', () async {
+      final config = _FailingConfigSource();
+      final protocol = _FakeProtocol();
+      final controller = _controller(
+        host: _FakeAuthRuntimeHost(),
+        scheduler: _FakeAuthenticationScheduler(),
+        protocol: protocol,
+        configSource: config,
+      );
+      final runtime = WindowsAuthRuntime(
+        coordinator: controller.coordinator,
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.initialize();
+      expect(runtime.state.status, AuthenticationStatus.failed);
+      expect(runtime.state.message, '读取认证配置失败，请检查本地配置');
+      expect(
+        runtime.state.toMap().toString(),
+        isNot(contains('raw error marker')),
+      );
+
+      await runtime.manualCheck();
+      expect(protocol.realityCalls, 0);
+
+      config.fail = false;
+      await runtime.manualCheck();
+      expect(runtime.state.isOnline, isTrue);
+      expect(protocol.realityCalls, 1);
+    });
+
+    test('发布状态时不转发服务器原始错误文本', () async {
+      final config = _FakeConfigSource();
+      final controller = _controller(
+        host: _FakeAuthRuntimeHost(),
+        scheduler: _FakeAuthenticationScheduler(),
+        protocol: _FakeProtocol(),
+        configSource: config,
+      );
+      final runtime = WindowsAuthRuntime(
+        coordinator: controller.coordinator,
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.publishState(
+        const AuthRuntimeState(
+          status: AuthenticationStatus.failed,
+          reason: AuthenticationReason.invalidCredentials,
+          message: 'server echoed credential marker',
+        ),
+      );
+
+      expect(runtime.state.message, isNull);
+      expect(
+        runtime.state.toMap().toString(),
+        isNot(contains('credential marker')),
+      );
+    });
+
+    test('没有配置时不发认证请求，保存配置后手动检查发布真实状态', () async {
+      final config = _FakeConfigSource()..config = null;
+      final protocol = _FakeProtocol();
+      final controller = _controller(
+        host: _FakeAuthRuntimeHost(),
+        scheduler: _FakeAuthenticationScheduler(),
+        protocol: protocol,
+        configSource: config,
+      );
+      final runtime = WindowsAuthRuntime(
+        coordinator: controller.coordinator,
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+      final states = <AuthRuntimeState>[];
+      runtime.states.listen(states.add);
+
+      await runtime.initialize();
+      await runtime.manualCheck();
+      expect(protocol.realityCalls, 0);
+      expect(runtime.state.reason, AuthenticationReason.missingConfig);
+
+      config.config = _FakeConfigSource().config;
+      await runtime.manualCheck();
+      await _pump();
+      expect(protocol.realityCalls, 1);
+      expect(
+        states.map((state) => state.status),
+        contains(AuthenticationStatus.checking),
+      );
+      expect(runtime.state.isOnline, isTrue);
+    });
+
+    test('Windows 在线设备操作经运行时命令进入唯一协调器', () async {
+      final config = _FakeConfigSource();
+      final protocol = _FakeProtocol();
+      final runtime = WindowsAuthRuntime(
+        coordinator: AuthenticationCoordinator(
+          configSource: config,
+          protocol: protocol,
+          protocolFactory: () => protocol,
+          networkState: _FakeNetworkState(),
+          scheduler: _FakeAuthenticationScheduler(),
+        ),
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.manualCheck();
+      final kicked = await runtime.kickDevice('10.0.0.9');
+      // 夹具不提供可用的设备明细，运行时必须把结果保持为「已受理但未确认」。
+      expect(kicked.outcome, DmOutcome.accepted);
+      expect(protocol.kickedIps, contains('10.0.0.9'));
+      expect(runtime.state.isOnline, isTrue);
+
+      final loggedOut = await runtime.logout();
+      expect(loggedOut.accepted, isTrue);
+      expect(protocol.logoutCalls, 2);
+      expect(runtime.state.status, AuthenticationStatus.stopped);
+    });
+  });
 
   group('认证运行时宿主桥', () {
     test('服务启动后把协调器状态发布给宿主', () async {
@@ -702,6 +1043,16 @@ class _FakeConfigSource extends AuthenticationConfigSource {
   }
 }
 
+class _FailingConfigSource extends _FakeConfigSource {
+  bool fail = true;
+
+  @override
+  Future<AuthConfigFacts?> loadFacts() async {
+    if (fail) throw const ConfigStorageException('raw error marker');
+    return super.loadFacts();
+  }
+}
+
 class _FakeNetworkState implements AuthenticationNetworkState {
   int value = 1;
 
@@ -836,4 +1187,58 @@ class _FakeProtocol implements AuthenticationProtocol {
   void dispose() {
     disposeCalls++;
   }
+}
+
+class _FakeWindowsWifiEvents implements WindowsWifiEvents {
+  _FakeWindowsWifiEvents(this.initial);
+
+  final WindowsWifiSnapshot initial;
+  void Function(WindowsWifiSnapshot)? _onChanged;
+
+  @override
+  Future<WindowsWifiSnapshot> start(
+    void Function(WindowsWifiSnapshot snapshot) onChanged,
+  ) async {
+    _onChanged = onChanged;
+    return initial;
+  }
+
+  void emit(WindowsWifiSnapshot snapshot) => _onChanged!(snapshot);
+
+  @override
+  Future<void> dispose() async => _onChanged = null;
+}
+
+class _WifiAttempt extends AuthenticationAttempt {
+  _WifiAttempt({this.firstGate});
+
+  final Completer<void>? firstGate;
+  final Completer<void> firstStarted = Completer<void>();
+  int calls = 0;
+  int invalidations = 0;
+
+  @override
+  Future<AuthenticationResult> run(AuthenticationAttemptContext context) async {
+    calls++;
+    if (calls == 1 && firstGate != null) {
+      firstStarted.complete();
+      await firstGate!.future;
+    }
+    return AuthenticationResult(
+      status: context.isCurrent()
+          ? AuthenticationStatus.online
+          : AuthenticationStatus.stale,
+    );
+  }
+
+  @override
+  void invalidateNetwork() => invalidations++;
+
+  @override
+  Future<DmResult> logout(AuthConfig config) async =>
+      const DmResult(accepted: false);
+
+  @override
+  Future<DmKickResult> kickDevice(AuthConfig config, String targetIp) async =>
+      const DmKickResult(DmOutcome.rejected);
 }

@@ -151,18 +151,56 @@ class LogUtil {
     await _writes;
   }
 
-  /// 读取日志内容（使用 UTF-8 编码，允许无效字节）
+  /// 清空日志文件并向需要区分成功与失败的界面传播错误。
+  static Future<void> clearOrThrow() async {
+    await init();
+    if (!_initialized || _logFile == null) {
+      throw StateError('Log storage is unavailable');
+    }
+    final file = _logFile!;
+
+    final operation = _writes.then((_) async {
+      await file.writeAsString('', encoding: utf8);
+    });
+    // 清理错误返回给界面，但队列继续可供后续写入使用。
+    _writes = operation.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    await operation;
+  }
+
+  /// 读取日志内容（使用 UTF-8 编码，允许无效字节）。
   static Future<String> readLog() async {
     try {
-      if (_logFile != null && await _logFile!.exists()) {
-        // 使用 allowMalformed: true 允许读取包含无效 UTF-8 字节的文件
-        final bytes = await _logFile!.readAsBytes();
+      final file = _logFile;
+      if (file != null && await file.exists()) {
+        final bytes = await file.readAsBytes();
         return utf8.decode(bytes, allowMalformed: true);
       }
       return '';
     } catch (_) {
       return '读取日志失败';
     }
+  }
+
+  /// 读取日志并向需要区分读取失败与空文件的界面传播错误。
+  static Future<String> readLogOrThrow() async {
+    await init();
+    final file = _logFile;
+    if (!_initialized || file == null) {
+      throw StateError('Log storage is unavailable');
+    }
+
+    await _writes;
+    final type = await FileSystemEntity.type(file.path);
+    if (type == FileSystemEntityType.notFound) return '';
+    if (type != FileSystemEntityType.file) {
+      throw FileSystemException('Log path is not a file', file.path);
+    }
+
+    // 使用 allowMalformed: true 允许读取包含无效 UTF-8 字节的文件。
+    return utf8.decode(await file.readAsBytes(), allowMalformed: true);
   }
 
   /// 测试结束时释放文件与队列的静态状态。

@@ -141,3 +141,124 @@ jobs:
           name: coverage
           path: coverage/lcov.info
           if-no-files-found: ignore
+
+  windows:
+    name: Build Windows app
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build release app
+        run: flutter build windows --release
+
+      - name: Verify release bundle
+        shell: pwsh
+        run: |
+          $releaseDir = 'build/windows/x64/runner/Release'
+          foreach ($requiredPath in @(
+            "$releaseDir/linkup.exe",
+            "$releaseDir/flutter_windows.dll",
+            "$releaseDir/connectivity_plus_plugin.dll",
+            "$releaseDir/flutter_secure_storage_windows_plugin.dll",
+            "$releaseDir/url_launcher_windows_plugin.dll",
+            "$releaseDir/data/app.so",
+            "$releaseDir/data/flutter_assets"
+          )) {
+            if (-not (Test-Path $requiredPath)) {
+              throw "Windows release bundle is missing $requiredPath"
+            }
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $versionMatch = Select-String -Path pubspec.yaml -Pattern '^version:\s*(\d+\.\d+\.\d+)' | Select-Object -First 1
+          if (-not $versionMatch -or $versionMatch.Matches.Count -eq 0) {
+            throw 'Could not read the application version from pubspec.yaml'
+          }
+          $version = $versionMatch.Matches[0].Groups[1].Value
+          $compiler = Get-ChildItem -Path @(
+            "${env:ProgramFiles(x86)}/Inno Setup*/ISCC.exe",
+            "$env:ProgramFiles/Inno Setup*/ISCC.exe"
+          ) -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+          if (-not $compiler) {
+            throw 'Inno Setup compiler not found under Program Files'
+          }
+          & $compiler.FullName "/DAppVersion=$version" 'windows/installer/LinkUp.iss'
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Verify installer install, reinstall, and uninstall
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem 'build/windows/installer/LinkUp-Setup-*.exe' | Select-Object -First 1).FullName
+          if (-not $installer) {
+            throw 'Windows installer was not generated'
+          }
+          $installDir = Join-Path $env:RUNNER_TEMP 'LinkUp Installer Smoke'
+          $installArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"")
+          $initialInstall = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
+          if ($initialInstall.ExitCode -ne 0) {
+            throw "Initial installer run failed with exit code $($initialInstall.ExitCode)"
+          }
+          foreach ($requiredPath in @(
+            "$installDir/linkup.exe",
+            "$installDir/flutter_windows.dll",
+            "$installDir/connectivity_plus_plugin.dll",
+            "$installDir/flutter_secure_storage_windows_plugin.dll",
+            "$installDir/url_launcher_windows_plugin.dll",
+            "$installDir/data/app.so",
+            "$installDir/data/flutter_assets"
+          )) {
+            if (-not (Test-Path $requiredPath)) {
+              throw "Installed application is missing $requiredPath"
+            }
+          }
+
+          $reinstall = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
+          if ($reinstall.ExitCode -ne 0) {
+            throw "Reinstall installer run failed with exit code $($reinstall.ExitCode)"
+          }
+
+          $startupKeyPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
+          $startupKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($startupKeyPath)
+          $startupKey.SetValue('LinkUp', '"' + "$installDir\linkup.exe" + '" --background', [Microsoft.Win32.RegistryValueKind]::String)
+          $startupKey.Dispose()
+
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) {
+            throw "Uninstaller run failed with exit code $($uninstallProcess.ExitCode)"
+          }
+          if (Test-Path $installDir) {
+            throw "Uninstaller left files in $installDir"
+          }
+          $startupKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupKeyPath)
+          $startupCommand = if ($startupKey) { $startupKey.GetValue('LinkUp') }
+          if ($startupKey) { $startupKey.Dispose() }
+          if ($null -ne $startupCommand) {
+            throw 'Uninstaller left the LinkUp login startup entry behind'
+          }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: linkup-windows-installer
+          path: build/windows/installer/LinkUp-Setup-*.exe
+          if-no-files-found: error

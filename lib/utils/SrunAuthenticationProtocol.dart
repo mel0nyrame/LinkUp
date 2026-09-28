@@ -12,9 +12,10 @@ import 'package:LinkUp/utils/SrunLogin.dart';
 class SrunAuthenticationProtocol implements AuthenticationProtocol {
   SrunAuthenticationProtocol({
     http.Client? httpClient,
+    bool ownsInjectedClient = false,
     String initialServer = defaultAuthServer,
   }) : _httpClient = httpClient ?? http.Client(),
-       _ownsHttpClient = httpClient == null,
+       _ownsHttpClient = httpClient == null || ownsInjectedClient,
        _server = initialServer {
     _client = SrunClient(client: _httpClient, host: initialServer);
     _login = SrunLogin(client: _client);

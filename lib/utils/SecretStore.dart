@@ -2,8 +2,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// 只保存敏感值的最小存储接口。
 ///
-/// 生产实现使用 Android Keystore 支持的加密存储；测试和其他平台可以提供
-/// 自己的实现，而不需要让配置仓库依赖具体插件。
+/// 生产实现使用平台安全存储；测试可以提供自己的实现，
+/// 而不需要让配置仓库依赖具体插件。
 abstract interface class SecretStore {
   Future<String?> read(String key);
 
@@ -15,7 +15,7 @@ abstract interface class SecretStore {
   Future<void> deleteAll();
 }
 
-/// LinkUp 的 Android 秘密存储实现。
+/// LinkUp 的 Android 与 Windows 秘密存储实现。
 class FlutterSecureStorageSecretStore implements SecretStore {
   static const _androidOptions = AndroidOptions(
     resetOnError: false,

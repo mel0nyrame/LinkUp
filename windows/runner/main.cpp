@@ -1,12 +1,45 @@
+#include <winsock2.h>
+
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <algorithm>
+
 #include "flutter_window.h"
 #include "utils.h"
 
+namespace {
+constexpr wchar_t kSingleInstanceMutex[] =
+    L"Local\\com.mel0ny.linkup.windows.single-instance";
+constexpr wchar_t kWindowTitle[] = L"LinkUp";
+
+HWND FindPrimaryWindow() {
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    HWND window =
+        FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", kWindowTitle);
+    if (window) return window;
+    Sleep(50);
+  }
+  return nullptr;
+}
+}  // namespace
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  HANDLE single_instance =
+      CreateMutexW(nullptr, FALSE, kSingleInstanceMutex);
+  if (!single_instance) return EXIT_FAILURE;
+
+  if (GetLastError() == ERROR_ALREADY_EXISTS) {
+    HWND primary_window = FindPrimaryWindow();
+    if (primary_window) {
+      PostMessageW(primary_window, kLinkUpActivateExistingMessage, 0, 0);
+    }
+    CloseHandle(single_instance);
+    return primary_window ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
+
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
@@ -19,15 +52,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   flutter::DartProject project(L"data");
 
-  std::vector<std::string> command_line_arguments =
-      GetCommandLineArguments();
+  std::vector<std::string> command_line_arguments = GetCommandLineArguments();
+  const bool start_hidden =
+      std::find(command_line_arguments.begin(), command_line_arguments.end(),
+                "--background") != command_line_arguments.end();
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
-  FlutterWindow window(project);
+  FlutterWindow window(project, start_hidden);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"linkup", origin, size)) {
+  if (!window.Create(kWindowTitle, origin, size)) {
+    CloseHandle(single_instance);
+    ::CoUninitialize();
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
@@ -38,6 +75,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::DispatchMessage(&msg);
   }
 
+  CloseHandle(single_instance);
   ::CoUninitialize();
   return EXIT_SUCCESS;
 }

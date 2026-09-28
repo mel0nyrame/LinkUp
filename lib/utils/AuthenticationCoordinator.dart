@@ -386,13 +386,13 @@ class AuthenticationCoordinator {
 
   void invalidateNetwork() {
     networkState.invalidate();
-    // Android 切换 Wi-Fi 路由后由单轮实现丢弃旧 HTTP 连接池。
+    // 切换 Wi-Fi 路由后由单轮实现丢弃旧 HTTP 连接池。
     _attempt.invalidateNetwork();
   }
 
   /// 响应平台网络可用性变化。
   ///
-  /// [connected] 由原生 `ConnectivityManager` 回调给出，只描述 Wi-Fi 是否可用。
+  /// [connected] 由平台 Wi-Fi 监听器给出，只描述 Wi-Fi 是否可用。
   /// 任何一次事件都使当前网络世代失效：断开时丢弃已缓存的 ACID 与 Portal，
   /// 恢复时立刻通过同一个单飞入口检查，不等在线周期或退避周期。
   Future<AuthenticationResult> networkChanged({required bool connected}) {

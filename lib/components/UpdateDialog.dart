@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 class UpdateDialog extends StatefulWidget {
   final UpdateInfo updateInfo;
   final VoidCallback onDismiss;
+  @visibleForTesting
+  final Future<bool> Function(UpdateInfo, Function(double))? downloadAndInstall;
 
   const UpdateDialog({
     super.key,
     required this.updateInfo,
     required this.onDismiss,
+    this.downloadAndInstall,
   });
 
   @override
@@ -17,6 +20,7 @@ class UpdateDialog extends StatefulWidget {
 
 class _UpdateDialogState extends State<UpdateDialog> {
   bool _isDownloading = false;
+  bool _downloadFailed = false;
   double _progress = 0.0;
 
   Future<void> _handleUpdate() async {
@@ -24,39 +28,28 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
     setState(() {
       _isDownloading = true;
+      _downloadFailed = false;
       _progress = 0.0;
     });
 
-    final success = await UpdateUtil.downloadAndInstall(
-      widget.updateInfo.downloadUrl,
-      (progress) {
-        setState(() => _progress = progress);
-      },
-    );
+    final success =
+        await (widget.downloadAndInstall ?? UpdateUtil.downloadAndInstall)(
+          widget.updateInfo,
+          (progress) {
+            if (mounted) setState(() => _progress = progress);
+          },
+        );
 
-    if (!success && mounted) {
-      // 下载失败，提供浏览器跳转选项
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('下载失败'),
-          content: const Text('是否跳转到浏览器手动下载？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-                UpdateUtil.openReleasePage();
-              },
-              child: const Text('跳转'),
-            ),
-          ],
-        ),
-      );
+    if (!mounted) return;
+    if (success) {
+      widget.onDismiss();
+      return;
     }
+
+    setState(() {
+      _isDownloading = false;
+      _downloadFailed = true;
+    });
   }
 
   @override
@@ -85,12 +78,20 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 widget.updateInfo.changelog,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              if (_downloadFailed) ...[
+                const SizedBox(height: 16),
+                const Text('下载失败，请检查网络后重试，或在浏览器中手动下载。'),
+              ],
               if (_isDownloading) ...[
                 const SizedBox(height: 20),
-                LinearProgressIndicator(value: _progress),
+                LinearProgressIndicator(
+                  value: _progress == 0 ? null : _progress,
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  '下载中 ${(_progress * 100).toStringAsFixed(1)}%',
+                  _progress == 0
+                      ? '正在下载...'
+                      : '下载中 ${(_progress * 100).toStringAsFixed(1)}%',
                   style: const TextStyle(fontSize: 12),
                 ),
               ],
@@ -101,6 +102,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
       actions: [
         if (!widget.updateInfo.isForceUpdate && !_isDownloading)
           TextButton(onPressed: widget.onDismiss, child: const Text('稍后')),
+        if (_downloadFailed && !_isDownloading)
+          TextButton(
+            onPressed: UpdateUtil.openReleasePage,
+            child: const Text('浏览器下载'),
+          ),
         FilledButton.icon(
           onPressed: _isDownloading ? null : _handleUpdate,
           icon: _isDownloading
@@ -113,7 +119,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   ),
                 )
               : const Icon(Icons.download),
-          label: Text(_isDownloading ? '下载中...' : '立即更新'),
+          label: Text(
+            _isDownloading
+                ? '下载中...'
+                : _downloadFailed
+                ? '重试下载'
+                : '立即更新',
+          ),
         ),
       ],
     );
