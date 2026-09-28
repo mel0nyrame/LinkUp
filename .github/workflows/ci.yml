@@ -199,7 +199,7 @@ jobs:
           if (-not $compiler) {
             throw 'Inno Setup compiler not found under Program Files'
           }
-          & $compiler.FullName "--define=AppVersion=$version" 'windows/installer/LinkUp.iss'
+          & $compiler.FullName "/DAppVersion=$version" 'windows/installer/LinkUp.iss'
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
