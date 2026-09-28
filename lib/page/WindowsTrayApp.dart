@@ -21,6 +21,7 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
   late AuthRuntimeState _state = widget.runtime.state;
   late bool _wifiConnected = widget.runtime.wifiConnected;
   late bool _monitoringEnabled = widget.runtime.monitoringEnabled;
+  int _selectedDestination = 0;
   StreamSubscription<AuthRuntimeState>? _stateSubscription;
   StreamSubscription<bool>? _wifiSubscription;
   bool _exiting = false;
@@ -65,11 +66,21 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
         break;
       case WindowsTrayAction.togglePopup:
       case WindowsTrayAction.hidePopup:
+        break;
       case WindowsTrayAction.openMain:
+        setState(() => _selectedDestination = 0);
+        break;
       case WindowsTrayAction.openSettings:
+        setState(() => _selectedDestination = 1);
+        break;
       case WindowsTrayAction.openLogs:
         break;
     }
+  }
+
+  Future<void> _openDetails() async {
+    setState(() => _selectedDestination = 0);
+    await widget.tray.showMain();
   }
 
   Future<void> _exit() async {
@@ -108,7 +119,11 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
           wifiConnected: _wifiConnected,
           monitoringEnabled: _monitoringEnabled,
           onManualCheck: widget.runtime.manualCheck,
-          onOpenDetails: widget.tray.showMain,
+          onOpenDetails: _openDetails,
+          selectedDestination: _selectedDestination,
+          onDestinationChanged: (destination) {
+            setState(() => _selectedDestination = destination);
+          },
         ),
       ),
     );

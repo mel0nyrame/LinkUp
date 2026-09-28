@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:LinkUp/page/WindowsSettingsPage.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
+import 'package:LinkUp/utils/RadUserInfo.dart';
 
-/// Windows 的最小认证入口；完整桌面窗口由后续票据补齐。
 class WindowsHome extends StatefulWidget {
   const WindowsHome({
     super.key,
@@ -15,6 +17,9 @@ class WindowsHome extends StatefulWidget {
     this.wifiConnected = false,
     this.monitoringEnabled = false,
     this.onOpenDetails,
+    this.selectedDestination = 0,
+    this.onDestinationChanged,
+    this.configuration,
   });
 
   final AuthRuntimeState initialState;
@@ -24,6 +29,9 @@ class WindowsHome extends StatefulWidget {
   final bool wifiConnected;
   final bool monitoringEnabled;
   final VoidCallback? onOpenDetails;
+  final int selectedDestination;
+  final ValueChanged<int>? onDestinationChanged;
+  final ConfigManager? configuration;
 
   @override
   State<WindowsHome> createState() => _WindowsHomeState();
@@ -31,6 +39,7 @@ class WindowsHome extends StatefulWidget {
 
 class _WindowsHomeState extends State<WindowsHome> {
   late AuthRuntimeState _state = widget.initialState;
+  late int _selectedDestination = widget.selectedDestination;
   StreamSubscription<AuthRuntimeState>? _subscription;
 
   @override
@@ -42,9 +51,25 @@ class _WindowsHomeState extends State<WindowsHome> {
   }
 
   @override
+  void didUpdateWidget(covariant WindowsHome oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDestination != widget.selectedDestination) {
+      _selectedDestination = widget.selectedDestination;
+    }
+  }
+
+  @override
   void dispose() {
     unawaited(_subscription?.cancel());
     super.dispose();
+  }
+
+  void _selectDestination(int destination) {
+    if (widget.onDestinationChanged != null) {
+      widget.onDestinationChanged!(destination);
+    } else {
+      setState(() => _selectedDestination = destination);
+    }
   }
 
   @override
@@ -53,40 +78,303 @@ class _WindowsHomeState extends State<WindowsHome> {
     if (widget.compact) return _buildPopup(context, presentation);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('LinkUp')),
-      body: Center(
+      appBar: AppBar(
+        title: const Text('LinkUp'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 20),
+            child: FilledButton.icon(
+              onPressed: widget.onManualCheck,
+              icon: const Icon(Icons.refresh),
+              label: const Text('立即检查'),
+            ),
+          ),
+        ],
+      ),
+      body: Row(
+        children: [
+          NavigationRail(
+            selectedIndex: _selectedDestination,
+            onDestinationSelected: _selectDestination,
+            labelType: NavigationRailLabelType.all,
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.dashboard_outlined),
+                selectedIcon: Icon(Icons.dashboard),
+                label: Text('概况'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: Text('账号与网络'),
+              ),
+            ],
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: _selectedDestination == 0
+                ? _buildOverview(context)
+                : WindowsSettingsPage(
+                    configuration: widget.configuration ?? configManager,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverview(BuildContext context) {
+    final state = _state;
+    final presentation = state.presentation;
+    final userInfo = state.isOnline && state.userInfo?.isOnline == true
+        ? state.userInfo
+        : null;
+
+    return SingleChildScrollView(
+      child: Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: 1040),
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text('网络概况', style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: 6),
                 Text(
-                  presentation.title,
-                  style: Theme.of(context).textTheme.headlineMedium,
+                  '查看当前认证状态、网络连接和账号使用情况。',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
-                if (_state.reason != AuthenticationReason.missingConfig &&
-                    presentation.detail != null) ...[
-                  const SizedBox(height: 8),
-                  Text(presentation.detail!),
-                ],
-                if (presentation.actionHint != null) ...[
-                  const SizedBox(height: 8),
-                  Text(presentation.actionHint!),
-                ],
                 const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: widget.onManualCheck,
-                  child: const Text('立即检查'),
-                ),
+                _buildStatusCard(context, presentation),
+                const SizedBox(height: 20),
+                Text('网络信息', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                _buildMetrics(context, userInfo),
+                const SizedBox(height: 20),
+                _buildDevicesCard(context, userInfo),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildStatusCard(
+    BuildContext context,
+    AuthStatusPresentation presentation,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final statusColor = _state.isOnline
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.wifi, color: statusColor, size: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        presentation.title,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      if (_state.reason != AuthenticationReason.missingConfig &&
+                          presentation.detail != null &&
+                          presentation.detail != presentation.title) ...[
+                        const SizedBox(height: 4),
+                        Text(presentation.detail!),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (presentation.actionHint != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                presentation.actionHint!,
+                style: TextStyle(color: colorScheme.primary),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _StatusChip(
+                  icon: Icons.wifi,
+                  label: widget.wifiConnected ? 'Wi-Fi 已连接' : '未连接 Wi-Fi',
+                ),
+                _StatusChip(
+                  icon: Icons.monitor_heart_outlined,
+                  label: widget.monitoringEnabled ? '正在监控' : '未监控',
+                ),
+              ],
+            ),
+            if (_state.reason == AuthenticationReason.missingConfig) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () => _selectDestination(1),
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('设置账号和认证参数'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetrics(BuildContext context, RadUserInfo? userInfo) {
+    final emptyDetail = userInfo == null ? '在线确认后显示' : '认证服务器未提供此项数据';
+    final metrics = <_WindowsMetric>[
+      _WindowsMetric(
+        label: 'IP 地址',
+        value:
+            _networkValue(userInfo?.onlineIp) ??
+            _networkValue(userInfo?.clientIp),
+        emptyDetail: emptyDetail,
+      ),
+      _WindowsMetric(
+        label: '本次流量',
+        value: _formatBytes(userInfo?.allBytes),
+        emptyDetail: emptyDetail,
+      ),
+      _WindowsMetric(
+        label: '累计流量',
+        value: _formatBytes(userInfo?.sumBytes),
+        emptyDetail: emptyDetail,
+      ),
+      _WindowsMetric(
+        label: '累计在线时长',
+        value: _formatDuration(userInfo?.sumSeconds),
+        emptyDetail: emptyDetail,
+      ),
+      _WindowsMetric(
+        label: '在线设备',
+        value: userInfo == null ? null : _formatOnlineDeviceCount(userInfo),
+        emptyDetail: emptyDetail,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final columns = availableWidth >= 780
+            ? 3
+            : availableWidth >= 520
+            ? 2
+            : 1;
+        final itemWidth = (availableWidth - (columns - 1) * 12) / columns;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final metric in metrics)
+              SizedBox(
+                width: itemWidth,
+                child: _MetricCard(metric: metric),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDevicesCard(BuildContext context, RadUserInfo? userInfo) {
+    final devices =
+        userInfo?.onlineDeviceDetail?.values.toList() ?? const <OnlineDevice>[];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('在线设备详情', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            if (userInfo == null)
+              const Text('设备信息将在认证确认后显示。')
+            else if (devices.isEmpty)
+              const Text('认证已确认，服务端暂未提供设备明细。')
+            else
+              for (final device in devices) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.devices_outlined),
+                  title: Text(_deviceName(device)),
+                  subtitle: Text(_deviceAddress(device)),
+                  trailing: device.ip != null && device.ip == userInfo.clientIp
+                      ? const Chip(label: Text('本机'))
+                      : null,
+                ),
+                if (device != devices.last) const Divider(height: 1),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _deviceName(OnlineDevice device) {
+    final osName = device.osName?.trim() ?? '';
+    if (osName.isNotEmpty) return osName;
+    final className = device.className?.trim() ?? '';
+    return className.isNotEmpty ? className : '未知设备';
+  }
+
+  String _deviceAddress(OnlineDevice device) {
+    final addresses = <String>[
+      if (device.ip?.trim().isNotEmpty == true) device.ip!.trim(),
+      if (device.ip6?.trim().isNotEmpty == true) device.ip6!.trim(),
+    ];
+    return addresses.isEmpty ? '暂无地址信息' : addresses.join(' · ');
+  }
+
+  String? _networkValue(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _formatOnlineDeviceCount(RadUserInfo userInfo) {
+    final total = int.tryParse(userInfo.onlineDeviceTotal ?? '');
+    if (total != null) return '$total 台';
+    final devices = userInfo.onlineDeviceDetail;
+    return devices == null ? null : '${devices.length} 台';
+  }
+
+  String? _formatBytes(int? bytes) {
+    if (bytes == null) return null;
+    if (bytes <= 0) return '0 B';
+    const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var index = bytes.bitLength ~/ 10;
+    if (index >= suffixes.length) index = suffixes.length - 1;
+    final size = bytes / (1 << (index * 10));
+    return '${size.toStringAsFixed(2)} ${suffixes[index]}';
+  }
+
+  String? _formatDuration(int? seconds) {
+    if (seconds == null) return null;
+    if (seconds <= 0) return '0 分钟';
+    final days = seconds ~/ 86400;
+    final hours = (seconds % 86400) ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    if (days > 0) return '${days} 天 ${hours} 小时 ${minutes} 分';
+    if (hours > 0) return '${hours} 小时 ${minutes} 分';
+    return '${minutes} 分钟';
   }
 
   Widget _buildPopup(
@@ -180,6 +468,68 @@ class _WindowsHomeState extends State<WindowsHome> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(avatar: Icon(icon, size: 18), label: Text(label));
+  }
+}
+
+class _WindowsMetric {
+  const _WindowsMetric({
+    required this.label,
+    required this.value,
+    required this.emptyDetail,
+  });
+
+  final String label;
+  final String? value;
+  final String emptyDetail;
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({required this.metric});
+
+  final _WindowsMetric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              metric.label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(metric.value ?? '暂无数据', style: theme.textTheme.titleLarge),
+            if (metric.value == null) ...[
+              const SizedBox(height: 4),
+              Text(
+                metric.emptyDetail,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
