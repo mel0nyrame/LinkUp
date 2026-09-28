@@ -8,10 +8,16 @@ import 'package:LinkUp/utils/WindowsAuthRuntime.dart';
 import 'package:LinkUp/utils/WindowsTray.dart';
 
 class WindowsTrayApp extends StatefulWidget {
-  const WindowsTrayApp({super.key, required this.runtime, required this.tray});
+  const WindowsTrayApp({
+    super.key,
+    required this.runtime,
+    required this.tray,
+    this.checkForUpdatesOnStartup = true,
+  });
 
   final WindowsAuthRuntime runtime;
   final WindowsTrayClient tray;
+  final bool checkForUpdatesOnStartup;
 
   @override
   State<WindowsTrayApp> createState() => _WindowsTrayAppState();
@@ -119,6 +125,7 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
           compact: popupVisible,
           wifiConnected: _wifiConnected,
           monitoringEnabled: _monitoringEnabled,
+          checkForUpdatesOnStartup: widget.checkForUpdatesOnStartup,
           onManualCheck: widget.runtime.manualCheck,
           onLogout: widget.runtime.logout,
           onKickDevice: widget.runtime.kickDevice,

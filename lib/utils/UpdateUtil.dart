@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -23,11 +24,20 @@ class UpdateInfo {
   });
 }
 
+enum UpdatePlatform { android, windows, ios, other }
+
 class UpdateUtil {
   static const String owner = 'mel0nyrame';
   static const String repo = 'LinkUp';
 
   static final Dio _dio = Dio();
+
+  static UpdatePlatform get _platform {
+    if (Platform.isWindows) return UpdatePlatform.windows;
+    if (Platform.isAndroid) return UpdatePlatform.android;
+    if (Platform.isIOS) return UpdatePlatform.ios;
+    return UpdatePlatform.other;
+  }
 
   /// 从 tag 中提取语义化版本号，支持多种格式：
   ///   release-v1.0.3 → 1.0.3
@@ -36,6 +46,18 @@ class UpdateUtil {
   static String? _extractVersion(String tag) {
     final match = RegExp(r'(\d+\.\d+\.\d+)').firstMatch(tag);
     return match?.group(1);
+  }
+
+  @visibleForTesting
+  static String downloadFileName({
+    required String version,
+    required UpdatePlatform platform,
+  }) {
+    return switch (platform) {
+      UpdatePlatform.android => 'app_update.apk',
+      UpdatePlatform.windows => 'LinkUp-Setup-$version.exe',
+      _ => throw ArgumentError.value(platform, 'platform'),
+    };
   }
 
   /// 检查更新 — 通过 GitHub API 查询最新 Release
@@ -69,8 +91,13 @@ class UpdateUtil {
         return null;
       }
 
-      final data = jsonDecode(response.body);
-      final tag = data['tag_name'] as String?;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        await LogUtil.warning('检查更新: Release 响应格式无效');
+        return null;
+      }
+
+      final tag = decoded['tag_name'] as String?;
       if (tag == null) {
         await LogUtil.warning('检查更新: Release 中没有 tag_name');
         return null;
@@ -82,42 +109,90 @@ class UpdateUtil {
         return null;
       }
 
-      // 查找 APK 下载地址
-      String? downloadUrl;
-      if (Platform.isAndroid) {
-        // 优先从 assets 中找 .apk 文件
-        final assets = data['assets'] as List?;
-        if (assets != null && assets.isNotEmpty) {
-          final apkAsset = assets.cast<Map<String, dynamic>>().firstWhere(
-            (a) => (a['name'] as String?)?.endsWith('.apk') == true,
-            orElse: () => <String, dynamic>{},
-          );
-          downloadUrl = apkAsset['browser_download_url'] as String?;
-        }
-        // 回退：按已知命名规则构造下载链接
-        downloadUrl ??=
-            'https://github.com/$owner/$repo/releases/download/$tag/app-release.apk';
-      } else if (Platform.isIOS) {
-        downloadUrl = data['html_url'] as String?;
+      final updateInfo = updateInfoForRelease(
+        currentVersion: currentVersion,
+        release: decoded,
+        platform: _platform,
+      );
+      if (updateInfo == null && _shouldUpdate(currentVersion, latestVersion)) {
+        await LogUtil.warning('检查更新: Release 中没有当前平台的安装包');
       }
-
-      if (downloadUrl == null) {
-        await LogUtil.warning('检查更新: 未找到下载地址');
-        return null;
-      }
-
-      if (_shouldUpdate(currentVersion, latestVersion)) {
-        return UpdateInfo(
-          version: latestVersion,
-          downloadUrl: downloadUrl,
-          changelog: (data['body'] as String?) ?? '暂无更新说明',
-        );
-      }
-
-      return null; // 已是最新版本
+      return updateInfo;
     } catch (error, stackTrace) {
       await LogUtil.error('检查更新异常', error, stackTrace);
       return null;
+    }
+  }
+
+  @visibleForTesting
+  static UpdateInfo? updateInfoForRelease({
+    required String currentVersion,
+    required Map<String, dynamic> release,
+    required UpdatePlatform platform,
+  }) {
+    final tag = release['tag_name'] as String?;
+    if (tag == null) return null;
+
+    final latestVersion = _extractVersion(tag);
+    if (latestVersion == null ||
+        !_shouldUpdate(currentVersion, latestVersion)) {
+      return null;
+    }
+
+    final downloadUrl = _downloadUrlForRelease(
+      release: release,
+      tag: tag,
+      version: latestVersion,
+      platform: platform,
+    );
+    if (downloadUrl == null) return null;
+
+    return UpdateInfo(
+      version: latestVersion,
+      downloadUrl: downloadUrl,
+      changelog: (release['body'] as String?) ?? '暂无更新说明',
+    );
+  }
+
+  static String? _downloadUrlForRelease({
+    required Map<String, dynamic> release,
+    required String tag,
+    required String version,
+    required UpdatePlatform platform,
+  }) {
+    final assets = release['assets'];
+
+    String? assetUrl(String name) {
+      if (assets is! List) return null;
+      for (final asset in assets) {
+        if (asset is Map && asset['name'] == name) {
+          return asset['browser_download_url'] as String?;
+        }
+      }
+      return null;
+    }
+
+    switch (platform) {
+      case UpdatePlatform.android:
+        final linkupApk = assetUrl('linkup.apk');
+        if (linkupApk != null) return linkupApk;
+        if (assets is List) {
+          for (final asset in assets) {
+            if (asset is Map &&
+                (asset['name'] as String?)?.toLowerCase().endsWith('.apk') ==
+                    true) {
+              final url = asset['browser_download_url'] as String?;
+              if (url != null) return url;
+            }
+          }
+        }
+        return 'https://github.com/$owner/$repo/releases/download/$tag/linkup.apk';
+      case UpdatePlatform.windows:
+        return assetUrl('LinkUp-Setup-$version.exe');
+      case UpdatePlatform.ios:
+        return release['html_url'] as String?;
+      case UpdatePlatform.other:
+        return null;
     }
   }
 
@@ -138,22 +213,31 @@ class UpdateUtil {
     return false;
   }
 
-  /// 下载并安装 APK（仅 Android）
+  /// 下载并启动更新包。Windows 安装器保持交互模式，由安装程序处理升级。
   static Future<bool> downloadAndInstall(
-    String url,
+    UpdateInfo updateInfo,
     Function(double) onProgress,
   ) async {
+    if (Platform.isWindows) {
+      return _downloadAndStartWindowsInstaller(updateInfo, onProgress);
+    }
+
     if (!Platform.isAndroid) {
-      await launchUrl(Uri.parse(url));
-      return true;
+      try {
+        return await launchUrl(Uri.parse(updateInfo.downloadUrl));
+      } catch (error, stackTrace) {
+        await LogUtil.error('打开更新下载页面失败', error, stackTrace);
+        return false;
+      }
     }
 
     try {
       final dir = await getTemporaryDirectory();
-      final savePath = '${dir.path}/app_update.apk';
+      final savePath =
+          '${dir.path}/${downloadFileName(version: updateInfo.version, platform: UpdatePlatform.android)}';
 
       await _dio.download(
-        url,
+        updateInfo.downloadUrl,
         savePath,
         onReceiveProgress: (received, total) {
           if (total != -1) onProgress(received / total);
@@ -169,6 +253,55 @@ class UpdateUtil {
     } catch (error, stackTrace) {
       await LogUtil.error('下载失败', error, stackTrace);
       return false;
+    }
+  }
+
+  static Future<bool> _downloadAndStartWindowsInstaller(
+    UpdateInfo updateInfo,
+    Function(double) onProgress,
+  ) async {
+    final client = HttpClient();
+    try {
+      final dir = await getTemporaryDirectory();
+      final installer = File(
+        '${dir.path}/${downloadFileName(version: updateInfo.version, platform: UpdatePlatform.windows)}',
+      );
+      final request = await client.getUrl(Uri.parse(updateInfo.downloadUrl));
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        await response.drain<void>();
+        throw HttpException('Windows 安装包下载失败：HTTP ${response.statusCode}');
+      }
+
+      final total = response.contentLength;
+      var received = 0;
+      final output = installer.openWrite();
+      try {
+        await for (final chunk in response) {
+          output.add(chunk);
+          received += chunk.length;
+          if (total > 0) onProgress(received / total);
+        }
+        await output.flush();
+      } finally {
+        await output.close();
+      }
+
+      if (total >= 0 && received != total) {
+        throw HttpException('Windows 安装包下载不完整');
+      }
+
+      await Process.start(
+        installer.path,
+        const [],
+        mode: ProcessStartMode.detached,
+      );
+      return true;
+    } catch (error, stackTrace) {
+      await LogUtil.error('Windows 更新下载或启动安装程序失败', error, stackTrace);
+      return false;
+    } finally {
+      client.close(force: true);
     }
   }
 

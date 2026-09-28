@@ -16,7 +16,9 @@ import 'package:LinkUp/authRuntimeMain.dart';
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isWindows) {
-    await _startWindows();
+    await _startWindows(
+      checkForUpdatesOnStartup: !args.contains('--background'),
+    );
     return;
   }
   // 首屏只需要“配置是否存在”这个提示，它来自已加载的偏好，因此同步读一次就够。
@@ -28,13 +30,19 @@ void main(List<String> args) async {
   WidgetsBinding.instance.addPostFrameCallback((_) => _prepareRuntime());
 }
 
-Future<void> _startWindows() async {
+Future<void> _startWindows({required bool checkForUpdatesOnStartup}) async {
   await LogUtil.init();
   final runtime = WindowsAuthRuntime.production;
   configManager.runtimeNotifier = runtime.configurationChanged;
   await runtime.initialize();
   final tray = WindowsTrayClient();
-  runApp(WindowsTrayApp(runtime: runtime, tray: tray));
+  runApp(
+    WindowsTrayApp(
+      runtime: runtime,
+      tray: tray,
+      checkForUpdatesOnStartup: checkForUpdatesOnStartup,
+    ),
+  );
 }
 
 /// 首帧之后补齐不影响首屏内容的初始化。
