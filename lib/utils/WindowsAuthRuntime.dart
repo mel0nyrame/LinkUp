@@ -5,44 +5,82 @@ import 'package:LinkUp/utils/AuthRuntimeHost.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/SrunAuthenticationProtocol.dart';
+import 'package:LinkUp/utils/RuntimeContract.g.dart';
+import 'package:LinkUp/utils/WindowsWifi.dart';
 
 /// Windows 进程内唯一认证运行时。界面只读状态并发送命令。
 class WindowsAuthRuntime implements AuthRuntimeHost {
   WindowsAuthRuntime({
     required AuthenticationCoordinator coordinator,
     required this.configSource,
+    this.wifiEvents,
+    this.wifiState,
   }) : _coordinator = coordinator {
     _controller = AuthRuntimeController(coordinator: coordinator, host: this);
   }
 
+  static final WindowsWifiNetworkState _productionWifiState =
+      WindowsWifiNetworkState();
+  static final WindowsWifiChannel _productionWifiChannel = WindowsWifiChannel();
+
+  static SrunAuthenticationProtocol _productionProtocol() =>
+      SrunAuthenticationProtocol(
+        httpClient: createWindowsWifiHttpClient(_productionWifiChannel),
+        ownsInjectedClient: true,
+      );
+
   static final WindowsAuthRuntime production = WindowsAuthRuntime(
     configSource: ConfigUtilSource(),
+    wifiEvents: _productionWifiChannel,
+    wifiState: _productionWifiState,
     coordinator: AuthenticationCoordinator(
       configSource: ConfigUtilSource(),
-      protocol: SrunAuthenticationProtocol(),
-      protocolFactory: SrunAuthenticationProtocol.new,
-      networkState: AuthenticationNetworkTracker(),
+      protocol: _productionProtocol(),
+      protocolFactory: _productionProtocol,
+      networkState: _productionWifiState,
     ),
   );
 
   final AuthenticationCoordinator _coordinator;
   final AuthenticationConfigSource configSource;
+  final WindowsWifiEvents? wifiEvents;
+  final WindowsWifiNetworkState? wifiState;
   late final AuthRuntimeController _controller;
   final StreamController<AuthRuntimeState> _states =
       StreamController<AuthRuntimeState>.broadcast(sync: true);
   AuthRuntimeState _state = const AuthRuntimeState.stopped();
-  bool _initialized = false;
+  Future<void>? _initializing;
+  Future<void> _wifiEventsTail = Future<void>.value();
 
   Stream<AuthRuntimeState> get states => _states.stream;
   AuthRuntimeState get state => _state;
 
-  Future<void> initialize() async {
-    if (_initialized) return;
-    _initialized = true;
+  Future<void> initialize() => _initializing ??= _initialize();
+
+  Future<void> _initialize() async {
     _controller.subscribe();
-    if (await _configurationPresent() == false) {
-      _publishMissingConfig();
+    final events = wifiEvents;
+    if (events != null) {
+      final snapshot = await events.start(_onWifiChanged);
+      wifiState!.apply(snapshot);
     }
+    final present = await _configurationPresent();
+    if (present == false) {
+      _publishMissingConfig();
+    } else if (present == true && events != null) {
+      await _controller.execute(AuthRuntimeController.commandStart);
+    }
+  }
+
+  void _onWifiChanged(WindowsWifiSnapshot snapshot) {
+    _wifiEventsTail = _wifiEventsTail.then((_) async {
+      if (wifiState!.apply(snapshot) && await _configurationPresent() == true) {
+        await _controller.execute(
+          AuthRuntimeController.commandNetworkChanged,
+          <String, Object?>{RuntimeContract.keyConnected: snapshot.connected},
+        );
+      }
+    });
   }
 
   Future<void> manualCheck() async {
@@ -110,6 +148,8 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
   }
 
   Future<void> dispose() async {
+    await wifiEvents?.dispose();
+    await _wifiEventsTail;
     await _coordinator.dispose();
     await _states.close();
   }
