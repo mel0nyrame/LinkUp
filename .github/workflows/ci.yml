@@ -187,11 +187,11 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
-          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(\d+\.\d+\.\d+)' | Select-Object -First 1
-          if (-not $versionLine -or $versionLine -notmatch '^version:\s*(\d+\.\d+\.\d+)') {
+          $versionMatch = Select-String -Path pubspec.yaml -Pattern '^version:\s*(\d+\.\d+\.\d+)' | Select-Object -First 1
+          if (-not $versionMatch -or $versionMatch.Matches.Count -eq 0) {
             throw 'Could not read the application version from pubspec.yaml'
           }
-          $version = $Matches[1]
+          $version = $versionMatch.Matches[0].Groups[1].Value
           $compiler = Get-ChildItem -Path @(
             "${env:ProgramFiles(x86)}/Inno Setup*/ISCC.exe",
             "$env:ProgramFiles/Inno Setup*/ISCC.exe"
