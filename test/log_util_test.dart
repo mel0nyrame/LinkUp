@@ -60,4 +60,32 @@ void main() {
     expect(content, isNot(contains('清理前的记录')));
     expect(content, contains('清理后的记录'));
   });
+
+  test('读取失败时向界面抛出通用错误，不包含路径', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          channel,
+          (_) async => throw PlatformException(code: 'path-unavailable'),
+        );
+
+    await expectLater(LogUtil.readLogOrThrow(), throwsA(isA<StateError>()));
+  });
+
+  test('清空失败会反馈错误且不阻塞后续日志写入', () async {
+    await LogUtil.info('清空前记录');
+    final path = await LogUtil.getLogFilePath();
+    expect(path, isNotNull);
+
+    await File(path!).delete();
+    await Directory(path).create();
+    await expectLater(
+      LogUtil.clearOrThrow(),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    await Directory(path).delete();
+    await File(path).create();
+    await LogUtil.info('恢复后的记录');
+    expect(await LogUtil.readLog(), contains('恢复后的记录'));
+  });
 }

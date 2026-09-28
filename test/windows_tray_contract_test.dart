@@ -15,6 +15,9 @@ void main() {
         .readAsStringSync();
     final dartTray = File('lib/utils/WindowsTray.dart').readAsStringSync();
     final dartApp = File('lib/page/WindowsTrayApp.dart').readAsStringSync();
+    final windowsLogs = File('lib/page/WindowsLogsPage.dart')
+        .readAsStringSync();
+    final windowsHome = File('lib/page/WindowsHome.dart').readAsStringSync();
     final runtime = File('lib/utils/WindowsAuthRuntime.dart')
         .readAsStringSync();
 
@@ -44,6 +47,15 @@ void main() {
       expect(nativeWindow, contains('L"$label"'));
     }
     expect(nativeWindow, contains('Shell_NotifyIconW(NIM_ADD'));
+    expect(
+      nativeWindow,
+      contains('ShowMainWindow();\n      DispatchTrayAction("openLogs");'),
+    );
+    expect(dartApp, contains('case WindowsTrayAction.openLogs:'));
+    expect(dartApp, contains('_selectedDestination = 2'));
+    expect(windowsHome, contains('const WindowsLogsPage()'));
+    expect(windowsLogs, isNot(contains('WindowsAuthRuntime')));
+    expect(windowsLogs, isNot(contains('AuthenticationCoordinator')));
     expect(nativeWindow, contains('Shell_NotifyIconW(NIM_DELETE'));
     expect(nativeWindow, contains('Shell_NotifyIconGetRect'));
     expect(nativeWindow, contains('MonitorFromRect'));

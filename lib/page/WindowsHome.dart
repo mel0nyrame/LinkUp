@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:LinkUp/page/WindowsLogsPage.dart';
 import 'package:LinkUp/page/WindowsSettingsPage.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
@@ -114,15 +115,22 @@ class _WindowsHomeState extends State<WindowsHome> {
                 selectedIcon: Icon(Icons.settings),
                 label: Text('账号与网络'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.article_outlined),
+                selectedIcon: Icon(Icons.article),
+                label: Text('诊断日志'),
+              ),
             ],
           ),
           const VerticalDivider(width: 1),
           Expanded(
             child: _selectedDestination == 0
                 ? _buildOverview(context)
-                : WindowsSettingsPage(
+                : _selectedDestination == 1
+                ? WindowsSettingsPage(
                     configuration: widget.configuration ?? configManager,
-                  ),
+                  )
+                : const WindowsLogsPage(),
           ),
         ],
       ),

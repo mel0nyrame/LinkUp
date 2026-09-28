@@ -74,6 +74,7 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
         setState(() => _selectedDestination = 1);
         break;
       case WindowsTrayAction.openLogs:
+        setState(() => _selectedDestination = 2);
         break;
     }
   }
