@@ -47,7 +47,7 @@ void main() {
     expect(ci, contains('connectivity_plus_plugin.dll'));
     expect(ci, contains('flutter_secure_storage_windows_plugin.dll'));
     expect(ci, contains('url_launcher_windows_plugin.dll'));
-    expect(ci, contains(r'--define=AppVersion=$version'));
+    expect(ci, contains(r'/DAppVersion=$version'));
     expect(ci, contains('Verify installer install, upgrade, and uninstall'));
     expect(ci, contains('actions/upload-artifact@v7'));
     expect(ci, contains('name: linkup-windows-installer'));

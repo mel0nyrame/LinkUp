@@ -212,10 +212,10 @@ jobs:
             throw 'Windows installer was not generated'
           }
           $installDir = Join-Path $env:RUNNER_TEMP 'LinkUp Installer Smoke'
-          $installArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installDir")
-          & $installer @installArgs
-          if ($LASTEXITCODE -ne 0) {
-            throw "Initial installer run failed with exit code $LASTEXITCODE"
+          $installArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"")
+          $initialInstall = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
+          if ($initialInstall.ExitCode -ne 0) {
+            throw "Initial installer run failed with exit code $($initialInstall.ExitCode)"
           }
           foreach ($requiredPath in @(
             "$installDir/linkup.exe",
@@ -231,9 +231,9 @@ jobs:
             }
           }
 
-          & $installer @installArgs
-          if ($LASTEXITCODE -ne 0) {
-            throw "Upgrade installer run failed with exit code $LASTEXITCODE"
+          $upgradeInstall = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
+          if ($upgradeInstall.ExitCode -ne 0) {
+            throw "Upgrade installer run failed with exit code $($upgradeInstall.ExitCode)"
           }
 
           $startupKeyPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -242,9 +242,9 @@ jobs:
           $startupKey.Dispose()
 
           $uninstaller = Join-Path $installDir 'unins000.exe'
-          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) {
-            throw "Uninstaller run failed with exit code $LASTEXITCODE"
+          $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) {
+            throw "Uninstaller run failed with exit code $($uninstallProcess.ExitCode)"
           }
           if (Test-Path $installDir) {
             throw "Uninstaller left files in $installDir"
