@@ -522,6 +522,9 @@ class ConfigManager {
   final Future<void> Function(bool) writeConfiguredHint;
   final Future<void> Function() notifyRuntime;
 
+  /// Windows 同一进程运行时可覆盖 Android 的 MethodChannel 通知入口。
+  Future<void> Function()? runtimeNotifier;
+
   Future<AuthConfig?> load() => repository.load();
 
   Future<AuthConfigFacts?> loadFacts() => repository.loadFacts();
@@ -572,7 +575,7 @@ class ConfigManager {
 
   Future<void> _notifyRuntime() async {
     try {
-      await notifyRuntime();
+      await (runtimeNotifier ?? notifyRuntime)();
     } catch (_) {
       await LogUtil.warning('通知认证运行时配置变更失败');
     }

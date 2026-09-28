@@ -160,6 +160,31 @@ void main() {
     expect(notifications, 3);
   });
 
+  test('Windows 配置写入通知同进程认证运行时', () async {
+    var platformNotifications = 0;
+    var runtimeNotifications = 0;
+    final manager = ConfigManager(
+      repository: repository,
+      writeConfiguredHint: (_) async {},
+      notifyRuntime: () async => platformNotifications++,
+    );
+    manager.runtimeNotifier = () async => runtimeNotifications++;
+
+    await manager.save(
+      AuthConfig(
+        username: 'fixture-user',
+        password: _fixtureValue('windows'),
+        acid: '143',
+        autoAcid: true,
+        authServer: defaultAuthServer,
+        userType: '',
+      ),
+    );
+
+    expect(runtimeNotifications, 1);
+    expect(platformNotifications, 0);
+  });
+
   test('user_type 的空字符串明确清空并影响认证用户名', () async {
     final password = _fixtureValue('user-type');
     await repository.save(
