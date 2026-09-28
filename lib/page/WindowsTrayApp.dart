@@ -119,6 +119,8 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
           wifiConnected: _wifiConnected,
           monitoringEnabled: _monitoringEnabled,
           onManualCheck: widget.runtime.manualCheck,
+          onLogout: widget.runtime.logout,
+          onKickDevice: widget.runtime.kickDevice,
           onOpenDetails: _openDetails,
           selectedDestination: _selectedDestination,
           onDestinationChanged: (destination) {

@@ -18,6 +18,8 @@ void main() {
     final runtime = File('lib/utils/WindowsAuthRuntime.dart')
         .readAsStringSync();
 
+    expect(dartApp, contains('onLogout: widget.runtime.logout'));
+    expect(dartApp, contains('onKickDevice: widget.runtime.kickDevice'));
     expect(nativeWindow, contains(WindowsTrayClient.channelName));
     for (final method in <String>[
       WindowsTrayClient.methodAttach,
