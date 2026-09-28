@@ -10,6 +10,7 @@ void main() {
         .readAsStringSync();
     final installer = File('windows/installer/LinkUp.iss').readAsStringSync();
     final ci = File('.github/workflows/ci.yml').readAsStringSync();
+    final release = File('.github/workflows/release.yml').readAsStringSync();
 
     expect(nativeWindow, contains(WindowsAutoStartClient.channelName));
     expect(
@@ -52,5 +53,17 @@ void main() {
     expect(ci, contains('actions/upload-artifact@v7'));
     expect(ci, contains('name: linkup-windows-installer'));
     expect(ci, contains('if-no-files-found: error'));
+
+    expect(release, contains('name: Build Windows installer'));
+    expect(release, contains('flutter build windows --release'));
+    expect(release, contains('actions/upload-artifact@v7'));
+    expect(release, contains('actions/download-artifact@v8'));
+    expect(
+      release,
+      contains(
+        r'LinkUp-Setup-${{ needs.resolve-version.outputs.version }}.exe',
+      ),
+    );
+    expect(release, contains('linkup.apk'));
   });
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:LinkUp/components/UpdateDialog.dart';
 import 'package:LinkUp/page/WindowsLogsPage.dart';
 import 'package:LinkUp/page/WindowsSettingsPage.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
@@ -8,6 +9,7 @@ import 'package:LinkUp/utils/AuthenticationCoordinator.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
+import 'package:LinkUp/utils/UpdateUtil.dart';
 
 class WindowsHome extends StatefulWidget {
   const WindowsHome({
@@ -24,6 +26,8 @@ class WindowsHome extends StatefulWidget {
     this.configuration,
     this.onLogout,
     this.onKickDevice,
+    this.checkForUpdatesOnStartup = false,
+    @visibleForTesting this.updateChecker,
   });
 
   final AuthRuntimeState initialState;
@@ -38,6 +42,9 @@ class WindowsHome extends StatefulWidget {
   final ConfigManager? configuration;
   final Future<DmResult> Function()? onLogout;
   final Future<DmKickResult> Function(String ip)? onKickDevice;
+  final bool checkForUpdatesOnStartup;
+  @visibleForTesting
+  final Future<UpdateInfo?> Function()? updateChecker;
 
   @override
   State<WindowsHome> createState() => _WindowsHomeState();
@@ -48,6 +55,7 @@ class _WindowsHomeState extends State<WindowsHome> {
   late int _selectedDestination = widget.selectedDestination;
   StreamSubscription<AuthRuntimeState>? _subscription;
   bool _deviceOperationInProgress = false;
+  bool _checkingForUpdate = false;
 
   @override
   void initState() {
@@ -55,6 +63,13 @@ class _WindowsHomeState extends State<WindowsHome> {
     _subscription = widget.states.listen((state) {
       if (mounted) setState(() => _state = state);
     });
+    if (widget.checkForUpdatesOnStartup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (mounted) unawaited(_checkForUpdate());
+        });
+      });
+    }
   }
 
   @override
@@ -79,6 +94,35 @@ class _WindowsHomeState extends State<WindowsHome> {
     }
   }
 
+  Future<void> _checkForUpdate() async {
+    if (_checkingForUpdate) return;
+    setState(() => _checkingForUpdate = true);
+    try {
+      final updateInfo =
+          await (widget.updateChecker ?? UpdateUtil.checkUpdate)();
+      if (!mounted) return;
+      setState(() => _checkingForUpdate = false);
+      if (updateInfo == null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('没有发现可用更新。')));
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: !updateInfo.isForceUpdate,
+        builder: (dialogContext) => UpdateDialog(
+          updateInfo: updateInfo,
+          onDismiss: () => Navigator.pop(dialogContext),
+        ),
+      );
+    } finally {
+      if (mounted && _checkingForUpdate) {
+        setState(() => _checkingForUpdate = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final presentation = _state.presentation;
@@ -88,6 +132,19 @@ class _WindowsHomeState extends State<WindowsHome> {
       appBar: AppBar(
         title: const Text('LinkUp'),
         actions: [
+          IconButton(
+            tooltip: '检查更新',
+            onPressed: _checkingForUpdate
+                ? null
+                : () => unawaited(_checkForUpdate()),
+            icon: _checkingForUpdate
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.system_update),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 20),
             child: FilledButton.icon(
