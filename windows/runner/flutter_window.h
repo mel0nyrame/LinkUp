@@ -55,6 +55,17 @@ class FlutterWindow : public Win32Window {
   WifiSnapshot RefreshWifiSnapshot();
   void PublishWifiSnapshot();
   flutter::EncodableMap WifiPayload(const WifiSnapshot& snapshot) const;
+  bool AddTrayIcon();
+  void RemoveTrayIcon();
+  void UpdateTrayTooltip(const std::string& text);
+  void ShowPopup();
+  void ShowMainWindow();
+  void HideToTray(bool notify_dart = true);
+  void ShowTrayMenu();
+  void HandleTrayCommand(UINT command);
+  void DispatchTrayAction(const std::string& action);
+  void SetPopupWindowMode(bool popup);
+  RECT PopupBounds();
 
   // The project to run.
   flutter::DartProject project_;
@@ -62,6 +73,7 @@ class FlutterWindow : public Win32Window {
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> wifi_channel_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> tray_channel_;
   HANDLE wlan_handle_ = nullptr;
   HANDLE ip_notification_ = nullptr;
   HWND notification_window_ = nullptr;
@@ -69,6 +81,16 @@ class FlutterWindow : public Win32Window {
   bool has_wifi_snapshot_ = false;
   int64_t association_epoch_ = 0;
   int64_t wifi_revision_ = 0;
+  UINT taskbar_created_message_ = 0;
+  std::wstring tray_tooltip_ = L"LinkUp · 正在启动";
+  RECT normal_window_bounds_{};
+  bool normal_bounds_saved_ = false;
+  bool tray_icon_added_ = false;
+  bool tray_attach_attempted_ = false;
+  bool close_to_tray_pending_ = false;
+  bool popup_mode_ = false;
+  bool close_notice_shown_ = false;
+  bool exiting_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

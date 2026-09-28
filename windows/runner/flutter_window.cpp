@@ -4,17 +4,44 @@
 #include "flutter_window.h"
 
 #include <iphlpapi.h>
+#include <shellapi.h>
+#include <flutter_windows.h>
 
+#include <algorithm>
 #include <array>
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "resource.h"
 #include "wifi_tunnel.h"
 
 namespace {
 constexpr UINT kWifiChangedMessage = WM_APP + 0x151;
+constexpr UINT kTrayCallbackMessage = WM_APP + 0x152;
+constexpr UINT kExitApplicationMessage = WM_APP + 0x154;
+constexpr UINT kTrayIconId = 1;
+constexpr UINT kMenuOpen = 1001;
+constexpr UINT kMenuCheck = 1002;
+constexpr UINT kMenuSettings = 1003;
+constexpr UINT kMenuLogs = 1004;
+constexpr UINT kMenuExit = 1005;
+
+std::wstring Utf8ToWide(const std::string& text) {
+  if (text.empty()) return {};
+  const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+  if (size <= 1) return {};
+  std::wstring result(size, L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, result.data(), size);
+  result.pop_back();
+  return result;
+}
+
+int ScaleForDpi(int logical_size, UINT dpi) {
+  return MulDiv(logical_size, static_cast<int>(dpi), 96);
+}
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -86,6 +113,47 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  tray_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "com.mel0ny.linkup/windowsTray",
+      &flutter::StandardMethodCodec::GetInstance());
+  tray_channel_->SetMethodCallHandler(
+      [this](const auto& call, auto result) {
+        if (call.method_name() == "attach") {
+          tray_attach_attempted_ = true;
+          if (!AddTrayIcon()) {
+            result->Error("tray_unavailable", "Could not add tray icon");
+            return;
+          }
+          result->Success();
+          if (close_to_tray_pending_) {
+            close_to_tray_pending_ = false;
+            HideToTray();
+          }
+        } else if (call.method_name() == "setTooltip") {
+          const auto* text = std::get_if<std::string>(call.arguments());
+          if (!text) {
+            result->Error("invalid_tooltip", "Tooltip must be a string");
+            return;
+          }
+          UpdateTrayTooltip(*text);
+          result->Success();
+        } else if (call.method_name() == "showMain") {
+          ShowMainWindow();
+          DispatchTrayAction("openMain");
+          result->Success();
+        } else if (call.method_name() == "exitComplete") {
+          exiting_ = true;
+          result->Success();
+          PostMessageW(GetHandle(), kExitApplicationMessage, 0, 0);
+        } else {
+          result->NotImplemented();
+        }
+      });
+
+  GetWindowRect(GetHandle(), &normal_window_bounds_);
+  normal_bounds_saved_ = true;
+  taskbar_created_message_ = RegisterWindowMessageW(L"TaskbarCreated");
   notification_window_ = GetHandle();
   DWORD negotiated_version = 0;
   if (WlanOpenHandle(2, nullptr, &negotiated_version, &wlan_handle_) ==
@@ -115,6 +183,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  RemoveTrayIcon();
   if (ip_notification_) {
     CancelMibChangeNotify2(ip_notification_);
     ip_notification_ = nullptr;
@@ -123,6 +192,8 @@ void FlutterWindow::OnDestroy() {
     WlanCloseHandle(wlan_handle_, nullptr);
     wlan_handle_ = nullptr;
   }
+  notification_window_ = nullptr;
+  tray_channel_.reset();
   wifi_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
@@ -135,6 +206,71 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (taskbar_created_message_ != 0 && message == taskbar_created_message_) {
+    if (tray_attach_attempted_) {
+      tray_icon_added_ = false;
+      AddTrayIcon();
+    }
+    return 0;
+  }
+  if (message == kLinkUpActivateExistingMessage) {
+    ShowMainWindow();
+    DispatchTrayAction("openMain");
+    return 0;
+  }
+  if (message == kTrayCallbackMessage) {
+    switch (LOWORD(lparam)) {
+      case WM_LBUTTONUP:
+      case NIN_SELECT:
+      case NIN_KEYSELECT:
+        if (popup_mode_) {
+          HideToTray();
+        } else {
+          ShowPopup();
+          DispatchTrayAction("togglePopup");
+        }
+        return 0;
+      case WM_LBUTTONDBLCLK:
+        ShowMainWindow();
+        DispatchTrayAction("openMain");
+        return 0;
+      case WM_RBUTTONUP:
+      case WM_RBUTTONDBLCLK:
+      case WM_CONTEXTMENU:
+        ShowTrayMenu();
+        return 0;
+    }
+  }
+  if (message == WM_CLOSE) {
+    if (exiting_) return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+    if (!close_notice_shown_) {
+      close_notice_shown_ = true;
+      MessageBoxW(
+          hwnd,
+          L"关闭窗口后，LinkUp 会继续在系统托盘运行。要停止认证，请右键托盘图标并选择“退出 LinkUp”。",
+          L"LinkUp 仍在运行", MB_OK | MB_ICONINFORMATION);
+    }
+    if (!tray_attach_attempted_) {
+      close_to_tray_pending_ = true;
+      return 0;
+    }
+    if (!tray_icon_added_) {
+      MessageBoxW(hwnd, L"系统托盘不可用，LinkUp 将停止运行。", L"LinkUp",
+                  MB_OK | MB_ICONWARNING);
+      DispatchTrayAction("exitRequested");
+      return 0;
+    }
+    HideToTray();
+    return 0;
+  }
+  if (message == kExitApplicationMessage) {
+    DestroyWindow(hwnd);
+    return 0;
+  }
+  if (message == WM_ACTIVATE && popup_mode_ && LOWORD(wparam) == WA_INACTIVE) {
+    HideToTray();
+    return 0;
+  }
   if (message == kWifiChangedMessage) {
     if (wparam != 0) ++association_epoch_;
     PublishWifiSnapshot();
@@ -157,6 +293,221 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+}
+
+bool FlutterWindow::AddTrayIcon() {
+  if (tray_icon_added_) return true;
+
+  NOTIFYICONDATAW data{};
+  data.cbSize = sizeof(data);
+  data.hWnd = notification_window_;
+  data.uID = kTrayIconId;
+  data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
+  data.uCallbackMessage = kTrayCallbackMessage;
+  data.hIcon = LoadIconW(GetModuleHandle(nullptr),
+                         MAKEINTRESOURCEW(IDI_APP_ICON));
+  wcsncpy_s(data.szTip, tray_tooltip_.c_str(), _TRUNCATE);
+  if (!Shell_NotifyIconW(NIM_ADD, &data)) return false;
+
+  tray_icon_added_ = true;
+  data.uVersion = NOTIFYICON_VERSION_4;
+  Shell_NotifyIconW(NIM_SETVERSION, &data);
+  return true;
+}
+
+void FlutterWindow::RemoveTrayIcon() {
+  if (!tray_icon_added_) return;
+  NOTIFYICONDATAW data{};
+  data.cbSize = sizeof(data);
+  data.hWnd = notification_window_;
+  data.uID = kTrayIconId;
+  Shell_NotifyIconW(NIM_DELETE, &data);
+  tray_icon_added_ = false;
+}
+
+void FlutterWindow::UpdateTrayTooltip(const std::string& text) {
+  tray_tooltip_ = Utf8ToWide(text);
+  if (tray_tooltip_.empty()) tray_tooltip_ = L"LinkUp";
+  if (!tray_icon_added_) return;
+
+  NOTIFYICONDATAW data{};
+  data.cbSize = sizeof(data);
+  data.hWnd = GetHandle();
+  data.uID = kTrayIconId;
+  data.uFlags = NIF_TIP;
+  wcsncpy_s(data.szTip, tray_tooltip_.c_str(), _TRUNCATE);
+  Shell_NotifyIconW(NIM_MODIFY, &data);
+}
+
+void FlutterWindow::ShowPopup() {
+  HWND window = GetHandle();
+  if (!window) return;
+  if (IsIconic(window)) ShowWindow(window, SW_RESTORE);
+  SetPopupWindowMode(true);
+  const RECT bounds = PopupBounds();
+  SetWindowPos(window, HWND_TOPMOST, bounds.left, bounds.top,
+               bounds.right - bounds.left, bounds.bottom - bounds.top,
+               SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+  SetForegroundWindow(window);
+}
+
+void FlutterWindow::ShowMainWindow() {
+  HWND window = GetHandle();
+  if (!window) return;
+  SetPopupWindowMode(false);
+  ShowWindow(window, IsIconic(window) ? SW_RESTORE : SW_SHOW);
+  SetWindowPos(window, HWND_NOTOPMOST, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+  if (!SetForegroundWindow(window)) FlashWindow(window, TRUE);
+}
+
+void FlutterWindow::HideToTray(bool notify_dart) {
+  HWND window = GetHandle();
+  if (!window) return;
+  SetPopupWindowMode(false);
+  ShowWindow(window, SW_HIDE);
+  if (notify_dart) DispatchTrayAction("hidePopup");
+}
+
+void FlutterWindow::ShowTrayMenu() {
+  HMENU menu = CreatePopupMenu();
+  if (!menu) return;
+  AppendMenuW(menu, MF_STRING, kMenuOpen, L"打开 LinkUp");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kMenuCheck, L"立即检查");
+  AppendMenuW(menu, MF_STRING, kMenuSettings, L"设置");
+  AppendMenuW(menu, MF_STRING, kMenuLogs, L"查看日志");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kMenuExit, L"退出 LinkUp");
+
+  HWND window = GetHandle();
+  SetForegroundWindow(window);
+  POINT cursor{};
+  GetCursorPos(&cursor);
+  const UINT command = TrackPopupMenu(
+      menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_BOTTOMALIGN,
+      cursor.x, cursor.y, 0, window, nullptr);
+  PostMessageW(window, WM_NULL, 0, 0);
+  DestroyMenu(menu);
+  if (command != 0) HandleTrayCommand(command);
+}
+
+void FlutterWindow::HandleTrayCommand(UINT command) {
+  switch (command) {
+    case kMenuOpen:
+      ShowMainWindow();
+      DispatchTrayAction("openMain");
+      break;
+    case kMenuCheck:
+      DispatchTrayAction("manualCheck");
+      break;
+    case kMenuSettings:
+      ShowMainWindow();
+      DispatchTrayAction("openSettings");
+      break;
+    case kMenuLogs:
+      ShowMainWindow();
+      DispatchTrayAction("openLogs");
+      break;
+    case kMenuExit:
+      DispatchTrayAction("exitRequested");
+      break;
+  }
+}
+
+void FlutterWindow::DispatchTrayAction(const std::string& action) {
+  if (!tray_channel_) return;
+  tray_channel_->InvokeMethod(
+      "onAction", std::make_unique<flutter::EncodableValue>(action));
+}
+
+void FlutterWindow::SetPopupWindowMode(bool popup) {
+  HWND window = GetHandle();
+  if (!window || popup == popup_mode_) return;
+  if (popup) {
+    GetWindowRect(window, &normal_window_bounds_);
+    normal_bounds_saved_ = true;
+  }
+
+  LONG_PTR style = GetWindowLongPtrW(window, GWL_STYLE);
+  LONG_PTR extended_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+  if (popup) {
+    style = (style & ~WS_OVERLAPPEDWINDOW) | WS_POPUP;
+    extended_style = (extended_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW;
+  } else {
+    style = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;
+    extended_style = (extended_style & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW;
+  }
+  SetWindowLongPtrW(window, GWL_STYLE, style);
+  SetWindowLongPtrW(window, GWL_EXSTYLE, extended_style);
+  popup_mode_ = popup;
+
+  if (!popup && normal_bounds_saved_) {
+    SetWindowPos(window, HWND_NOTOPMOST, normal_window_bounds_.left,
+                 normal_window_bounds_.top,
+                 normal_window_bounds_.right - normal_window_bounds_.left,
+                 normal_window_bounds_.bottom - normal_window_bounds_.top,
+                 SWP_FRAMECHANGED | SWP_NOACTIVATE);
+  } else {
+    SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                 SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
+  }
+}
+
+RECT FlutterWindow::PopupBounds() {
+  RECT icon_bounds{};
+  NOTIFYICONIDENTIFIER identifier{};
+  identifier.cbSize = sizeof(identifier);
+  identifier.hWnd = GetHandle();
+  identifier.uID = kTrayIconId;
+  const bool has_icon_bounds =
+      SUCCEEDED(Shell_NotifyIconGetRect(&identifier, &icon_bounds));
+  if (!has_icon_bounds) {
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    icon_bounds = {cursor.x, cursor.y, cursor.x + 1, cursor.y + 1};
+  }
+
+  HMONITOR monitor = MonitorFromRect(&icon_bounds, MONITOR_DEFAULTTONEAREST);
+  MONITORINFO monitor_info{sizeof(monitor_info)};
+  if (!GetMonitorInfoW(monitor, &monitor_info)) {
+    monitor_info.rcWork = {0, 0, GetSystemMetrics(SM_CXSCREEN),
+                           GetSystemMetrics(SM_CYSCREEN)};
+  }
+  const UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+  const LONG width = std::min<LONG>(
+      ScaleForDpi(380, dpi),
+      monitor_info.rcWork.right - monitor_info.rcWork.left);
+  const LONG height = std::min<LONG>(
+      ScaleForDpi(340, dpi),
+      monitor_info.rcWork.bottom - monitor_info.rcWork.top);
+  LONG x = monitor_info.rcWork.right - width;
+  LONG y = monitor_info.rcWork.bottom - height;
+  if (has_icon_bounds) {
+    const LONG icon_x = (icon_bounds.left + icon_bounds.right) / 2;
+    if (icon_bounds.left < monitor_info.rcWork.left) {
+      x = monitor_info.rcWork.left;
+    } else if (icon_bounds.right > monitor_info.rcWork.right) {
+      x = monitor_info.rcWork.right - width;
+    } else {
+      x = icon_x - width / 2;
+    }
+    if (icon_bounds.top < monitor_info.rcWork.top) {
+      y = monitor_info.rcWork.top;
+    } else if (icon_bounds.bottom > monitor_info.rcWork.bottom) {
+      y = monitor_info.rcWork.bottom - height;
+    } else if ((icon_bounds.top + icon_bounds.bottom) / 2 <
+               (monitor_info.rcWork.top + monitor_info.rcWork.bottom) / 2) {
+      y = icon_bounds.bottom;
+    } else {
+      y = icon_bounds.top - height;
+    }
+  }
+  x = std::clamp<LONG>(x, monitor_info.rcWork.left,
+                       monitor_info.rcWork.right - width);
+  y = std::clamp<LONG>(y, monitor_info.rcWork.top,
+                       monitor_info.rcWork.bottom - height);
+  return {x, y, x + width, y + height};
 }
 
 void WINAPI FlutterWindow::OnWlanNotification(PWLAN_NOTIFICATION_DATA data,

@@ -48,12 +48,19 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
   late final AuthRuntimeController _controller;
   final StreamController<AuthRuntimeState> _states =
       StreamController<AuthRuntimeState>.broadcast(sync: true);
+  final StreamController<bool> _wifiStates = StreamController<bool>.broadcast(
+    sync: true,
+  );
   AuthRuntimeState _state = const AuthRuntimeState.stopped();
   Future<void>? _initializing;
   Future<void> _wifiEventsTail = Future<void>.value();
+  bool _monitoringEnabled = false;
 
   Stream<AuthRuntimeState> get states => _states.stream;
+  Stream<bool> get wifiStates => _wifiStates.stream;
   AuthRuntimeState get state => _state;
+  bool get wifiConnected => wifiState?.connected ?? false;
+  bool get monitoringEnabled => _monitoringEnabled;
 
   Future<void> initialize() => _initializing ??= _initialize();
 
@@ -63,18 +70,22 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
     if (events != null) {
       final snapshot = await events.start(_onWifiChanged);
       wifiState!.apply(snapshot);
+      _wifiStates.add(snapshot.connected);
     }
     final present = await _configurationPresent();
     if (present == false) {
       _publishMissingConfig();
     } else if (present == true && events != null) {
+      _monitoringEnabled = true;
       await _controller.execute(AuthRuntimeController.commandStart);
     }
   }
 
   void _onWifiChanged(WindowsWifiSnapshot snapshot) {
     _wifiEventsTail = _wifiEventsTail.then((_) async {
-      if (wifiState!.apply(snapshot) && await _configurationPresent() == true) {
+      final changed = wifiState!.apply(snapshot);
+      if (changed) _wifiStates.add(snapshot.connected);
+      if (changed && await _configurationPresent() == true) {
         await _controller.execute(
           AuthRuntimeController.commandNetworkChanged,
           <String, Object?>{RuntimeContract.keyConnected: snapshot.connected},
@@ -95,6 +106,8 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
 
   Future<void> configurationChanged() async {
     await initialize();
+    _monitoringEnabled =
+        await _configurationPresent() == true && wifiEvents != null;
     await _controller.execute(
       AuthRuntimeController.commandConfigurationChanged,
     );
@@ -106,6 +119,7 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
     try {
       return await configSource.loadFacts() != null;
     } catch (_) {
+      _monitoringEnabled = false;
       _emit(
         const AuthRuntimeState(
           status: AuthenticationStatus.failed,
@@ -117,6 +131,7 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
   }
 
   void _publishMissingConfig() {
+    _monitoringEnabled = false;
     publishState(
       const AuthRuntimeState(
         status: AuthenticationStatus.failed,
@@ -151,6 +166,7 @@ class WindowsAuthRuntime implements AuthRuntimeHost {
     await wifiEvents?.dispose();
     await _wifiEventsTail;
     await _coordinator.dispose();
+    await _wifiStates.close();
     await _states.close();
   }
 }

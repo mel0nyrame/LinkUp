@@ -7,7 +7,8 @@ import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/WindowsAuthRuntime.dart';
-import 'package:LinkUp/page/WindowsHome.dart';
+import 'package:LinkUp/page/WindowsTrayApp.dart';
+import 'package:LinkUp/utils/WindowsTray.dart';
 // 后台 FlutterEngine 从主 APK 的 Dart bundle 加载此独立入口。
 // ignore: unused_import
 import 'package:LinkUp/authRuntimeMain.dart';
@@ -32,16 +33,8 @@ Future<void> _startWindows() async {
   final runtime = WindowsAuthRuntime.production;
   configManager.runtimeNotifier = runtime.configurationChanged;
   await runtime.initialize();
-  runApp(
-    MaterialApp(
-      title: 'LinkUp',
-      home: WindowsHome(
-        initialState: runtime.state,
-        states: runtime.states,
-        onManualCheck: runtime.manualCheck,
-      ),
-    ),
-  );
+  final tray = WindowsTrayClient();
+  runApp(WindowsTrayApp(runtime: runtime, tray: tray));
 }
 
 /// 首帧之后补齐不影响首屏内容的初始化。

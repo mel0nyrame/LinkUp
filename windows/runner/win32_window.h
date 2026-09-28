@@ -7,6 +7,8 @@
 #include <memory>
 #include <string>
 
+constexpr UINT kLinkUpActivateExistingMessage = WM_APP + 0x153;
+
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
 // inherited from by classes that wish to specialize with custom
 // rendering and input handling
