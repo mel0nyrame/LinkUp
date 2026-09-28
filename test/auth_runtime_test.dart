@@ -63,6 +63,8 @@ void main() {
       await _pump();
 
       expect(attempt.calls, 0);
+      expect(runtime.wifiConnected, isTrue);
+      expect(runtime.monitoringEnabled, isFalse);
       expect(runtime.state.reason, AuthenticationReason.missingConfig);
     });
 
@@ -93,6 +95,8 @@ void main() {
       addTearDown(runtime.dispose);
 
       await runtime.initialize();
+      expect(runtime.wifiConnected, isFalse);
+      expect(runtime.monitoringEnabled, isTrue);
       expect(runtime.state.reason, AuthenticationReason.wifiUnavailable);
       expect(attempt.calls, 0);
 
@@ -105,6 +109,7 @@ void main() {
         ),
       );
       await _pump();
+      expect(runtime.wifiConnected, isTrue);
       expect(attempt.calls, 1);
       expect(runtime.state.isOnline, isTrue);
       expect(scheduler.lastDelay, const Duration(seconds: 30));

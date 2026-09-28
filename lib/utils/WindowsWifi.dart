@@ -106,6 +106,7 @@ class WindowsWifiNetworkState implements AuthenticationNetworkState {
   String? _address;
 
   String? get sourceAddress => _address;
+  bool get connected => _connected;
 
   bool apply(WindowsWifiSnapshot snapshot) {
     if (snapshot.revision <= _revision) return false;
