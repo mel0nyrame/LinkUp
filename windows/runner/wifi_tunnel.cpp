@@ -24,7 +24,7 @@ std::vector<sockaddr_in> ResolveOnWifi(const std::string& host, int port,
                                        unsigned int interface_index) {
   sockaddr_in address{};
   address.sin_family = AF_INET;
-  address.sin_port = htons(port);
+  address.sin_port = htons(static_cast<u_short>(port));
   if (InetPtonA(AF_INET, host.c_str(), &address.sin_addr) == 1) {
     return {address};
   }
