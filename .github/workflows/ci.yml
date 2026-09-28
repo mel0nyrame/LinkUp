@@ -204,7 +204,7 @@ jobs:
             exit $LASTEXITCODE
           }
 
-      - name: Verify installer install, upgrade, and uninstall
+      - name: Verify installer install, reinstall, and uninstall
         shell: pwsh
         run: |
           $installer = (Get-ChildItem 'build/windows/installer/LinkUp-Setup-*.exe' | Select-Object -First 1).FullName
@@ -231,9 +231,9 @@ jobs:
             }
           }
 
-          $upgradeInstall = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
-          if ($upgradeInstall.ExitCode -ne 0) {
-            throw "Upgrade installer run failed with exit code $($upgradeInstall.ExitCode)"
+          $reinstall = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
+          if ($reinstall.ExitCode -ne 0) {
+            throw "Reinstall installer run failed with exit code $($reinstall.ExitCode)"
           }
 
           $startupKeyPath = 'Software\Microsoft\Windows\CurrentVersion\Run'

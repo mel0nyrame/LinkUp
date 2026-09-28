@@ -13,6 +13,7 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端，�
 - **本地数据与更新**：`ConfigUtil.dart` 保存认证配置，`SystemSettingsUtil.dart` 保存系统开关，`LogUtil.dart` 管理日志，`UpdateUtil.dart` 检查和安装更新。
 - **Android 原生**：入口与开机自启位于 `android/app/src/main/kotlin/com/mel0ny/linkup/`；Dart 与原生层通过 `com.mel0ny.linkup/system` 对应的 `MethodChannel` 方法通道通信。后台认证运行时由 `AuthRuntimeService` 承载，它用独立的 `FlutterEngine` 运行 `lib/authRuntimeMain.dart`，并通过 `com.mel0ny.linkup/authRuntime` 与 `com.mel0ny.linkup/authUi` 两个通道连接 Dart。命令名与通道名的唯一来源是同目录的 `AuthRuntimeBridge.kt`；后台开关与开机门读取 Dart 写入 `FlutterSharedPreferences` 的键（`shared_preferences` 加的 `flutter.` 前缀），由 `BackgroundRuntimeSettings.kt` 封装。
 - **Windows 客户端与认证运行时**：入口在 `lib/main.dart`，托盘和主界面由 `lib/page/WindowsTrayApp.dart`、`lib/page/WindowsHome.dart` 编排；界面命令经 `lib/utils/WindowsAuthRuntime.dart`、`lib/utils/AuthRuntimeController.dart` 转交给 `lib/utils/AuthenticationCoordinator.dart`。修改 Windows 托盘、设备会话或认证操作时，沿这条调用链定位行为。
+- **Windows 登录自启与安装器**：开关在 `lib/page/WindowsHome.dart`、`lib/utils/WindowsAutoStart.dart`；`windows/runner/main.cpp` 解析 `--background`，`windows/runner/flutter_window.cpp` 负责 `windowsStartup`/HKCU `Run` 桥接与后台首帧策略；`windows/installer/LinkUp.iss` 清理卸载时的启动项。修改这条链路时查 `test/windows_installer_contract_test.dart`。
 - **工具链与依赖**：以 `pubspec.yaml`、`pubspec.lock`、`android/` 和 `.github/workflows/` 为准；本文件不重复记录版本号。本机 SDK 可能与 `environment.flutter` 不一致，先做变更流程第 0 步。
 - **用户文档**：`README.md` 面向使用者和贡献者；协议细节不要重新复制到 README。
 
