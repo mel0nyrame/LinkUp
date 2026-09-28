@@ -15,6 +15,7 @@ import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/RuntimeContract.g.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
 import 'package:LinkUp/utils/SrunLogin.dart';
+import 'package:LinkUp/utils/WindowsAuthRuntime.dart';
 
 final _fixtureUsername = List.filled(8, 'u').join();
 final _fixturePassword = List.filled(8, 'p').join();
@@ -22,6 +23,102 @@ final _fixtureChallenge = List.filled(9, 'c').join();
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Windows 认证运行时', () {
+    test('配置读取失败仍能启动并显示安全错误，手动检查不发请求', () async {
+      final config = _FailingConfigSource();
+      final protocol = _FakeProtocol();
+      final controller = _controller(
+        host: _FakeAuthRuntimeHost(),
+        scheduler: _FakeAuthenticationScheduler(),
+        protocol: protocol,
+        configSource: config,
+      );
+      final runtime = WindowsAuthRuntime(
+        coordinator: controller.coordinator,
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.initialize();
+      expect(runtime.state.status, AuthenticationStatus.failed);
+      expect(runtime.state.message, '读取认证配置失败，请检查本地配置');
+      expect(
+        runtime.state.toMap().toString(),
+        isNot(contains('raw error marker')),
+      );
+
+      await runtime.manualCheck();
+      expect(protocol.realityCalls, 0);
+
+      config.fail = false;
+      await runtime.manualCheck();
+      expect(runtime.state.isOnline, isTrue);
+      expect(protocol.realityCalls, 1);
+    });
+
+    test('发布状态时不转发服务器原始错误文本', () async {
+      final config = _FakeConfigSource();
+      final controller = _controller(
+        host: _FakeAuthRuntimeHost(),
+        scheduler: _FakeAuthenticationScheduler(),
+        protocol: _FakeProtocol(),
+        configSource: config,
+      );
+      final runtime = WindowsAuthRuntime(
+        coordinator: controller.coordinator,
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+
+      await runtime.publishState(
+        const AuthRuntimeState(
+          status: AuthenticationStatus.failed,
+          reason: AuthenticationReason.invalidCredentials,
+          message: 'server echoed credential marker',
+        ),
+      );
+
+      expect(runtime.state.message, isNull);
+      expect(
+        runtime.state.toMap().toString(),
+        isNot(contains('credential marker')),
+      );
+    });
+
+    test('没有配置时不发认证请求，保存配置后手动检查发布真实状态', () async {
+      final config = _FakeConfigSource()..config = null;
+      final protocol = _FakeProtocol();
+      final controller = _controller(
+        host: _FakeAuthRuntimeHost(),
+        scheduler: _FakeAuthenticationScheduler(),
+        protocol: protocol,
+        configSource: config,
+      );
+      final runtime = WindowsAuthRuntime(
+        coordinator: controller.coordinator,
+        configSource: config,
+      );
+      addTearDown(runtime.dispose);
+      final states = <AuthRuntimeState>[];
+      runtime.states.listen(states.add);
+
+      await runtime.initialize();
+      await runtime.manualCheck();
+      expect(protocol.realityCalls, 0);
+      expect(runtime.state.reason, AuthenticationReason.missingConfig);
+
+      config.config = _FakeConfigSource().config;
+      await runtime.manualCheck();
+      await _pump();
+      expect(protocol.realityCalls, 1);
+      expect(
+        states.map((state) => state.status),
+        contains(AuthenticationStatus.checking),
+      );
+      expect(runtime.state.isOnline, isTrue);
+    });
+  });
 
   group('认证运行时宿主桥', () {
     test('服务启动后把协调器状态发布给宿主', () async {
@@ -699,6 +796,16 @@ class _FakeConfigSource extends AuthenticationConfigSource {
   }) async {
     if (canPersist != null && !canPersist()) return false;
     return true;
+  }
+}
+
+class _FailingConfigSource extends _FakeConfigSource {
+  bool fail = true;
+
+  @override
+  Future<AuthConfigFacts?> loadFacts() async {
+    if (fail) throw const ConfigStorageException('raw error marker');
+    return super.loadFacts();
   }
 }
 

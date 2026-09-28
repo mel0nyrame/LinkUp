@@ -1,14 +1,23 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:LinkUp/navigation/MainNavigation.dart';
 import 'package:LinkUp/page/AuthWrapperPage.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/SystemSettingsUtil.dart';
+import 'package:LinkUp/utils/ConfigUtil.dart';
+import 'package:LinkUp/utils/WindowsAuthRuntime.dart';
+import 'package:LinkUp/page/WindowsHome.dart';
 // 后台 FlutterEngine 从主 APK 的 Dart bundle 加载此独立入口。
 // ignore: unused_import
 import 'package:LinkUp/authRuntimeMain.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isWindows) {
+    await _startWindows();
+    return;
+  }
   // 首屏只需要“配置是否存在”这个提示，它来自已加载的偏好，因此同步读一次就够。
   await SystemSettingsUtil.init();
   runApp(const MyApp());
@@ -16,6 +25,23 @@ void main(List<String> args) async {
   // 往返并创建文件，后者会拉起前台服务并弹系统通知权限对话框。放在 runApp 之前
   // 会让打开应用先卡在这两件事上，界面连第一帧都画不出来。
   WidgetsBinding.instance.addPostFrameCallback((_) => _prepareRuntime());
+}
+
+Future<void> _startWindows() async {
+  await LogUtil.init();
+  final runtime = WindowsAuthRuntime.production;
+  configManager.runtimeNotifier = runtime.configurationChanged;
+  await runtime.initialize();
+  runApp(
+    MaterialApp(
+      title: 'LinkUp',
+      home: WindowsHome(
+        initialState: runtime.state,
+        states: runtime.states,
+        onManualCheck: runtime.manualCheck,
+      ),
+    ),
+  );
 }
 
 /// 首帧之后补齐不影响首屏内容的初始化。
