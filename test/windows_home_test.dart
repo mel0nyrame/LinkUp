@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:LinkUp/page/WindowsHome.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
@@ -11,6 +12,11 @@ import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/RadUserInfo.dart';
 import 'package:LinkUp/utils/SecretStore.dart';
 import 'package:LinkUp/utils/SrunClient.dart';
+import 'package:LinkUp/utils/WindowsAutoStart.dart';
+
+const _windowsAutoStartChannel = MethodChannel(
+  WindowsAutoStartClient.channelName,
+);
 
 class _MemorySecretStore implements SecretStore {
   final values = <String, String>{};
@@ -659,7 +665,11 @@ void main() {
     expect(find.text('账号信息'), findsOneWidget);
     await tester.enterText(_textInput('windows-username'), username);
     await tester.enterText(_textInput('windows-password'), password);
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    final acidSwitch = find.descendant(
+      of: find.byKey(const ValueKey('windows-auto-acid')),
+      matching: find.byType(Switch),
+    );
+    expect(tester.widget<Switch>(acidSwitch).value, isTrue);
     expect(
       tester
           .widget<TextField>(
@@ -685,7 +695,11 @@ void main() {
           .text,
       isNotEmpty,
     );
-    await tester.tap(find.byKey(const ValueKey('windows-save-configuration')));
+    final saveConfiguration = find.byKey(
+      const ValueKey('windows-save-configuration'),
+    );
+    await tester.ensureVisible(saveConfiguration);
+    await tester.tap(saveConfiguration);
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(configuration.saveCalls, 1);
@@ -708,12 +722,13 @@ void main() {
       isEmpty,
     );
 
-    await tester.tap(find.byType(Switch));
+    await tester.tap(find.byKey(const ValueKey('windows-auto-acid')));
     await tester.pumpAndSettle();
     await tester.enterText(_textInput('windows-acid'), '7');
     await tester.enterText(_textInput('windows-auth-server'), '192.0.2.20');
     await tester.enterText(_textInput('windows-username'), updatedUsername);
-    await tester.tap(find.byKey(const ValueKey('windows-save-configuration')));
+    await tester.ensureVisible(saveConfiguration);
+    await tester.tap(saveConfiguration);
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     storedConfig = jsonDecode(configFileStore.content!) as Map<String, dynamic>;
@@ -725,9 +740,11 @@ void main() {
     expect(configuration.updateCalls, 1);
     expect(runtimeNotifications, 2);
 
-    await tester.tap(
-      find.byKey(const ValueKey('windows-delete-configuration')),
+    final deleteConfiguration = find.byKey(
+      const ValueKey('windows-delete-configuration'),
     );
+    await tester.ensureVisible(deleteConfiguration);
+    await tester.tap(deleteConfiguration);
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除配置').last);
     await tester.pump();
@@ -736,5 +753,65 @@ void main() {
     expect(configFileStore.content, isNull);
     expect(secretStore.values, isEmpty);
     expect(runtimeNotifications, 3);
+  });
+
+  testWidgets('Windows 登录自启开关读写系统启动项', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var startupEnabled = false;
+    final calls = <MethodCall>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(_windowsAutoStartChannel, (call) async {
+      calls.add(call);
+      switch (call.method) {
+        case WindowsAutoStartClient.methodGetEnabled:
+          return startupEnabled;
+        case WindowsAutoStartClient.methodSetEnabled:
+          startupEnabled = call.arguments as bool;
+          return null;
+      }
+      fail('Unexpected startup method: ${call.method}');
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(_windowsAutoStartChannel, null),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WindowsHome(
+          initialState: const AuthRuntimeState.stopped(),
+          states: const Stream<AuthRuntimeState>.empty(),
+          onManualCheck: () async {},
+          configuration: configuration,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('账号与网络').first);
+    await tester.pumpAndSettle();
+
+    final autoStartTile = find.byKey(const ValueKey('windows-auto-start'));
+    await tester.ensureVisible(autoStartTile);
+    expect(tester.widget<SwitchListTile>(autoStartTile).value, isFalse);
+    await tester.tap(autoStartTile);
+    await tester.pumpAndSettle();
+
+    expect(startupEnabled, isTrue);
+    expect(tester.widget<SwitchListTile>(autoStartTile).value, isTrue);
+    await tester.tap(autoStartTile);
+    await tester.pumpAndSettle();
+    expect(startupEnabled, isFalse);
+    expect(tester.widget<SwitchListTile>(autoStartTile).value, isFalse);
+    expect(calls.map((call) => call.method), <String>[
+      WindowsAutoStartClient.methodGetEnabled,
+      WindowsAutoStartClient.methodSetEnabled,
+      WindowsAutoStartClient.methodGetEnabled,
+      WindowsAutoStartClient.methodSetEnabled,
+      WindowsAutoStartClient.methodGetEnabled,
+    ]);
   });
 }

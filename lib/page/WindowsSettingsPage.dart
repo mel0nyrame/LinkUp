@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
+import 'package:LinkUp/utils/WindowsAutoStart.dart';
 
 class WindowsSettingsPage extends StatefulWidget {
   const WindowsSettingsPage({super.key, required this.configuration});
@@ -24,11 +25,17 @@ class _WindowsSettingsPageState extends State<WindowsSettingsPage> {
   bool _loading = true;
   bool _loadFailed = false;
   bool _saving = false;
+  bool _autoStartEnabled = false;
+  bool _autoStartLoading = true;
+  bool _autoStartLoadFailed = false;
+  bool _autoStartSaving = false;
+  final _autoStartClient = WindowsAutoStartClient();
 
   @override
   void initState() {
     super.initState();
     _loadConfiguration();
+    _loadAutoStart();
   }
 
   @override
@@ -67,6 +74,42 @@ class _WindowsSettingsPageState extends State<WindowsSettingsPage> {
         _loading = false;
         _loadFailed = true;
       });
+    }
+  }
+
+  Future<void> _loadAutoStart() async {
+    try {
+      final enabled = await _autoStartClient.getEnabled();
+      if (!mounted) return;
+      setState(() {
+        _autoStartEnabled = enabled;
+        _autoStartLoading = false;
+        _autoStartLoadFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _autoStartLoading = false;
+        _autoStartLoadFailed = true;
+      });
+    }
+  }
+
+  Future<void> _setAutoStart(bool enabled) async {
+    setState(() => _autoStartSaving = true);
+    try {
+      await _autoStartClient.setEnabled(enabled);
+      final actual = await _autoStartClient.getEnabled();
+      if (actual != enabled) throw StateError('Windows 启动项未更新');
+      if (!mounted) return;
+      setState(() {
+        _autoStartEnabled = actual;
+        _autoStartSaving = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _autoStartSaving = false);
+      _showMessage('更改登录自启失败，请重试。');
     }
   }
 
@@ -204,6 +247,8 @@ class _WindowsSettingsPageState extends State<WindowsSettingsPage> {
                         _buildAccountSection(context),
                         const SizedBox(height: 16),
                         _buildNetworkSection(context),
+                        const SizedBox(height: 16),
+                        _buildAutoStartSection(context),
                         const SizedBox(height: 20),
                         Row(
                           children: [
@@ -343,6 +388,7 @@ class _WindowsSettingsPageState extends State<WindowsSettingsPage> {
             Text('认证网络', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             SwitchListTile(
+              key: const ValueKey('windows-auto-acid'),
               contentPadding: EdgeInsets.zero,
               title: const Text('自动获取 ACID'),
               subtitle: Text(_autoAcid ? '自动探测可用接入点' : '使用下方指定的接入点 ID'),
@@ -389,6 +435,43 @@ class _WindowsSettingsPageState extends State<WindowsSettingsPage> {
                 return null;
               },
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoStartSection(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: Column(
+          children: [
+            SwitchListTile(
+              key: const ValueKey('windows-auto-start'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('登录 Windows 后启动 LinkUp'),
+              subtitle: Text(
+                _autoStartLoading
+                    ? '正在读取系统启动项…'
+                    : _autoStartLoadFailed
+                    ? '无法读取系统启动项'
+                    : '启用后登录时在系统托盘启动，不打开主窗口。',
+              ),
+              value: _autoStartEnabled,
+              onChanged:
+                  _autoStartLoading || _autoStartLoadFailed || _autoStartSaving
+                  ? null
+                  : _setAutoStart,
+            ),
+            if (_autoStartLoadFailed)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _loadAutoStart,
+                  child: const Text('重新读取'),
+                ),
+              ),
           ],
         ),
       ),

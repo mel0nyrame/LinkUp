@@ -28,6 +28,87 @@ constexpr UINT kMenuCheck = 1002;
 constexpr UINT kMenuSettings = 1003;
 constexpr UINT kMenuLogs = 1004;
 constexpr UINT kMenuExit = 1005;
+constexpr wchar_t kAutoStartSubkey[] =
+    L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+constexpr wchar_t kAutoStartValueName[] = L"LinkUp";
+
+std::optional<std::wstring> AutoStartCommandLine() {
+  std::vector<wchar_t> executable_path(32768);
+  const auto buffer_size = static_cast<DWORD>(executable_path.size());
+  const DWORD length = GetModuleFileNameW(
+      nullptr, executable_path.data(), buffer_size);
+  if (length == 0 || length >= buffer_size) return std::nullopt;
+
+  return L"\"" + std::wstring(executable_path.data(), length) +
+         L"\" --background";
+}
+
+bool ReadAutoStartEnabled(bool* enabled) {
+  if (enabled == nullptr) return false;
+  *enabled = false;
+
+  const auto expected_command = AutoStartCommandLine();
+  if (!expected_command) return false;
+
+  HKEY run_key = nullptr;
+  LONG status = RegOpenKeyExW(HKEY_CURRENT_USER, kAutoStartSubkey, 0,
+                              KEY_QUERY_VALUE, &run_key);
+  if (status == ERROR_FILE_NOT_FOUND) return true;
+  if (status != ERROR_SUCCESS) return false;
+
+  DWORD value_type = 0;
+  DWORD value_size = 0;
+  status = RegQueryValueExW(run_key, kAutoStartValueName, nullptr, &value_type,
+                            nullptr, &value_size);
+  if (status == ERROR_FILE_NOT_FOUND) {
+    RegCloseKey(run_key);
+    return true;
+  }
+  if (status != ERROR_SUCCESS || value_type != REG_SZ) {
+    RegCloseKey(run_key);
+    return status == ERROR_SUCCESS;
+  }
+
+  std::vector<wchar_t> value(value_size / sizeof(wchar_t) + 1, L'\0');
+  status = RegQueryValueExW(run_key, kAutoStartValueName, nullptr, &value_type,
+                            reinterpret_cast<LPBYTE>(value.data()),
+                            &value_size);
+  RegCloseKey(run_key);
+  if (status != ERROR_SUCCESS) return false;
+
+  *enabled = *expected_command == value.data();
+  return true;
+}
+
+bool WriteAutoStartEnabled(bool enabled) {
+  if (!enabled) {
+    HKEY run_key = nullptr;
+    LONG status = RegOpenKeyExW(HKEY_CURRENT_USER, kAutoStartSubkey, 0,
+                                KEY_SET_VALUE, &run_key);
+    if (status == ERROR_FILE_NOT_FOUND) return true;
+    if (status != ERROR_SUCCESS) return false;
+    status = RegDeleteValueW(run_key, kAutoStartValueName);
+    RegCloseKey(run_key);
+    return status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND;
+  }
+
+  const auto command = AutoStartCommandLine();
+  if (!command) return false;
+
+  HKEY run_key = nullptr;
+  LONG status = RegCreateKeyExW(HKEY_CURRENT_USER, kAutoStartSubkey, 0,
+                                nullptr, 0, KEY_SET_VALUE, nullptr, &run_key,
+                                nullptr);
+  if (status != ERROR_SUCCESS) return false;
+
+  const DWORD value_size =
+      static_cast<DWORD>((command->size() + 1) * sizeof(wchar_t));
+  status = RegSetValueExW(
+      run_key, kAutoStartValueName, 0, REG_SZ,
+      reinterpret_cast<const BYTE*>(command->c_str()), value_size);
+  RegCloseKey(run_key);
+  return status == ERROR_SUCCESS;
+}
 
 std::wstring Utf8ToWide(const std::string& text) {
   if (text.empty()) return {};
@@ -44,8 +125,9 @@ int ScaleForDpi(int logical_size, UINT dpi) {
 }
 }  // namespace
 
-FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project) {}
+FlutterWindow::FlutterWindow(const flutter::DartProject& project,
+                             bool start_hidden)
+    : project_(project), start_hidden_(start_hidden) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -151,6 +233,39 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  startup_channel_ = std::make_unique<
+      flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "com.mel0ny.linkup/windowsStartup",
+      &flutter::StandardMethodCodec::GetInstance());
+  startup_channel_->SetMethodCallHandler(
+      [](const auto& call, auto result) {
+        if (call.method_name() == "getEnabled") {
+          bool enabled = false;
+          if (!ReadAutoStartEnabled(&enabled)) {
+            result->Error("startup_read_failed",
+                          "Could not read the Windows startup entry");
+            return;
+          }
+          result->Success(flutter::EncodableValue(enabled));
+        } else if (call.method_name() == "setEnabled") {
+          const auto* enabled = std::get_if<bool>(call.arguments());
+          if (enabled == nullptr) {
+            result->Error("invalid_startup_setting",
+                          "Expected a boolean startup setting");
+            return;
+          }
+          if (!WriteAutoStartEnabled(*enabled)) {
+            result->Error("startup_write_failed",
+                          "Could not update the Windows startup entry");
+            return;
+          }
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
   GetWindowRect(GetHandle(), &normal_window_bounds_);
   normal_bounds_saved_ = true;
   taskbar_created_message_ = RegisterWindowMessageW(L"TaskbarCreated");
@@ -171,7 +286,7 @@ bool FlutterWindow::OnCreate() {
   }
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    if (!start_hidden_) this->Show();
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -194,6 +309,7 @@ void FlutterWindow::OnDestroy() {
   }
   notification_window_ = nullptr;
   tray_channel_.reset();
+  startup_channel_.reset();
   wifi_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
