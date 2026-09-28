@@ -12,7 +12,7 @@ class RadUserInfo {
   @JsonKey(name: 'add_time', defaultValue: 0)
   final int? addTime;
 
-  @JsonKey(name: 'all_bytes', defaultValue: 0)
+  @JsonKey(name: 'all_bytes')
   final int? allBytes;
 
   @JsonKey(name: 'billing_name', defaultValue: '')
@@ -42,7 +42,7 @@ class RadUserInfo {
   @JsonKey(name: 'online_device_detail', defaultValue: '')
   final String? onlineDeviceDetailRaw;
 
-  @JsonKey(name: 'online_device_total', defaultValue: '0')
+  @JsonKey(name: 'online_device_total')
   final String? onlineDeviceTotal;
 
   @JsonKey(name: 'client_ip', defaultValue: '')
@@ -75,10 +75,10 @@ class RadUserInfo {
   @JsonKey(name: 'remain_seconds', defaultValue: 0)
   final int? remainSeconds;
 
-  @JsonKey(name: 'sum_bytes', defaultValue: 0)
+  @JsonKey(name: 'sum_bytes')
   final int? sumBytes;
 
-  @JsonKey(name: 'sum_seconds', defaultValue: 0)
+  @JsonKey(name: 'sum_seconds')
   final int? sumSeconds;
 
   @JsonKey(name: 'sysver', defaultValue: '')
