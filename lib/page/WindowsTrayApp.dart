@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:LinkUp/page/WindowsHome.dart';
+import 'package:LinkUp/page/WindowsStatusPopup.dart';
 import 'package:LinkUp/utils/AuthRuntimeState.dart';
 import 'package:LinkUp/utils/LogUtil.dart';
 import 'package:LinkUp/utils/WindowsAuthRuntime.dart';
@@ -44,6 +45,7 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
         _monitoringEnabled = widget.runtime.monitoringEnabled;
       });
       unawaited(widget.tray.setTooltip(_tooltipFor(state)));
+      unawaited(_publishPopupState());
     });
     _wifiSubscription = widget.runtime.wifiStates.listen((connected) {
       if (mounted) {
@@ -51,6 +53,7 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
           _wifiConnected = connected;
           _wifiName = widget.runtime.wifiName;
         });
+        unawaited(_publishPopupState());
       }
     });
     unawaited(widget.tray.setTooltip(_tooltipFor(_state)));
@@ -59,6 +62,7 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
 
   Future<void> _attachTray() async {
     try {
+      await _publishPopupState();
       await widget.tray.attach();
     } catch (error, stackTrace) {
       await LogUtil.error('注册 Windows 托盘图标失败', error, stackTrace);
@@ -68,6 +72,15 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
   String _tooltipFor(AuthRuntimeState state) =>
       'LinkUp · ${state.presentation.title}';
 
+  Future<void> _publishPopupState() => widget.tray.setPopupState(
+    WindowsPopupState.fromRuntime(
+      _state,
+      wifiConnected: _wifiConnected,
+      wifiName: _wifiName,
+      monitoringEnabled: _monitoringEnabled,
+    ).toMap(),
+  );
+
   Future<void> _handleTrayAction(WindowsTrayAction action) async {
     switch (action) {
       case WindowsTrayAction.manualCheck:
@@ -75,9 +88,6 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
         break;
       case WindowsTrayAction.exitRequested:
         await _exit();
-        break;
-      case WindowsTrayAction.togglePopup:
-      case WindowsTrayAction.hidePopup:
         break;
       case WindowsTrayAction.openMain:
         setState(() => _selectedDestination = 0);
@@ -89,11 +99,6 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
         setState(() => _selectedDestination = 2);
         break;
     }
-  }
-
-  Future<void> _openDetails() async {
-    setState(() => _selectedDestination = 0);
-    await widget.tray.showMain();
   }
 
   Future<void> _exit() async {
@@ -123,25 +128,20 @@ class _WindowsTrayAppState extends State<WindowsTrayApp> {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
       ),
-      home: ValueListenableBuilder<bool>(
-        valueListenable: widget.tray.popupVisible,
-        builder: (context, popupVisible, _) => WindowsHome(
-          initialState: _state,
-          states: widget.runtime.states,
-          compact: popupVisible,
-          wifiConnected: _wifiConnected,
-          wifiName: _wifiName,
-          monitoringEnabled: _monitoringEnabled,
-          checkForUpdatesOnStartup: widget.checkForUpdatesOnStartup,
-          onManualCheck: widget.runtime.manualCheck,
-          onLogout: widget.runtime.logout,
-          onKickDevice: widget.runtime.kickDevice,
-          onOpenDetails: _openDetails,
-          selectedDestination: _selectedDestination,
-          onDestinationChanged: (destination) {
-            setState(() => _selectedDestination = destination);
-          },
-        ),
+      home: WindowsHome(
+        initialState: _state,
+        states: widget.runtime.states,
+        wifiConnected: _wifiConnected,
+        wifiName: _wifiName,
+        monitoringEnabled: _monitoringEnabled,
+        checkForUpdatesOnStartup: widget.checkForUpdatesOnStartup,
+        onManualCheck: widget.runtime.manualCheck,
+        onLogout: widget.runtime.logout,
+        onKickDevice: widget.runtime.kickDevice,
+        selectedDestination: _selectedDestination,
+        onDestinationChanged: (destination) {
+          setState(() => _selectedDestination = destination);
+        },
       ),
     );
   }

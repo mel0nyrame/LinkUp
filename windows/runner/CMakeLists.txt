@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
+  "tray_popup_window.cpp"
   "utils.cpp"
   "wifi_tunnel.cpp"
   "win32_window.cpp"
