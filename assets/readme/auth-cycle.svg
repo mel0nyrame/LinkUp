@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="510" viewBox="0 0 1200 510" role="img" aria-labelledby="title desc">
+  <title id="title">LinkUp 的校园网认证闭环</title>
+  <desc id="desc">连接校园 Wi-Fi 后先查询在线状态；仅在离线时探测 ACID、获取 Challenge 并登录；登录后再次查询，持续监控，掉线后重试。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F8FBFF"/>
+      <stop offset="1" stop-color="#EAF4FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="510" rx="30" fill="url(#bg)"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+    <text x="60" y="62" font-size="19" font-weight="800" letter-spacing="2.4" fill="#267DC0">LINKUP / AUTH CYCLE</text>
+    <text x="60" y="122" font-size="44" font-weight="760" fill="#132E52">在线不靠猜，登录后再确认。</text>
+    <text x="60" y="157" font-size="22" fill="#56728F">同一条认证流程，服务于 Android 和 Windows。</text>
+
+    <path d="M300 303H330M584 303H614M868 303H898" fill="none" stroke="#70B8EF" stroke-width="5" stroke-linecap="round"/>
+    <g fill="#70B8EF">
+      <path d="M322 294l13 9-13 9z"/>
+      <path d="M606 294l13 9-13 9z"/>
+      <path d="M890 294l13 9-13 9z"/>
+    </g>
+
+    <g id="wifi">
+      <rect x="46" y="194" width="254" height="214" rx="24" fill="#FFFFFF" stroke="#D7E8F7" stroke-width="2"/>
+      <circle cx="86" cy="237" r="22" fill="#E0F6FB"/>
+      <path d="M72 232Q86 219 100 232M78 239Q86 232 94 239" fill="none" stroke="#00AFCF" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="86" cy="246" r="2.8" fill="#00AFCF"/>
+      <text x="123" y="245" font-size="20" font-weight="780" fill="#267DC0">01</text>
+      <text x="70" y="313" font-size="28" font-weight="750" fill="#18365C">接入 Wi-Fi</text>
+      <text x="70" y="355" font-size="20" fill="#5C7893">只在校园 Wi-Fi 环境</text>
+      <text x="70" y="382" font-size="20" fill="#5C7893">检查认证状态</text>
+    </g>
+
+    <g id="status">
+      <rect x="330" y="194" width="254" height="214" rx="24" fill="#FFFFFF" stroke="#D7E8F7" stroke-width="2"/>
+      <circle cx="370" cy="237" r="22" fill="#E6EEFF"/>
+      <circle cx="367" cy="234" r="9" fill="none" stroke="#3A84EA" stroke-width="3.4"/>
+      <path d="M374 241l7 7" fill="none" stroke="#3A84EA" stroke-width="3.4" stroke-linecap="round"/>
+      <text x="407" y="245" font-size="20" font-weight="780" fill="#267DC0">02</text>
+      <text x="354" y="313" font-size="28" font-weight="750" fill="#18365C">查询在线状态</text>
+      <text x="354" y="355" font-size="20" fill="#5C7893">已有会话时</text>
+      <text x="354" y="382" font-size="20" fill="#5C7893">直接进入监控</text>
+    </g>
+
+    <g id="login">
+      <rect x="614" y="194" width="254" height="214" rx="24" fill="#FFFFFF" stroke="#D7E8F7" stroke-width="2"/>
+      <circle cx="654" cy="237" r="22" fill="#E8E7FF"/>
+      <path d="M645 234h17m-6-6 6 6-6 6M643 226v-4h18v29h-18v-4" fill="none" stroke="#6861D9" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="691" y="245" font-size="20" font-weight="780" fill="#267DC0">03</text>
+      <text x="638" y="313" font-size="28" font-weight="750" fill="#18365C">离线才认证</text>
+      <text x="638" y="355" font-size="20" fill="#5C7893">探测 ACID · Challenge</text>
+      <text x="638" y="382" font-size="20" fill="#5C7893">完成深澜登录</text>
+    </g>
+
+    <g id="verify">
+      <rect x="898" y="194" width="254" height="214" rx="24" fill="#FFFFFF" stroke="#D7E8F7" stroke-width="2"/>
+      <circle cx="938" cy="237" r="22" fill="#DDF7EB"/>
+      <path d="M927 237l8 8 15-17" fill="none" stroke="#19A971" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="975" y="245" font-size="20" font-weight="780" fill="#267DC0">04</text>
+      <text x="922" y="313" font-size="28" font-weight="750" fill="#18365C">再次确认在线</text>
+      <text x="922" y="355" font-size="20" fill="#5C7893">确认后持续监控</text>
+      <text x="922" y="382" font-size="20" fill="#5C7893">而非相信登录回包</text>
+    </g>
+
+    <path d="M1025 425v18q0 23-23 23H474q-23 0-23-23v-18" fill="none" stroke="#8BAFE8" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="8 8"/>
+    <path d="M443 437l8-12 8 12" fill="none" stroke="#8BAFE8" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="572" y="445" width="300" height="44" rx="22" fill="#EAF4FF"/>
+    <text x="596" y="474" font-size="20" font-weight="690" fill="#3974AD">监控发现掉线 → 重新检查</text>
+  </g>
+</svg>

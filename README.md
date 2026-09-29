@@ -1,152 +1,87 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="LinkUp：自动完成深澜校园网认证、断网重连与在线状态监控">
+  <img src="./assets/readme/hero.svg" width="100%" alt="LinkUp：连接校园 Wi-Fi 后，自动处理深澜认证与断线重连的 Android 和 Windows 客户端。右侧为设备与 Wi-Fi 信号的抽象插画。">
 </p>
 
-<p align="center">
-  <a href="https://github.com/mel0nyrame/LinkUp/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/mel0nyrame/LinkUp?style=flat-square&color=247cff"></a>
-  <img alt="Platform: Android" src="https://img.shields.io/badge/platform-Android-34C759?style=flat-square">
-  <img alt="Built with Flutter" src="https://img.shields.io/badge/built%20with-Flutter-02569B?style=flat-square&logo=flutter&logoColor=white">
-  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6f7f8f?style=flat-square"></a>
-</p>
+LinkUp 面向使用**深澜（Srun）认证**的校园网。保存账号后，它会在连接校园 Wi-Fi 时检查在线状态，按需探测 ACID、完成认证，并在运行期间监控连接、尝试断线重连。
 
-LinkUp 是一个面向 **深澜（Srun）校园网**的 Android 自动认证客户端。配置一次账号后，它会检测网络状态、自动探测 ACID、完成登录，并在断网时尝试重新连接。
+**[下载 Android APK / Windows 安装器](https://github.com/mel0nyrame/LinkUp/releases/latest)** · [查看认证原理](#它如何保持连接) · [从源码构建](#从源码构建)
 
 > [!NOTE]
-> LinkUp 是基于公开协议实现的第三方客户端，与深澜官方无关。
+> LinkUp 是基于公开协议实现的第三方客户端，与深澜官方无关。实际可用性取决于学校的认证环境。
 
-## 界面预览
-
-<p align="center">
-  <a href="./assets/main_screen.jpg"><img src="./assets/main_screen.jpg" width="31%" alt="LinkUp 概况页，展示网络状态、在线设备和网络信息"></a>&nbsp;
-  <a href="./assets/setting_screen.jpg"><img src="./assets/setting_screen.jpg" width="31%" alt="LinkUp 设置页，展示账号信息和后台运行选项"></a>&nbsp;
-  <a href="./assets/setting_screen_2.jpg"><img src="./assets/setting_screen_2.jpg" width="31%" alt="LinkUp 网络配置页，展示 ACID 自动探测和认证服务器设置"></a>
-</p>
-
-<p align="center"><sub>概况与网络状态 · 账号与系统选项 · ACID 与认证服务器配置</sub></p>
-
-## 它解决什么
-
-- **自动认证** — 连接校园 Wi‑Fi 后自动完成深澜登录流程。
-- **断网重连** — 由常驻通知的前台服务周期检测网络状态，离线时自动尝试恢复连接。
-- **自动探测 ACID** — 从 Portal 重定向链和登录页面识别接入点，无需逐个试值。
-- **状态一目了然** — 查看 IP、流量、在线时长和在线设备。
-- **适合后台运行** — 支持前台服务保活、开机自启与错误日志，便于长期使用和排障。
+## 真实界面
 
 <p align="center">
-  <img src="./assets/readme/workflow.svg" width="100%" alt="LinkUp 从检测 Wi-Fi、探测 ACID、获取 Challenge、加密认证到持续监控和重连的流程">
+  <img src="./assets/readme/showcase.png" width="100%" alt="LinkUp Android 客户端的真实概况页和网络配置页：概况页处于未连接状态；设置页展示 ACID 自动探测和认证服务器配置。">
 </p>
 
-## 开始使用
+以上是 **Android 客户端的真实截图**，左侧概况页处于未连接状态。可分别打开 [完整概况页](./assets/main_screen.jpg) 和 [完整网络配置页](./assets/setting_screen_2.jpg) 查看细节。Windows 客户端的操作入口见下文。
 
-### 安装 APK
+## 下载与开始使用
 
-1. 前往 [Releases](https://github.com/mel0nyrame/LinkUp/releases) 下载最新 APK。
-2. 在 Android 设备上允许安装来自此来源的应用并完成安装。
-3. 首次启动时填写学号或工号、密码；ACID 建议保持“自动获取”。
+- **Android**：在 [Releases](https://github.com/mel0nyrame/LinkUp/releases/latest) 下载 `linkup.apk`。应用打开时运行；可开启“保留后台运行”以在离开界面后继续监控。
+- **Windows**：在 [Releases](https://github.com/mel0nyrame/LinkUp/releases/latest) 下载 `LinkUp-Setup-<版本>.exe`。提供主窗口与系统托盘；可在设置中开启登录自启。
 
-进入概况页后，LinkUp 会自动检测并认证。下拉页面可立即触发一次手动刷新。
+1. 安装对应平台的文件，并连接需要深澜认证的校园 Wi-Fi。
+2. 在 LinkUp 中保存学号或工号、密码。ACID 建议先保持**自动获取**；如学校使用不同认证服务器，再修改服务器地址。
+3. 返回概况页查看认证状态。Android 可下拉手动刷新；Windows 可点“立即检查”或使用托盘菜单。
 
-### 从源码构建
+LinkUp 只在 Wi-Fi 环境中尝试校园网认证，不会使用移动数据代替校园 Wi-Fi。
 
-需要 Flutter `3.47.5`（stable，内置 Dart `3.13.4`）、JDK 21 和 Android SDK 36。具体版本以 `pubspec.yaml` 与 `android/` 为准。
+## 它如何保持连接
+
+<p align="center">
+  <img src="./assets/readme/auth-cycle.svg" width="100%" alt="LinkUp 认证流程：连接校园 Wi-Fi，查询在线状态，离线时才探测 ACID 并登录，登录后再次确认在线；监控发现掉线则重新检查。">
+</p>
+
+**先判断，再登录，最后确认。** LinkUp 先查询当前是否在线；只有离线时才进入 ACID 探测、Challenge 获取与深澜登录。门户返回成功后，它还会再次查询在线状态，而不是仅凭登录响应判定连接成功。运行期间发现断线，认证流程会重新尝试。
+
+- **Android**：可通过前台服务在离开界面后继续运行，并用常驻通知显示状态。开机自启需要已保存账号，同时开启“保留后台运行”和“开机自启动”；系统仍可能限制后台活动。
+- **Windows**：认证运行时由应用进程承载，提供主窗口、系统托盘、手动检查与可选的登录自启。退出应用会结束本次监控。
+
+账号和密码保存在本机；认证参数由客户端生成。协议字段、加密链路、JSONP 与 ACID 探测的细节见 [深澜认证协议技术文档](./docs/深澜认证协议技术文档.md)。
+
+## 适用范围与排查
+
+当前维护的客户端是 **Android 和 Windows**。仓库中的 iOS、macOS、Linux 与 Web 目录不代表这些平台已经适配或提供安装包。
+
+<details>
+<summary><strong>连接校园 Wi-Fi 后仍未认证？</strong></summary>
+
+先确认账号与密码；将 ACID 设为“自动获取”。如果学校的 Portal 无法被自动探测，可向学校网络中心确认接入点 ID 和认证服务器地址后手动填写。
+
+</details>
+
+<details>
+<summary><strong>Android 切到后台后不再重连？</strong></summary>
+
+在应用中开启“保留后台运行”，并检查通知、自启动、电池优化和厂商后台权限。若在系统设置中对 LinkUp 执行了强行停止，需要重新打开应用。常驻通知和系统后台策略会影响持续运行。
+
+</details>
+
+<details>
+<summary><strong>在哪里看状态和日志？</strong></summary>
+
+Android 概况页显示认证状态、网络信息和在线设备；设置页可进入日志查看。Windows 主窗口提供概况、账号与网络、诊断日志，托盘菜单也可手动检查。
+
+</details>
+
+## 从源码构建
+
+以 [pubspec.yaml](./pubspec.yaml) 声明的 Flutter 版本为准。Android 构建还需要 JDK 21 与 Android SDK；Windows 构建需要 Windows 开发环境。以下命令分别在对应平台执行：
 
 ```bash
 git clone https://github.com/mel0nyrame/LinkUp.git
 cd LinkUp
 flutter pub get
-flutter build apk --release
+flutter build apk --release       # Android
+flutter build windows --release   # Windows
 ```
 
-构建产物位于 `build/app/outputs/flutter-apk/app-release.apk`。
-GitHub Release 提供的安装包文件名为 `linkup.apk`。
+Windows Release 中的安装器由 [Inno Setup 脚本](./windows/installer/LinkUp.iss) 打包；`flutter build windows` 生成的是应用目录，不是安装器。开发时可运行 `flutter analyze --no-fatal-infos` 与 `flutter test` 检查改动。
 
-## 工作原理
+## 开源与致谢
 
-<p align="center">
-  <img src="./assets/readme/auth-loop.svg" width="100%" alt="LinkUp 深澜认证闭环：检测 Wi-Fi 和在线状态，离线时探测 ACID、获取 Challenge、生成加密参数并登录，二次确认在线后持续监控，断线则重新尝试">
-</p>
+项目基于 [Flutter](https://flutter.dev/) 构建，协议实现参考了 [GDOUYJ_Internet_Client](https://github.com/1328411791/GDOUYJ_Internet_Client)、[srun_client](https://github.com/CyLzzh/srun_client) 和 [BitSrunLoginGo](https://github.com/Mmx233/BitSrunLoginGo)。
 
-1. **登录前判断**：检测 Wi‑Fi、读取配置，并通过 `rad_user_info` 查询当前状态；已经在线则直接进入监控。
-2. **离线时认证**：自动探测 ACID、获取 Challenge，在本地通过 HMAC-MD5、XXTEA、自定义 Base64 与 SHA-1 生成认证参数，再提交登录。
-3. **登录后确认**：再次查询 `rad_user_info`，而不是仅依赖 Portal 的成功响应；监控发现断线后重新进入认证流程。
-
-## 平台与限制
-
-| 平台 | 支持情况 | 说明 |
-| --- | --- | --- |
-| Android | ✅ 主要支持平台 | 包含前台服务保活与开机自启 |
-| iOS | ⚠️ 尚未适配 | 暂不提供可用版本 |
-| Windows / macOS / Linux | ⚠️ 尚未适配 | 暂不提供可用版本 |
-| Web | ❌ 不支持 | 浏览器网络权限不满足认证需求 |
-
-## 后台运行
-
-“保留后台运行”由一个 Android 前台服务承载。该服务创建独立的运行时执行认证流程，并发布一条低重要性的常驻通知说明当前认证状态。
-
-- 开启后，关闭应用界面、锁屏或切到其他应用都不会中断自动重连；常驻通知的正文会随认证状态切换，例如“正在检查网络状态…”“正在认证校园网…”“已连接到校园网”“WiFi 未连接”“认证未完成，将自动重试”。
-- 关闭后，服务停止、认证调度取消、网络监听注销、运行时资源释放，LinkUp 只在应用打开时认证。
-- 校园 Wi-Fi 断开时服务保持运行并显示“WiFi 未连接”，同时作废当前网络的 ACID；Wi-Fi 恢复后立即重新认证，不需要等待下一个检查周期。
-- Android 13 及更高版本在首次开启时会申请通知权限。拒绝权限不会导致崩溃，但系统将不再展示常驻通知，也无法在通知栏看到认证状态。
-- 服务被系统正常回收后会按 sticky 语义重建。但如果你在系统应用信息中对 LinkUp 执行**强行停止**，撤销了通知或自启授权，或厂商 ROM 强制禁用了后台活动，Android 不会为它恢复服务；这些情况需要你重新打开 LinkUp 并确认系统授权，LinkUp 不会自动绕开它们。
-
-“开机自启”是“保留后台运行”的下游开关。只有已保存账号配置，并且“保留后台运行”和“开机自启”同时开启时，设备重启后才会自动恢复认证；任一条件不满足都不会启动，LinkUp 也不会为了开机认证而拉起界面。开机时通常还没有网络，服务会等待第一个可用网络后再认证。
-
-若自动重连没有按预期工作，请确认：
-
-1. 在 LinkUp 的“系统设置”中开启保留后台运行；
-2. 允许 LinkUp 发送通知；
-3. 将 LinkUp 加入系统电池优化白名单；
-4. 在系统设置中允许自启动（部分小米、华为、OPPO、vivo 设备需要额外授权）。
-
-## 常见问题
-
-<details>
-<summary><strong>提示“WiFi 未开启”</strong></summary>
-
-请确认设备已连接需要认证的校园 Wi‑Fi。LinkUp 不会通过移动数据执行校园网认证。
-</details>
-
-<details>
-<summary><strong>登录失败并提示 ACID 错误</strong></summary>
-
-优先将 ACID 模式切换为“自动获取”。若当前网络无法完成自动探测，再向学校网络中心确认接入点 ID 后手动填写。
-</details>
-
-<details>
-<summary><strong>应用切到后台后不再自动重连</strong></summary>
-
-确认已开启“保留后台运行”并允许通知权限，再检查系统的电池优化、自启动和后台活动权限。不同厂商的限制策略可能不同；如果之前对 LinkUp 执行过强行停止，需要重新打开应用。
-</details>
-
-<details>
-<summary><strong>如何查看错误日志</strong></summary>
-
-可在应用的日志卡片中查看。Android 上日志文件位于应用私有目录 `app_flutter/error.log`，通常无法由普通文件管理器直接访问。
-</details>
-
-## 开发
-
-```bash
-flutter analyze --no-fatal-infos  # 静态分析
-flutter test                      # 运行测试
-```
-
-当 `RadUserInfo` 的 JSON 模型发生变化时，重新生成序列化代码：
-
-```bash
-dart run build_runner build
-```
-
-协议字段、加密链路、JSONP、ACID 探测与错误码说明见 [深澜认证协议技术文档](./docs/深澜认证协议技术文档.md)。
-
-## 致谢
-
-LinkUp 使用 [Flutter](https://flutter.dev/) 构建，并参考了以下开源项目对深澜协议的实现：
-
-- [1328411791/GDOUYJ_Internet_Client](https://github.com/1328411791/GDOUYJ_Internet_Client)
-- [CyLzzh/srun_client](https://github.com/CyLzzh/srun_client)
-- [Mmx233/BitSrunLoginGo](https://github.com/Mmx233/BitSrunLoginGo)
-
-## 许可与免责声明
-
-本项目采用 [MIT License](LICENSE) 开源，仅供学习和个人使用。请遵守所在学校的网络管理规定；使用本工具产生的后果由使用者自行承担。
+采用 [MIT License](./LICENSE) 开源。请遵守所在学校的网络管理规定。

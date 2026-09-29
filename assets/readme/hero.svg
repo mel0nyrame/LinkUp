@@ -1,53 +1,85 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
-  <title id="title">LinkUp — 深澜校园网自动认证客户端</title>
-  <desc id="desc">连接校园 Wi-Fi 后，LinkUp 自动探测接入点、完成深澜认证，并持续监控网络状态。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">LinkUp — 深澜校园网自动认证</title>
+  <desc id="desc">浅色抽象设备与 Wi-Fi 信号插画。连接校园 Wi-Fi 后，LinkUp 在 Android 和 Windows 上处理深澜认证与断线重连。</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#071526"/>
-      <stop offset="1" stop-color="#0B2442"/>
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FAFCFF"/>
+      <stop offset=".57" stop-color="#F1F8FF"/>
+      <stop offset="1" stop-color="#DCEEFF"/>
     </linearGradient>
     <linearGradient id="signal" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#13D7EA"/>
-      <stop offset="1" stop-color="#4A63FF"/>
+      <stop offset="0" stop-color="#04CBE7"/>
+      <stop offset=".54" stop-color="#258DF4"/>
+      <stop offset="1" stop-color="#6863F5"/>
     </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F6FDFF"/>
+      <stop offset="1" stop-color="#D7E9FF"/>
+    </linearGradient>
+    <filter id="lift" x="-20%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="13" stdDeviation="13" flood-color="#4C82BF" flood-opacity=".15"/>
+    </filter>
+    <clipPath id="frame"><rect width="1200" height="480" rx="30"/></clipPath>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.4" fill="#78AEE4" opacity=".28"/>
+    </pattern>
   </defs>
 
-  <rect width="1200" height="420" rx="30" fill="url(#bg)"/>
-  <path d="M0 326C210 273 340 345 520 294S822 170 1200 246V420H0Z" fill="#0D2D50" opacity=".72"/>
+  <g clip-path="url(#frame)">
+    <rect width="1200" height="480" fill="url(#ground)"/>
+    <circle cx="951" cy="240" r="235" fill="#C4E9FA" opacity=".38"/>
+    <circle cx="951" cy="240" r="187" fill="none" stroke="#99D9F5" stroke-width="2" opacity=".72"/>
+    <circle cx="951" cy="240" r="135" fill="none" stroke="#A7D7F3" stroke-width="2" opacity=".58"/>
+    <rect x="675" y="0" width="525" height="480" fill="url(#dots)"/>
+    <path d="M665 407C762 448 880 450 1011 395s201-74 275-41" fill="none" stroke="#8DD3F4" stroke-width="22" opacity=".22"/>
+    <path d="M702 421C823 460 988 433 1145 383" fill="none" stroke="#44A9F2" stroke-width="4" opacity=".28" stroke-dasharray="4 13" stroke-linecap="round"/>
 
-  <g transform="translate(64 58)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
-    <text x="0" y="20" fill="#73DCE8" font-size="18" font-weight="700" letter-spacing="2.4">SRUN · ANDROID</text>
-    <text x="0" y="112" fill="#F5FAFF" font-size="82" font-weight="760" letter-spacing="-3">LinkUp</text>
-    <text x="0" y="164" fill="#D8E6F2" font-size="28" font-weight="600">让校园网认证，在后台自己完成。</text>
-    <text x="0" y="208" fill="#91A9BE" font-size="21">自动探测 ACID · 断网自动重连 · 在线状态监控</text>
-
-    <g transform="translate(0 252)" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18">
-      <rect width="122" height="40" rx="20" fill="#123957"/>
-      <circle cx="22" cy="20" r="6" fill="#37D67A"/>
-      <text x="38" y="26" fill="#DDF8E8">已连接</text>
-      <rect x="138" width="124" height="40" rx="20" fill="#123957"/>
-      <text x="158" y="26" fill="#B9CAD8">v1.11.0</text>
+    <g id="laptop" filter="url(#lift)" transform="rotate(6 1000 235)">
+      <rect x="853" y="101" width="291" height="220" rx="20" fill="#FFFFFF" stroke="#BED9F2" stroke-width="3"/>
+      <rect x="866" y="114" width="265" height="191" rx="12" fill="url(#screen)"/>
+      <path d="M842 321h314l28 26q7 7-7 12H821q-14-5-7-12z" fill="#F8FCFF" stroke="#BED9F2" stroke-width="3"/>
+      <path d="M954 321h90l11 12H943z" fill="#DBEDFA"/>
+      <g transform="translate(999 205)" fill="none" stroke="url(#signal)" stroke-linecap="round">
+        <path d="M-88 -10Q0 -92 88 -10" stroke-width="19"/>
+        <path d="M-51 34Q0 -13 51 34" stroke-width="19"/>
+        <circle cy="68" r="13" fill="#6564F5" stroke="none"/>
+      </g>
     </g>
-  </g>
 
-  <g transform="translate(730 43)">
-    <rect x="0" y="0" width="406" height="334" rx="36" fill="#F8FBFF"/>
-    <rect x="18" y="18" width="370" height="298" rx="25" fill="#ECF5FD"/>
-    <text x="42" y="56" fill="#14283D" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="22" font-weight="750">网络监控中</text>
-    <circle cx="340" cy="49" r="7" fill="#37C86B"/>
-
-    <g transform="translate(203 144)" fill="none" stroke="url(#signal)" stroke-linecap="round">
-      <path d="M-116 -25Q0 -130 116 -25" stroke-width="30"/>
-      <path d="M-67 32Q0 -29 67 32" stroke-width="30"/>
+    <g id="phone" filter="url(#lift)" transform="rotate(-9 786 270)">
+      <rect x="696" y="124" width="176" height="301" rx="31" fill="#FFFFFF" stroke="#B7D6F1" stroke-width="3"/>
+      <rect x="709" y="141" width="150" height="266" rx="22" fill="#EDF6FF"/>
+      <rect x="754" y="148" width="60" height="6" rx="3" fill="#A8C7E8"/>
+      <g transform="translate(784 240)" fill="none" stroke="url(#signal)" stroke-linecap="round">
+        <path d="M-48 -4Q0 -47 48 -4" stroke-width="12"/>
+        <path d="M-27 20Q0 -5 27 20" stroke-width="12"/>
+        <circle cy="41" r="8" fill="#6564F5" stroke="none"/>
+      </g>
+      <path d="M732 331h104" stroke="#BED8F4" stroke-width="12" stroke-linecap="round"/>
+      <path d="M732 358h72" stroke="#D3E4F6" stroke-width="12" stroke-linecap="round"/>
+      <circle cx="784" cy="392" r="5" fill="#A9C7E6"/>
     </g>
-    <circle cx="203" cy="203" r="19" fill="#4A63FF"/>
 
-    <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="17">
-      <text x="42" y="268" fill="#557087">PORTAL</text>
-      <path d="M120 263H196" stroke="#97ADBF" stroke-width="2" stroke-dasharray="5 6"/>
-      <circle cx="208" cy="263" r="6" fill="#13C7DD"/>
-      <path d="M220 263H290" stroke="#97ADBF" stroke-width="2" stroke-dasharray="5 6"/>
-      <text x="302" y="268" fill="#248957">ONLINE</text>
+    <path d="M634 0h72v480h-72" fill="#F8FBFF" opacity=".27"/>
+
+    <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+      <g transform="translate(64 58)" fill="none" stroke-linecap="round" stroke-width="8">
+        <path d="M3 13Q27 -8 51 13" stroke="#07C8E9"/>
+        <path d="M15 28Q27 18 39 28" stroke="#2D99FF"/>
+        <circle cx="27" cy="40" r="4.6" fill="#625EF8" stroke="none"/>
+      </g>
+      <text x="135" y="82" font-size="19" font-weight="750" letter-spacing="2" fill="#28629B">校园网 · 深澜协议</text>
+      <text x="64" y="216" font-size="96" font-weight="780" letter-spacing="-4" fill="#102B50">LinkUp</text>
+      <text x="64" y="286" font-size="41" font-weight="730" fill="#183960">连接校园 Wi-Fi 后，</text>
+      <text x="64" y="338" font-size="41" font-weight="730" fill="#183960">认证与重连自动处理。</text>
+      <g font-size="19" font-weight="690" fill="#27669E">
+        <rect x="64" y="379" width="108" height="47" rx="23.5" fill="#FFFFFF" fill-opacity=".88" stroke="#C6DAEF"/>
+        <text x="82" y="409">Android</text>
+        <rect x="185" y="379" width="122" height="47" rx="23.5" fill="#FFFFFF" fill-opacity=".88" stroke="#C6DAEF"/>
+        <text x="203" y="409">Windows</text>
+        <rect x="320" y="379" width="165" height="47" rx="23.5" fill="#FFFFFF" fill-opacity=".88" stroke="#C6DAEF"/>
+        <text x="338" y="409">自动探测 ACID</text>
+      </g>
     </g>
   </g>
 </svg>

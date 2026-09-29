@@ -32,14 +32,38 @@ jobs:
           if [ "$TAG" = "$GITHUB_REF" ]; then
             TAG="$INPUT_TAG"
           fi
-          VERSION=$(echo "$TAG" | sed -E 's/^release-v?//; s/^v//')
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "无法从 tag 解析三段版本号：$TAG" >&2
+          if ! [[ "$TAG" =~ ^release-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "发布 tag 必须采用 release-v<主版本.次版本.修订号>：$TAG" >&2
             exit 1
           fi
+          VERSION="${BASH_REMATCH[1]}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "解析得到 tag=$TAG version=$VERSION"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+
+      - name: Verify manually written release notes
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          NOTES_FILE="docs/releases/${RELEASE_TAG}.md"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "缺少发布说明：${NOTES_FILE}。请先在目标提交中编写中文发布说明，再创建 tag。" >&2
+            exit 1
+          fi
+          if ! awk '
+            /^## 更新内容$/ { in_updates = 1; next }
+            /^## / { in_updates = 0 }
+            in_updates && /^- .+/ { found = 1 }
+            END { exit !found }
+          ' "$NOTES_FILE"; then
+            echo "发布说明须包含「## 更新内容」和至少一条具体更新。" >&2
+            exit 1
+          fi
 
   test:
     name: Run tests (gate)
@@ -137,7 +161,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-version.outputs.tag }}
-          fetch-depth: 0 # 拿全 history 以便生成 changelog
 
       - name: Setup Java
         uses: actions/setup-java@v6
@@ -179,41 +202,7 @@ jobs:
           SRC=build/app/outputs/flutter-apk/app-release.apk
           DST=linkup.apk
           cp "$SRC" "$DST"
-          SIZE=$(du -h "$DST" | cut -f1)
           echo "apk_path=$DST" >> "$GITHUB_OUTPUT"
-          echo "apk_size=$SIZE" >> "$GITHUB_OUTPUT"
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # 拿到上一个 release-v* tag 与当前 tag 之间的 commits
-          CURRENT="${{ needs.resolve-version.outputs.tag }}"
-          PREV=$(git tag --sort=-creatordate | grep -E '^release-v' | grep -v -x -F "$CURRENT" | head -1 || echo "")
-          {
-            echo "## 📦 LinkUp ${{ needs.resolve-version.outputs.version }}"
-            echo ""
-            echo "### 更新内容"
-            echo ""
-            if [ -n "$PREV" ]; then
-              git log "$PREV..$CURRENT" --pretty=format:'- %s (%h)' --no-merges
-            else
-              git log "$CURRENT" --pretty=format:'- %s (%h)' --no-merges -20
-            fi
-            echo ""
-            echo ""
-            echo "### 安装"
-            echo ""
-            echo "- Android: 下载下方 \`linkup.apk\` 直接安装（APK 大小约 ${{ steps.artifact.outputs.apk_size }}）"
-            echo "- Android 安装后请在系统设置中授予「自启动」和「忽略电池优化」权限以保证后台保活"
-            echo "- Windows: 下载下方 \`LinkUp-Setup-${{ needs.resolve-version.outputs.version }}.exe\` 并运行安装器完成升级"
-            echo ""
-            echo "### SHA-256"
-            echo ""
-            echo '```'
-            sha256sum "${{ steps.artifact.outputs.apk_path }}"
-            echo '```'
-          } > RELEASE_NOTES.md
-          cat RELEASE_NOTES.md
 
       - name: Download Windows installer
         uses: actions/download-artifact@v8
@@ -221,11 +210,29 @@ jobs:
           name: linkup-windows-installer
           path: windows-artifact
 
+      - name: Compose Chinese release notes
+        env:
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.tag }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          APK_PATH: ${{ steps.artifact.outputs.apk_path }}
+        run: |
+          WINDOWS_FILE="LinkUp-Setup-${VERSION}.exe"
+          {
+            cat "docs/releases/${RELEASE_TAG}.md"
+            printf '\n## 下载与安装\n\n'
+            printf -- '- 安卓：下载下方的 `%s` 并安装；需要离开界面后持续监控时，在应用中开启「保留后台运行」。\n' "$APK_PATH"
+            printf -- '- Windows：下载下方的 `%s` 并运行安装器。\n' "$WINDOWS_FILE"
+            printf '\n## 文件校验\n\n以下为发布文件的 SHA-256 校验值：\n\n```text\n'
+            sha256sum "$APK_PATH"
+            (cd windows-artifact && sha256sum "$WINDOWS_FILE")
+            printf '```\n'
+          } > RELEASE_NOTES.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag }}
-          name: LinkUp ${{ needs.resolve-version.outputs.version }}
+          name: LinkUp ${{ needs.resolve-version.outputs.version }} · 正式版
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false
