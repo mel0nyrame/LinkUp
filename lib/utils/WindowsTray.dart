@@ -1,9 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 enum WindowsTrayAction {
-  togglePopup,
-  hidePopup,
   openMain,
   openSettings,
   openLogs,
@@ -18,12 +15,11 @@ class WindowsTrayClient {
   static const String channelName = 'com.mel0ny.linkup/windowsTray';
   static const String methodAttach = 'attach';
   static const String methodSetTooltip = 'setTooltip';
-  static const String methodShowMain = 'showMain';
+  static const String methodSetPopupState = 'setPopupState';
   static const String methodExitComplete = 'exitComplete';
   static const String methodOnAction = 'onAction';
 
   final MethodChannel _channel;
-  final ValueNotifier<bool> popupVisible = ValueNotifier<bool>(false);
   Future<void> Function(WindowsTrayAction action)? onAction;
 
   Future<void> attach() async {
@@ -41,7 +37,8 @@ class WindowsTrayClient {
     }
   }
 
-  Future<void> showMain() => _channel.invokeMethod<void>(methodShowMain);
+  Future<void> setPopupState(Map<String, Object?> state) =>
+      _channel.invokeMethod<void>(methodSetPopupState, state);
 
   Future<void> completeExit() =>
       _channel.invokeMethod<void>(methodExitComplete);
@@ -54,20 +51,6 @@ class WindowsTrayClient {
     );
     if (action.isEmpty) return null;
 
-    switch (action.single) {
-      case WindowsTrayAction.togglePopup:
-        popupVisible.value = !popupVisible.value;
-        break;
-      case WindowsTrayAction.hidePopup:
-      case WindowsTrayAction.openMain:
-      case WindowsTrayAction.openSettings:
-      case WindowsTrayAction.openLogs:
-        popupVisible.value = false;
-        break;
-      case WindowsTrayAction.manualCheck:
-      case WindowsTrayAction.exitRequested:
-        break;
-    }
     await onAction?.call(action.single);
     return null;
   }

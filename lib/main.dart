@@ -8,6 +8,7 @@ import 'package:LinkUp/utils/SystemSettingsUtil.dart';
 import 'package:LinkUp/utils/ConfigUtil.dart';
 import 'package:LinkUp/utils/WindowsAuthRuntime.dart';
 import 'package:LinkUp/page/WindowsTrayApp.dart';
+import 'package:LinkUp/page/WindowsPopupApp.dart';
 import 'package:LinkUp/utils/WindowsTray.dart';
 // 后台 FlutterEngine 从主 APK 的 Dart bundle 加载此独立入口。
 // ignore: unused_import
@@ -28,6 +29,12 @@ void main(List<String> args) async {
   // 往返并创建文件，后者会拉起前台服务并弹系统通知权限对话框。放在 runApp 之前
   // 会让打开应用先卡在这两件事上，界面连第一帧都画不出来。
   WidgetsBinding.instance.addPostFrameCallback((_) => _prepareRuntime());
+}
+
+@pragma('vm:entry-point')
+void popupMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const WindowsPopupApp());
 }
 
 Future<void> _startWindows({required bool checkForUpdatesOnStartup}) async {

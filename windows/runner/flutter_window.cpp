@@ -262,9 +262,15 @@ bool FlutterWindow::OnCreate() {
           }
           UpdateTrayTooltip(*text);
           result->Success();
-        } else if (call.method_name() == "showMain") {
-          ShowMainWindow();
-          DispatchTrayAction("openMain");
+        } else if (call.method_name() == "setPopupState") {
+          const auto* state =
+              std::get_if<flutter::EncodableMap>(call.arguments());
+          if (!state) {
+            result->Error("invalid_popup_state", "Expected a state map");
+            return;
+          }
+          popup_state_ = *state;
+          if (popup_window_) popup_window_->UpdateState(popup_state_);
           result->Success();
         } else if (call.method_name() == "exitComplete") {
           exiting_ = true;
@@ -308,8 +314,6 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
-  GetWindowRect(GetHandle(), &normal_window_bounds_);
-  normal_bounds_saved_ = true;
   taskbar_created_message_ = RegisterWindowMessageW(L"TaskbarCreated");
   notification_window_ = GetHandle();
   DWORD negotiated_version = 0;
@@ -340,6 +344,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (popup_window_) {
+    popup_window_->Destroy();
+    popup_window_.reset();
+  }
   RemoveTrayIcon();
   if (ip_notification_) {
     CancelMibChangeNotify2(ip_notification_);
@@ -379,21 +387,24 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   if (message == kTrayCallbackMessage) {
     switch (LOWORD(lparam)) {
       case WM_LBUTTONUP:
+        if (tray_version_4_) return 0;
+        ShowPopup();
+        return 0;
       case NIN_SELECT:
       case NIN_KEYSELECT:
-        if (popup_mode_) {
-          HideToTray();
-        } else {
-          ShowPopup();
-          DispatchTrayAction("togglePopup");
-        }
+        ShowPopup();
         return 0;
       case WM_LBUTTONDBLCLK:
-        ShowMainWindow();
-        DispatchTrayAction("openMain");
+        if (popup_window_) popup_window_->Hide();
         return 0;
       case WM_RBUTTONUP:
+        if (tray_version_4_) return 0;
+        ShowTrayMenu();
+        return 0;
       case WM_RBUTTONDBLCLK:
+        if (tray_version_4_) return 0;
+        ShowTrayMenu();
+        return 0;
       case WM_CONTEXTMENU:
         ShowTrayMenu();
         return 0;
@@ -423,10 +434,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
   if (message == kExitApplicationMessage) {
     DestroyWindow(hwnd);
-    return 0;
-  }
-  if (message == WM_ACTIVATE && popup_mode_ && LOWORD(wparam) == WA_INACTIVE) {
-    HideToTray();
     return 0;
   }
   if (message == kWifiChangedMessage) {
@@ -469,7 +476,7 @@ bool FlutterWindow::AddTrayIcon() {
 
   tray_icon_added_ = true;
   data.uVersion = NOTIFYICON_VERSION_4;
-  Shell_NotifyIconW(NIM_SETVERSION, &data);
+  tray_version_4_ = Shell_NotifyIconW(NIM_SETVERSION, &data) != FALSE;
   return true;
 }
 
@@ -481,6 +488,7 @@ void FlutterWindow::RemoveTrayIcon() {
   data.uID = kTrayIconId;
   Shell_NotifyIconW(NIM_DELETE, &data);
   tray_icon_added_ = false;
+  tray_version_4_ = false;
 }
 
 void FlutterWindow::UpdateTrayTooltip(const std::string& text) {
@@ -498,36 +506,56 @@ void FlutterWindow::UpdateTrayTooltip(const std::string& text) {
 }
 
 void FlutterWindow::ShowPopup() {
-  HWND window = GetHandle();
-  if (!window) return;
-  if (IsIconic(window)) ShowWindow(window, SW_RESTORE);
-  SetPopupWindowMode(true);
-  const RECT bounds = PopupBounds();
-  SetWindowPos(window, HWND_TOPMOST, bounds.left, bounds.top,
-               bounds.right - bounds.left, bounds.bottom - bounds.top,
-               SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-  SetForegroundWindow(window);
+  if (!GetHandle()) return;
+  if (!popup_window_) {
+    popup_window_ = std::make_unique<TrayPopupWindow>(
+        project_, popup_state_,
+        [this](const std::string& action) {
+          if (action == "openMain") ShowMainWindow();
+          DispatchTrayAction(action);
+        },
+        [this]() {
+          NOTIFYICONIDENTIFIER identifier{};
+          identifier.cbSize = sizeof(identifier);
+          identifier.hWnd = notification_window_;
+          identifier.uID = kTrayIconId;
+          RECT icon_bounds{};
+          POINT cursor{};
+          return !SUCCEEDED(Shell_NotifyIconGetRect(&identifier, &icon_bounds)) ||
+                 (GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0 ||
+                 !GetCursorPos(&cursor) || !PtInRect(&icon_bounds, cursor);
+        });
+    if (!popup_window_->Create(L"LinkUp 状态", {0, 0}, {380, 390})) {
+      popup_window_.reset();
+      return;
+    }
+  }
+  if (popup_window_->IsOpen()) {
+    popup_window_->Hide();
+  } else {
+    popup_window_->ShowAt(PopupBounds());
+  }
 }
 
 void FlutterWindow::ShowMainWindow() {
   HWND window = GetHandle();
   if (!window) return;
-  SetPopupWindowMode(false);
+  if (popup_window_) popup_window_->Hide();
   ShowWindow(window, IsIconic(window) ? SW_RESTORE : SW_SHOW);
   SetWindowPos(window, HWND_NOTOPMOST, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
   if (!SetForegroundWindow(window)) FlashWindow(window, TRUE);
 }
 
-void FlutterWindow::HideToTray(bool notify_dart) {
+void FlutterWindow::HideToTray() {
   HWND window = GetHandle();
   if (!window) return;
-  SetPopupWindowMode(false);
+  if (popup_window_) popup_window_->Hide();
   ShowWindow(window, SW_HIDE);
-  if (notify_dart) DispatchTrayAction("hidePopup");
 }
 
 void FlutterWindow::ShowTrayMenu() {
+  if (popup_window_) popup_window_->Hide();
   HMENU menu = CreatePopupMenu();
   if (!menu) return;
   AppendMenuW(menu, MF_STRING, kMenuOpen, L"打开 LinkUp");
@@ -579,39 +607,6 @@ void FlutterWindow::DispatchTrayAction(const std::string& action) {
       "onAction", std::make_unique<flutter::EncodableValue>(action));
 }
 
-void FlutterWindow::SetPopupWindowMode(bool popup) {
-  HWND window = GetHandle();
-  if (!window || popup == popup_mode_) return;
-  if (popup) {
-    GetWindowRect(window, &normal_window_bounds_);
-    normal_bounds_saved_ = true;
-  }
-
-  LONG_PTR style = GetWindowLongPtrW(window, GWL_STYLE);
-  LONG_PTR extended_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
-  if (popup) {
-    style = (style & ~WS_OVERLAPPEDWINDOW) | WS_POPUP;
-    extended_style = (extended_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW;
-  } else {
-    style = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;
-    extended_style = (extended_style & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW;
-  }
-  SetWindowLongPtrW(window, GWL_STYLE, style);
-  SetWindowLongPtrW(window, GWL_EXSTYLE, extended_style);
-  popup_mode_ = popup;
-
-  if (!popup && normal_bounds_saved_) {
-    SetWindowPos(window, HWND_NOTOPMOST, normal_window_bounds_.left,
-                 normal_window_bounds_.top,
-                 normal_window_bounds_.right - normal_window_bounds_.left,
-                 normal_window_bounds_.bottom - normal_window_bounds_.top,
-                 SWP_FRAMECHANGED | SWP_NOACTIVATE);
-  } else {
-    SetWindowPos(window, nullptr, 0, 0, 0, 0,
-                 SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
-  }
-}
-
 RECT FlutterWindow::PopupBounds() {
   RECT icon_bounds{};
   NOTIFYICONIDENTIFIER identifier{};
@@ -637,7 +632,7 @@ RECT FlutterWindow::PopupBounds() {
       ScaleForDpi(380, dpi),
       monitor_info.rcWork.right - monitor_info.rcWork.left);
   const LONG height = std::min<LONG>(
-      ScaleForDpi(340, dpi),
+      ScaleForDpi(390, dpi),
       monitor_info.rcWork.bottom - monitor_info.rcWork.top);
   LONG x = monitor_info.rcWork.right - width;
   LONG y = monitor_info.rcWork.bottom - height;

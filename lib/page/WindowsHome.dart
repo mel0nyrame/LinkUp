@@ -17,11 +17,9 @@ class WindowsHome extends StatefulWidget {
     required this.initialState,
     required this.states,
     required this.onManualCheck,
-    this.compact = false,
     this.wifiConnected = false,
     this.wifiName,
     this.monitoringEnabled = false,
-    this.onOpenDetails,
     this.selectedDestination = 0,
     this.onDestinationChanged,
     this.configuration,
@@ -34,11 +32,9 @@ class WindowsHome extends StatefulWidget {
   final AuthRuntimeState initialState;
   final Stream<AuthRuntimeState> states;
   final Future<void> Function() onManualCheck;
-  final bool compact;
   final bool wifiConnected;
   final String? wifiName;
   final bool monitoringEnabled;
-  final VoidCallback? onOpenDetails;
   final int selectedDestination;
   final ValueChanged<int>? onDestinationChanged;
   final ConfigManager? configuration;
@@ -133,9 +129,6 @@ class _WindowsHomeState extends State<WindowsHome> {
 
   @override
   Widget build(BuildContext context) {
-    final presentation = _state.presentation;
-    if (widget.compact) return _buildPopup(context, presentation);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('LinkUp'),
@@ -629,108 +622,6 @@ class _WindowsHomeState extends State<WindowsHome> {
     if (days > 0) return '${days} 天 ${hours} 小时 ${minutes} 分';
     if (hours > 0) return '${hours} 小时 ${minutes} 分';
     return '${minutes} 分钟';
-  }
-
-  Widget _buildPopup(
-    BuildContext context,
-    AuthStatusPresentation presentation,
-  ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F8FC),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.wifi, color: colorScheme.primary),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'LinkUp',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: widget.onOpenDetails,
-                      child: const Text('打开窗口'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE1E8F0)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        presentation.title,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      if (presentation.detail != null &&
-                          presentation.detail != presentation.title &&
-                          presentation.actionHint == null) ...[
-                        const SizedBox(height: 6),
-                        Text(presentation.detail!),
-                      ],
-                      if (presentation.actionHint != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          presentation.actionHint!,
-                          style: TextStyle(color: colorScheme.primary),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.wifi, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _wifiLabel(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(widget.monitoringEnabled ? '正在监控' : '未监控'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: widget.onManualCheck,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('立即检查'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

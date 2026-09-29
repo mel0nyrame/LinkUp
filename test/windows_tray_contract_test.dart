@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:LinkUp/page/WindowsPopupApp.dart';
 import 'package:LinkUp/utils/WindowsTray.dart';
 
 void main() {
@@ -13,6 +14,12 @@ void main() {
     final nativeMain = File('windows/runner/main.cpp').readAsStringSync();
     final nativeWindowHeader = File('windows/runner/win32_window.h')
         .readAsStringSync();
+    final nativePopup = File('windows/runner/tray_popup_window.cpp')
+        .readAsStringSync();
+    final nativeBuild = File('windows/runner/CMakeLists.txt')
+        .readAsStringSync();
+    final dartEntrypoints = File('lib/main.dart').readAsStringSync();
+    final popupApp = File('lib/page/WindowsPopupApp.dart').readAsStringSync();
     final dartTray = File('lib/utils/WindowsTray.dart').readAsStringSync();
     final dartApp = File('lib/page/WindowsTrayApp.dart').readAsStringSync();
     final windowsLogs = File('lib/page/WindowsLogsPage.dart')
@@ -27,7 +34,7 @@ void main() {
     for (final method in <String>[
       WindowsTrayClient.methodAttach,
       WindowsTrayClient.methodSetTooltip,
-      WindowsTrayClient.methodShowMain,
+      WindowsTrayClient.methodSetPopupState,
       WindowsTrayClient.methodExitComplete,
       WindowsTrayClient.methodOnAction,
     ]) {
@@ -47,6 +54,34 @@ void main() {
       expect(nativeWindow, contains('L"$label"'));
     }
     expect(nativeWindow, contains('Shell_NotifyIconW(NIM_ADD'));
+    expect(nativeWindow, contains('std::make_unique<TrayPopupWindow>'));
+    expect(nativeWindow, contains('popup_window_->ShowAt(PopupBounds())'));
+    expect(nativeWindow, isNot(contains('SetPopupWindowMode')));
+    expect(nativePopup, contains('project_.set_dart_entrypoint("popupMain")'));
+    expect(nativeBuild, contains('"tray_popup_window.cpp"'));
+    expect(
+      dartEntrypoints,
+      contains("@pragma('vm:entry-point')\nvoid popupMain()"),
+    );
+    expect(dartEntrypoints, contains('runApp(const WindowsPopupApp());'));
+    expect(popupApp, isNot(contains('WindowsAuthRuntime')));
+    expect(nativePopup, contains(WindowsPopupApp.channelName));
+    for (final method in <String>[
+      WindowsPopupApp.methodGetState,
+      WindowsPopupApp.methodReady,
+      WindowsPopupApp.methodUpdateState,
+      WindowsPopupApp.methodManualCheck,
+      WindowsPopupApp.methodOpenDetails,
+      WindowsPopupApp.methodHidePopup,
+    ]) {
+      expect(nativePopup, contains('"$method"'));
+    }
+    expect(nativePopup, contains('WS_EX_TOOLWINDOW'));
+    expect(nativePopup, contains('WM_ACTIVATE'));
+    expect(nativePopup, contains('GetNativeWindow()'));
+    expect(nativePopup, isNot(contains('AuthenticationCoordinator')));
+    expect(dartApp, contains('WindowsPopupState.fromRuntime'));
+    expect(dartApp, isNot(contains('compact:')));
     expect(
       nativeWindow,
       contains('ShowMainWindow();\n      DispatchTrayAction("openLogs");'),
@@ -89,7 +124,13 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
-      expect(call.method, WindowsTrayClient.methodAttach);
+      expect(
+        call.method,
+        anyOf(
+          WindowsTrayClient.methodAttach,
+          WindowsTrayClient.methodSetPopupState,
+        ),
+      );
       return null;
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
@@ -99,13 +140,7 @@ void main() {
     tray.onAction = (action) async => actions.add(action);
     await tray.attach();
 
-    await messenger.handlePlatformMessage(
-      channel.name,
-      const StandardMethodCodec().encodeMethodCall(
-        const MethodCall(WindowsTrayClient.methodOnAction, 'togglePopup'),
-      ),
-      (_) {},
-    );
+    await tray.setPopupState(<String, Object?>{'title': '未配置'});
     await messenger.handlePlatformMessage(
       channel.name,
       const StandardMethodCodec().encodeMethodCall(
@@ -114,10 +149,6 @@ void main() {
       (_) {},
     );
 
-    expect(tray.popupVisible.value, isTrue);
-    expect(actions, <WindowsTrayAction>[
-      WindowsTrayAction.togglePopup,
-      WindowsTrayAction.manualCheck,
-    ]);
+    expect(actions, <WindowsTrayAction>[WindowsTrayAction.manualCheck]);
   });
 }

@@ -16,6 +16,7 @@
 #include <string>
 
 #include "win32_window.h"
+#include "tray_popup_window.h"
 
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {
@@ -63,11 +64,10 @@ class FlutterWindow : public Win32Window {
   void UpdateTrayTooltip(const std::string& text);
   void ShowPopup();
   void ShowMainWindow();
-  void HideToTray(bool notify_dart = true);
+  void HideToTray();
   void ShowTrayMenu();
   void HandleTrayCommand(UINT command);
   void DispatchTrayAction(const std::string& action);
-  void SetPopupWindowMode(bool popup);
   RECT PopupBounds();
 
   // The project to run.
@@ -75,6 +75,8 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+  std::unique_ptr<TrayPopupWindow> popup_window_;
+  flutter::EncodableMap popup_state_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> wifi_channel_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> tray_channel_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
@@ -88,12 +90,10 @@ class FlutterWindow : public Win32Window {
   int64_t wifi_revision_ = 0;
   UINT taskbar_created_message_ = 0;
   std::wstring tray_tooltip_ = L"LinkUp · 正在启动";
-  RECT normal_window_bounds_{};
-  bool normal_bounds_saved_ = false;
   bool tray_icon_added_ = false;
+  bool tray_version_4_ = false;
   bool tray_attach_attempted_ = false;
   bool close_to_tray_pending_ = false;
-  bool popup_mode_ = false;
   bool close_notice_shown_ = false;
   bool exiting_ = false;
   bool start_hidden_ = false;
