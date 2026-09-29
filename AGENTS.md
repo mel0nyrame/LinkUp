@@ -59,4 +59,4 @@ LinkUp 是基于深澜 Srun 协议的 Android 校园网自动认证客户端，�
 
 ### 交付
 
-PR 正文结构、评审门槛与问题关联见 `docs/agents/delivery.md`。改动 `android/` 下的 Manifest、Kotlin 或方法通道接线时必读。
+PR 正文结构、评审门槛、问题关联，以及发布 tag 前手写中文 Release 说明的流程见 `docs/agents/delivery.md`。改动 `android/` 下的 Manifest、Kotlin 或方法通道接线时必读。
