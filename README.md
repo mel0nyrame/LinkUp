@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="LinkUp：面向 Android 与 Windows 的深澜校园网自动认证客户端。连接 Wi-Fi 后检查、认证、确认在线，掉线后重新尝试。">
+  <img src="./assets/readme/hero.svg" width="100%" alt="LinkUp：连接校园 Wi-Fi 后，自动处理深澜认证与断线重连的 Android 和 Windows 客户端。右侧为设备与 Wi-Fi 信号的抽象插画。">
 </p>
 
 LinkUp 面向使用**深澜（Srun）认证**的校园网。保存账号后，它会在连接校园 Wi-Fi 时检查在线状态，按需探测 ACID、完成认证，并在运行期间监控连接、尝试断线重连。
@@ -9,14 +9,13 @@ LinkUp 面向使用**深澜（Srun）认证**的校园网。保存账号后，�
 > [!NOTE]
 > LinkUp 是基于公开协议实现的第三方客户端，与深澜官方无关。实际可用性取决于学校的认证环境。
 
-## 先看界面
-
-以下是 **Android 客户端的真实截图**：概况页展示当前连接状态；网络配置页可自动探测 ACID，也能手动填写接入点和认证服务器。截图中的概况页处于未连接状态。
+## 真实界面
 
 <p align="center">
-  <a href="./assets/main_screen.jpg"><img src="./assets/main_screen.jpg" width="340" alt="Android 概况页：未连接状态，以及在线设备、网络信息等入口"></a>
-  <a href="./assets/setting_screen_2.jpg"><img src="./assets/setting_screen_2.jpg" width="340" alt="Android 网络配置页：自动获取 ACID、当前接入点、认证服务器和日志入口"></a>
+  <img src="./assets/readme/showcase.png" width="100%" alt="LinkUp Android 客户端的真实概况页和网络配置页：概况页处于未连接状态；设置页展示 ACID 自动探测和认证服务器配置。">
 </p>
+
+以上是 **Android 客户端的真实截图**，左侧概况页处于未连接状态。可分别打开 [完整概况页](./assets/main_screen.jpg) 和 [完整网络配置页](./assets/setting_screen_2.jpg) 查看细节。Windows 客户端的操作入口见下文。
 
 ## 下载与开始使用
 
@@ -30,6 +29,10 @@ LinkUp 面向使用**深澜（Srun）认证**的校园网。保存账号后，�
 LinkUp 只在 Wi-Fi 环境中尝试校园网认证，不会使用移动数据代替校园 Wi-Fi。
 
 ## 它如何保持连接
+
+<p align="center">
+  <img src="./assets/readme/auth-cycle.svg" width="100%" alt="LinkUp 认证流程：连接校园 Wi-Fi，查询在线状态，离线时才探测 ACID 并登录，登录后再次确认在线；监控发现掉线则重新检查。">
+</p>
 
 **先判断，再登录，最后确认。** LinkUp 先查询当前是否在线；只有离线时才进入 ACID 探测、Challenge 获取与深澜登录。门户返回成功后，它还会再次查询在线状态，而不是仅凭登录响应判定连接成功。运行期间发现断线，认证流程会重新尝试。
 
